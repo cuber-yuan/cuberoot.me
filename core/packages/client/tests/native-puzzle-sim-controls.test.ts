@@ -15,6 +15,8 @@ vi.mock('next/navigation', () => ({ useParams: () => ({ lang: 'en' }), usePathna
 vi.mock('@/lib/cubing-scramble', () => ({ tnoodleRandomScramble: vi.fn() }));
 vi.mock('@/lib/pg-scramble', () => ({ pgRandomScramble: vi.fn() }));
 
+import type { TwistyPlaybackPlayer } from '@/lib/twisty-playback';
+
 import PlayerControls from '@/app/[lang]/sim/PlayerControls';
 import { DEFAULT_SETTINGS } from '@/app/[lang]/sim/SettingDrawer';
 import { DEFAULT_KEYMAP } from '@/app/[lang]/sim/keymap';
@@ -44,6 +46,8 @@ const CASES = [
   { id: 'circoradiolarian', setup: 'Rw', alg: "G U'", manual: '2R', typed: "Gw' U" },
   { id: 'radiojewel', setup: 'Rw', alg: "G U'", manual: '2R', typed: "Gw' U" },
   { id: 'radioweb', setup: 'Rw', alg: "G U'", manual: '2R', typed: "Gw' U" },
+  { id: 'radiojam', setup: 'Rw', alg: "G U'", manual: '2R', typed: "Gw' U" },
+  { id: 'catscradle', setup: 'Rw', alg: "G U'", manual: '2R', typed: "Gw' U" },
   { id: 'icosababyface', setup: 'FREGU', alg: "HIERC2 FLACR'", manual: '2NALPO', typed: "FLACRw' HIERC" },
   { id: 'cube2heli', setup: 'F', alg: "DF U'", manual: '2DF', typed: "FLw' U", reducedTyped: 'FLw U' },
   { id: 'cube3heli', setup: 'F', alg: "DF U'", manual: '2DF', typed: "FLw' U", reducedTyped: 'FLw U' },
@@ -62,6 +66,15 @@ describe('native PG simulator controls', () => {
   const playStates = vi.fn();
   const userMoveRef: NonNullable<ComponentProps<typeof PlayerControls>['userMoveRef']> = { current: null };
   const player = {
+    experimentalModel: {
+      setupAlg: { get: vi.fn(async () => ({ alg: player.experimentalSetupAlg })) },
+      alg: { get: vi.fn(async () => ({ alg: player.alg })) },
+      setupAnchor: { get: vi.fn(async () => player.experimentalSetupAnchor) },
+      detailedTimelineInfo: { get: vi.fn(async () => ({ timestamp: 0 })), addFreshListener: vi.fn(), removeFreshListener: vi.fn() },
+      playingInfo: { get: vi.fn(async () => ({ playing: false })), addFreshListener: vi.fn(), removeFreshListener: vi.fn() },
+      indexer: { get: vi.fn<() => Promise<null>>(async () => null), addFreshListener: vi.fn(), removeFreshListener: vi.fn() },
+      coarseTimelineInfo: { get: vi.fn(async () => null) },
+    },
     experimentalSetupAlg: '',
     experimentalSetupAnchor: 'start' as 'start' | 'end',
     alg: '',
@@ -128,8 +141,9 @@ describe('native PG simulator controls', () => {
         onSetupChange: (text) => { setupChanges(text); if (!options.deferUrlUpdates) setSetup(text); },
         onAlgChange: (text) => { algChanges(text); if (!options.deferUrlUpdates) setAlg(text); },
         onCopyLink: copyLinks,
-        order: 3, onOrderChange: () => {}, puzzleKind: spec.id, onPuzzleChange: () => {},
+        order: 3, puzzleKind: spec.id,
         renderer: 'group', twistyPlayerRef: playerRef, userMoveRef,
+        twistyPlaybackPlayer: player as unknown as TwistyPlaybackPlayer,
         settings, onSettingsChange: (next) => { settingsChanges(next); setSettings(next); }, canUseCustomLogo: false,
         keymap: DEFAULT_KEYMAP, onKeymapChange: () => {}, onResetKeymap: () => {},
       });
@@ -188,15 +202,20 @@ describe('native PG simulator controls', () => {
     expect(player.play).not.toHaveBeenCalled();
 
     await act(async () => button('Animate scramble').click());
-    expect(input('Scramble').value).toBe('');
-    expect(input('Solution').value).toBe(scramble);
-    expect(settingsChanges).toHaveBeenLastCalledWith(expect.objectContaining({ playbackMode: 'moves' }));
-    expect(player.play).not.toHaveBeenCalled();
+    expect(input('Scramble').value).toBe(scramble);
+    expect(input('Solution').value).toBe(spec.alg);
+    expect(settingsChanges).not.toHaveBeenCalled();
     await nextAnimationFrame();
     await nextAnimationFrame();
     expect(player.jumpToStart).toHaveBeenCalledExactlyOnceWith({ flash: false });
     expect(player.play).toHaveBeenCalledOnce();
     expect(playStates).toHaveBeenCalledExactlyOnceWith({ setup: '', alg: scramble, anchor: 'start' });
+    await act(async () => button('Return to algorithm').click());
+    expect(player.experimentalSetupAlg).toBe(scramble);
+    expect(player.alg).toBe(spec.alg);
+    expect(player.experimentalSetupAnchor).toBe('end');
+    expect(input('Scramble').value).toBe(scramble);
+    expect(input('Solution').value).toBe(spec.alg);
   });
 
   it.each(CASES)('$id preserves typed multi-letter tokens and copies a manual move after a comment before URL debounce', async (spec) => {
@@ -251,7 +270,8 @@ describe('native PG simulator controls', () => {
     expect(setupChanges).toHaveBeenCalledExactlyOnceWith(nextSetup);
     expect(algChanges).toHaveBeenCalledExactlyOnceWith(nextAlg);
     expect(settingsChanges).not.toHaveBeenCalled();
-    expect(host.querySelector<HTMLSelectElement>('select[aria-label="Anchor: keep the scramble start or the solve end fixed"]')!.value).toBe('algorithm');
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Playback settings"]')!.click());
+    expect(host.querySelector('button[aria-label="Anchor: keep the scramble start or the solve end fixed"]')?.textContent).toBe('End');
     await act(async () => button('Copy this page link (with scramble / solution)').click());
     expect(copyLinks).toHaveBeenCalledExactlyOnceWith(nextSetup, nextAlg);
     expect(writeText).not.toHaveBeenCalled();
@@ -347,32 +367,33 @@ describe('native PG simulator controls', () => {
     expect(player.play).not.toHaveBeenCalled();
   });
 
-  it.each(CASES)('$id inverts both fields when the setup ends with a line comment', async (spec) => {
+  it.each(CASES)('$id inverts only the solution when the setup ends with a line comment', async (spec) => {
     await mount(spec, { deferUrlUpdates: true });
-    await enter('Scramble', `${spec.setup} // keep the separate solution field`);
+    const setup = `${spec.setup} // keep the separate solution field`;
+    await enter('Scramble', setup);
     const puzzle = nativePuzzleKPuzzle(spec.id);
-    // Compose each field independently so the expected state cannot reproduce
-    // the UI bug that joined the solution into the setup's line comment.
-    const setupState = puzzle.algToTransformation(spec.setup);
-    const original = setupState.applyTransformation(puzzle.algToTransformation(spec.alg));
-    expect(original.isIdentical(setupState)).toBe(false);
+    const solution = puzzle.algToTransformation(spec.alg);
+    const combined = puzzle.algToTransformation(spec.setup).applyTransformation(solution);
+    setupChanges.mockClear();
     await act(async () => button('Invert').click());
-    expect(input('Scramble').value).toBe('');
+    expect(input('Scramble').value).toBe(setup);
+    expect(setupChanges).toHaveBeenCalledExactlyOnceWith(setup);
     const inverse = puzzle.algToTransformation(parseNativePuzzleAlg(spec.id, input('Solution').value));
-    expect(inverse.isIdentical(original.invert())).toBe(true);
-    expect(original.applyTransformation(inverse).isIdentityTransformation()).toBe(true);
-    // Negative control: losing the second field produces a different inverse.
-    expect(inverse.isIdentical(setupState.invert())).toBe(false);
+    expect(inverse.isIdentical(solution.invert())).toBe(true);
+    expect(solution.applyTransformation(inverse).isIdentityTransformation()).toBe(true);
+    // The independent solution transform must not absorb the scramble or its comment.
+    expect(inverse.isIdentical(combined.invert())).toBe(false);
   });
 
-  it('cancels a queued native animation when input becomes invalid before its animation frame', async () => {
+  it('cancels a queued native animation when input becomes invalid before its model is ready', async () => {
     await mount(CASES[0]);
+    let ready!: (value: null) => void;
+    player.experimentalModel.indexer.get.mockImplementationOnce(() => new Promise(resolve => { ready = resolve; }));
     await act(async () => button('Animate scramble').click());
     expect(player.play).not.toHaveBeenCalled();
     await enter('Solution', '(UFR)1000000000');
     expect(input('Solution').closest('.sim-player-hlwrap')?.querySelector('.bad')).not.toBeNull();
-    await nextAnimationFrame();
-    await nextAnimationFrame();
+    await act(async () => ready(null));
     expect(player.play).not.toHaveBeenCalled();
   });
 
@@ -430,6 +451,8 @@ describe('native PG simulator controls', () => {
     { id: 'icosababyface', move: 'FREGU', order: 5 },
     { id: 'radiojewel', move: 'R', order: 3 },
     { id: 'radioweb', move: 'R', order: 3 },
+    { id: 'radiojam', move: 'R', order: 3 },
+    { id: 'catscradle', move: 'R', order: 3 },
     { id: 'cube2heli', move: 'F', order: 4 },
     { id: 'cube2heli', move: 'DF', order: 2 },
     { id: 'cube3heli', move: 'F', order: 4 },

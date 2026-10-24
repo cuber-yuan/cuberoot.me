@@ -221,6 +221,7 @@ const CORE_PATHS = [
   corePath('scripts', 'resolve-workspace-path.mjs'),
   repoPath('ops', 'systemd', 'cuberoot-drive-compression.service'),
   repoPath('ops', 'bin', 'provision-assistant-reader.sql'),
+  repoPath('ops', 'nginx', 'purge-api-cache.ts'),
   repoPath('ops', 'systemd', 'cuberoot-assistant-knowledge.service'),
   repoPath('ops', 'systemd', 'cuberoot-assistant-knowledge.timer'),
   repoPath('.github', 'workflows', 'deploy_core.yml'),
@@ -254,6 +255,9 @@ const STATS_PATHS = [
 
 const TEST_PATHS = [
   repoPath('.node-version'),
+  repoPath('.githooks', 'pre-commit'),
+  repoPath('.codex', 'hooks', 'recon-ground-truth-gate.mts'),
+  repoPath('.codex', 'hooks.json'),
   corePath('**'),
   `!${packagePath('platform', '**')}`,
   repoPath('solver', '333opt', 'inject.mjs'),
@@ -397,11 +401,68 @@ function workflowTriggers(patterns: string[], changedPaths: string[]): boolean {
 }
 
 describe('deployment workflow path contracts', () => {
+  it('serializes workflows that share mutable server staging or backup paths', () => {
+    const groups = {
+      'deploy_nginx.yml': 'deploy-web-ops-config',
+      'deploy_ops_bin.yml': 'deploy-ops-bin',
+      'deploy_fmc.yml': 'deploy-fmc',
+      'deploy_traffic_guard.yml': 'deploy-traffic-guard',
+      'sync_toolkit.yml': 'sync-static-toolkit',
+      'dump_comps.yml': 'dump-comp-snapshots',
+      'backup_recon.yml': 'backup-recon-data',
+    };
+    for (const [workflow, group] of Object.entries(groups)) {
+      expect(readWorkflow(workflow)).toContain(`concurrency:\n  group: ${group}\n  cancel-in-progress: false`);
+    }
+    expect(readWorkflow('sor.yml')).toContain("group: ${{ github.event_name == 'push' && 'sor-check' || 'sor-production' }}");
+  });
+
+  it('queues every core-api writer without evicting unrelated pending releases', () => {
+    const members = workflowNames().filter(name => readWorkflow(name).includes('group: deploy-core-production'));
+    expect(members.sort()).toEqual(['cube555_native.yml', 'deploy_core.yml', 'deploy_cubeopt_native.yml', 'wca_data_release.yml']);
+    for (const name of members) {
+      const block = readWorkflow(name).match(/group: deploy-core-production\n(?:\s+(?:#.*|cancel-in-progress: false|queue: max)\n)+/)?.[0] ?? '';
+      expect(block).toContain('cancel-in-progress: false');
+      expect(block).toContain('queue: max');
+    }
+    const native = readWorkflow('cube555_native.yml');
+    expect(native).toContain('id: stop_core_api');
+    expect(native).toContain("if: (failure() || cancelled()) && steps.stop_core_api.outcome != '' && steps.stop_core_api.outcome != 'skipped'");
+  });
+
+  it('confines ops staging and cleanup to the directory created by that workflow run', () => {
+    for (const [name, prefix] of [
+      ['deploy_ops_bin.yml', 'cuberoot-ops-bin'],
+      ['deploy_nginx.yml', 'cuberoot-web-ops'],
+    ]) {
+      const source = readWorkflow(name);
+      expect(source).toContain(`DEPLOY_STAGE: /tmp/${prefix}-${'${{ github.run_id }}'}-${'${{ github.run_attempt }}'}`);
+      expect(source).toContain("always() && steps.staging.outputs.created == 'true'");
+      expect(source).not.toMatch(/\/tmp\/\*\.(?:sh|conf\.new)/);
+      const cleanup = readStepRun(name, "Remove this run's staging files");
+      expect(cleanup).toContain('[[ ! -L "$DEPLOY_STAGE" ]]');
+      expect(cleanup).toContain('"$(realpath -e -- "$DEPLOY_STAGE")" = "$DEPLOY_STAGE"');
+      expect(cleanup).toContain('find "$DEPLOY_STAGE" -xdev -mindepth 1 -maxdepth 1 -type f -delete');
+      expect(cleanup).toContain('rmdir -- "$DEPLOY_STAGE"');
+      expect(cleanup).not.toContain('rm -r');
+    }
+  });
+
   const corePaths = readEventPaths('deploy_core.yml', 'push');
   const nextPaths = readEventPaths('deploy_next.yml', 'push');
   const statsPaths = readEventPaths('stats.yml', 'push');
   const testPushPaths = readEventPaths('test.yml', 'push');
   const testPullRequestPaths = readEventPaths('test.yml', 'pull_request');
+
+  it('runs client regressions when the automatic reconstruction gate changes', () => {
+    const clientPaths = readStepFilterPaths('test.yml', 'Detect affected inputs', 'client');
+    for (const path of ['.githooks/pre-commit', '.codex/hooks/recon-ground-truth-gate.mts',
+      '.codex/hooks.json', 'core/scripts/recon-ground-truth-gate.mjs',
+      'core/packages/client/tests/fixtures/recon-workbook/new-record.json']) {
+      expect(workflowTriggers(testPushPaths, [path]), path).toBe(true);
+      expect(workflowTriggers(clientPaths, [path]), path).toBe(true);
+    }
+  });
 
   it('bounds Next transfers and reuses live bytes without modifying the live release', () => {
     const transfer = readStepRun('deploy_next.yml', 'rsync standalone + systemd unit');
@@ -896,7 +957,8 @@ describe('deployment workflow path contracts', () => {
     expect(sq2Run).toMatch(
       /dist_sq2\.json[\s\S]*event:\s*'sq2'[\s\S]*sampleCount:\s*1[\s\S]*generated_at:\s*process\.env\.SCRAMBLE_STATS_STAMP/,
     );
-    expect(sq2Run).toContain('git diff --exit-code -- ../stats/scramble/dist_sq2.json');
+    expect(sq2Run).toContain('before=$(sha256sum ../stats/scramble/dist_sq2.json)');
+    expect(sq2Run).toContain('test "$before" = "$(sha256sum ../stats/scramble/dist_sq2.json)"');
   });
 
   it('atomically deploys CubeOpt with the same dotenv gate and rollback contract', () => {

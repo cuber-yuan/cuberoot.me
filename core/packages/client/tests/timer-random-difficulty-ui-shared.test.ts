@@ -49,6 +49,15 @@ describe('shared random-difficulty timer UI', () => {
   const open = async () => {
     await act(async () => host.querySelector<HTMLButtonElement>('.timer-difficulty-trigger')!.click());
   };
+  const choose = async (method: string, stage?: string) => {
+    await act(async () => document.querySelector<HTMLButtonElement>('.pp-trigger')!.click());
+    const parent = [...document.querySelectorAll<HTMLButtonElement>('.pp-group-items > button')].find(item => item.textContent === method)!;
+    await act(async () => parent.click());
+    if (stage) {
+      const child = [...document.querySelectorAll<HTMLButtonElement>('.pp-cascade-options > button')].find(item => item.textContent === stage)!;
+      await act(async () => child.click());
+    }
+  };
   const apply = async () => {
     await act(async () => document.querySelector<HTMLButtonElement>('.timer-difficulty-actions [data-primary]')!.click());
   };
@@ -57,18 +66,17 @@ describe('shared random-difficulty timer UI', () => {
     await act(async () => root.render(createElement(ConfigHarness)));
     expect(host.querySelector('select')).toBeNull();
     await open();
+    expect(document.querySelector('.timer-room-overlay')).toBeNull();
+    expect(document.body.style.overflow).not.toBe('hidden');
+    expect(document.querySelector<HTMLElement>('[role="dialog"]')!.style.visibility).toBe('visible');
     expect(document.querySelector('select[aria-label="Generate by difficulty"]')).toBeNull();
-    expect(document.querySelector('select[aria-label="Method"]')).not.toBeNull();
+    expect(document.querySelector('.pp-trigger')).not.toBeNull();
     expect(document.querySelectorAll('input[type="range"]')).toHaveLength(2);
     await act(async () => document.querySelector<HTMLButtonElement>('.subset-picker-mode')!.click());
     const white = [...document.querySelectorAll<HTMLButtonElement>('.subset-swatch')]
       .find(button => button.getAttribute('aria-label') === 'White')!;
     await act(async () => white.click());
-    const stage = document.querySelector<HTMLSelectElement>('select[aria-label="Stage"]')!;
-    await act(async () => {
-      stage.value = 'xcross';
-      stage.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+    await choose('Standard', 'XCross');
     expect(document.querySelector('select[aria-label="F2L slot"]')).not.toBeNull();
     expect(JSON.parse(host.querySelector('output')!.textContent!).genDiffColors).toBe('BGORWY');
     await apply();
@@ -87,19 +95,58 @@ describe('shared random-difficulty timer UI', () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
+  it('closes nested menus one level at a time without cancelling the difficulty dialog', async () => {
+    await act(async () => root.render(createElement(ConfigHarness)));
+    await open();
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    const trigger = dialog.querySelector<HTMLButtonElement>('.pp-trigger')!;
+    await act(async () => trigger.click());
+    const parent = dialog.querySelector<HTMLButtonElement>('.pp-group-items > button')!;
+    await act(async () => parent.click());
+    const escape = () => act(async () => document.activeElement!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    ));
+    await escape();
+    expect(dialog.querySelector('.pp-cascade-options')).toBeNull();
+    expect(document.activeElement).toBe(parent);
+    await escape();
+    expect(dialog.querySelector('.pp-popup')).toBeNull();
+    expect(document.querySelector('[role="dialog"]')).toBe(dialog);
+  });
+
+  it('offers fixed EO axes with every 0–7 depth and applies the axis only on confirmation', async () => {
+    await act(async () => root.render(createElement(ConfigHarness)));
+    await open();
+    await choose('EO', 'EO');
+    const axis = document.querySelector<HTMLSelectElement>('select[aria-label="EO axis"]')!;
+    expect([...axis.options].map(option => option.value)).toEqual(['best', '2', '1', '0']);
+    await act(async () => {
+      axis.value = '2';
+      axis.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(document.querySelector('.subset-picker-mode')).toBeNull();
+    for (const slider of document.querySelectorAll<HTMLInputElement>('input[type="range"]')) {
+      expect(slider.min).toBe('0');
+      expect(slider.max).toBe('7');
+    }
+    expect(JSON.parse(host.querySelector('output')!.textContent!).genDiffEoAxis).toBe('best');
+    await apply();
+    expect(JSON.parse(host.querySelector('output')!.textContent!)).toMatchObject({
+      genDiffVariant: 'eoline', genDiffStage: 'eo', genDiffEoAxis: 2,
+    });
+    await open();
+    expect(document.querySelector<HTMLSelectElement>('select[aria-label="EO axis"]')!.value).toBe('2');
+  });
+
   it('cancels edits on Escape and can explicitly remove the difficulty filter', async () => {
     await act(async () => root.render(createElement(ConfigHarness)));
     const before = host.querySelector('output')!.textContent;
     await open();
-    const stage = document.querySelector<HTMLSelectElement>('select[aria-label="Stage"]')!;
-    await act(async () => {
-      stage.value = 'xcross';
-      stage.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+    await choose('Standard', 'XCross');
     await act(async () => document.querySelector('[role="dialog"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
     expect(host.querySelector('output')!.textContent).toBe(before);
     await open();
-    expect(document.querySelector<HTMLSelectElement>('select[aria-label="Stage"]')!.value).toBe('cross');
+    expect(document.querySelector('.pp-trigger')?.textContent).toBe('Cross');
     await act(async () => document.querySelector<HTMLButtonElement>('.timer-difficulty-actions button')!.click());
     expect(JSON.parse(host.querySelector('output')!.textContent!).genDiffOn).toBe(false);
   });

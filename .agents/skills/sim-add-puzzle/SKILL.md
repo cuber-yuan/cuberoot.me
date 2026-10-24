@@ -24,6 +24,9 @@ description: "用户说造魔方模拟器、给 /sim 加魔方、新魔方类型
 - 按注册表的逐轴层数派生混合转角与深度能力，保留第二／第三单层及宽转；让按钮、拖转和点击共用规范族名与层深元数据，按原生映射选择 `Aw` 或 `1-2A`，不要拼接不存在的面宽转。
 - 按逐轴 `axisOrders` 处理混合机制，保留 FaceRenamingMapper 的完整外部族名，并独立核对不增加表面分区的角尖切面与旧种子打乱兼容性。
 - 制作 Radio Web（Radiolarian 6）时按 [Radio Web 几何与验收](references/radio-web.md) 保留临界切深上方的细小翼块；不能复用 Radio Jewel 的 320 片图示冒充本项目的 440 片。
+- 制作 Radio Jam（Radiolarian 8）时按 [Radio Jam 几何与验收](references/radio-jam.md) 使用 `radio08` 实际切深，并保留每面的 15 个三角形、6 个五边形和 1 个六边形。
+- 制作 Cat’s Cradle（Radiolarian 5）时按 [原生 PG 结构与接线](references/native-pg-puzzles.md#cats-cradle) 保留精确切深与每面十九区，独立检查切深两侧的负例，不复用相邻 Radiolarian 的分区。
+- 制作 Radio Canon（Radiolarian 1.5）时按 [固定中心与分区验证](references/native-pg-puzzles.md#radio-canon) 保留每面七个三角形、九个四边形及二十个固定中心；分别核对中心置换与不可辨自转，不以同为 320 片的 Radio Jewel 代替本项目几何。
 - 对二阶＋直升机等可见切缝重合的组合保留全部机制切面；分别核对 90° 面轴与 180° 棱轴、逐轴层数及交错转动，不以相同展开图或图标判定机制相同，见 [原生 PG 结构与接线](references/native-pg-puzzles.md#二阶直升机)。
 - 对 Radio Jewel 等恰有小块消失的临界切深保留解析精度，独立核对面分区、可见块数及切深两侧的负例，并在双语说明中写明保形转动与 jumbling 的支持边界。
 - 原生播放器在首次构造前检测 WebGL 能力，不可用时直接切换同一具名模型的二维展开图；跳过全部 3D 初始化，手动按钮经原生招式回调记录，导出调用原生二维 SVG 下载。
@@ -105,13 +108,13 @@ description: "用户说造魔方模拟器、给 /sim 加魔方、新魔方类型
 
 ## 必改文件
 1. `engine/world.ts`:`PuzzleKind`/`cube` 联合类型 += x;加私有缓存字段;`setPuzzle` 加 `else if (kind==='x')` 分支(实例化、`controller.disable=true`、小件复用 `_ensureSq1Lights`);`resize()` 的 `refHalf` 给该 kind(实心魔方≈SIZE*4.0、框满≈0.85)+ near 裁剪宽放,`setPuzzle` 末尾已统一 `this.resize()` 自动重取景。
-2. `PlayerControls.tsx`:`PUZZLE_TYPE_OPTIONS` += `{value:'x',iconClass:'unofficial-x',labelZh,labelEn}`;`SimPuzzle` += x;`PuzzleTypeSelect` 的 value 映射 + onChange 白名单含 x。
+2. 在实际项目目录 `puzzleOptions.ts` / `pgCatalog.ts` 登记 `{value:'x',iconClass:已在图标库核验的共享键,labelZh,labelEn}`；原创图用 `puzzle-x`，复用上游图用其真实键；同步 `SimPuzzle` 与选择器的 value 映射和 onChange 白名单。
 3. `PlayerControls.tsx`(角/棱转):`CORNER_SPECS` 注册表加 1 条(parse/toString/invert/reduce/scramble + `CornerCube` 接口)+ `cornerKind` 映射 1 行 → `corner` 描述符;所有播放分支 key off `corner`(`actions`/`cornerActions`/`totalSteps`/`jumpToStep`/auto-reset/`handleCaretSync`/play-loop/`simplify`/`invert`/`canSimplify`/`handleScramble`/`applyMove` guard/`is3x3`)。
 4. `PlayerControls.tsx`(控件显隐 + 灰禁):全走 `simCaps.ts` 的 `CAPS` 表加 1 条 `{engine:'always'|'engineMode'|'never', carve}`;`resolveCaps(puzzleKind,renderer)` 给 `{engineActive, carve, hasRendererChoice, supports}` → 引擎开关=`caps.engineActive`、挖块=`caps.carve`、渲染器下拉=`caps.hasRendererChoice`;本地只留 `isNxNLocal = typeof puzzleKind==='number'`。**「该拼图不支持的设置变灰不可点」全自动**:`caps.supports.<控件>`(bool)从 engine 类型 + NxN 性派生(cubing.js 路径支持 scale/yaw/pitch/speed/hint/backView/animation/background + 锁定大小位置(lockView 通用,TwistySection wheel/pinch 守卫)+ 方位字母常显(faceLabels 仅 skewb/pyraminx/megaminx 走 `FaceOverlay`),其余引擎特性 + 面色/logo 走引擎/NxN),`Slider`/`Toggle`/`ColorRow` 收 `disabled`+`title`(=`hint(ok)` 统一提示),灰禁 CSS 走 `.sim-toggle--disabled`/`.sim-slider--disabled`/`.sim-color-row--disabled` + PillToggle `:disabled`。新魔方只填 `engine` 类型即自动灰对,**别**为某拼图手写 `disabled={puzzleKind==='x'}`。
 5. `SimPage.tsx`:`asNxN` 对 x 返 null;`puzzleParam` 加 `if(raw==='x') return 'x'`;角/棱转写 `CornerTurnAdapter` 进 `cornerGestures` 注册表 + `cornerGestureFor` 加键,pinch-end `controller.disable` + render-loop `viewing` 各加 x;连续/异类(SQ1/Ivy)才手写 onPointerDown/Move/Up。
 6. `SettingDrawer.tsx` `applySettings`:新 engine 魔方加进 `ENGINE_BODY_PUZZLES` 走 else 分支(`applyStickerThickness`+`applyEngineBodyOverlay`+`applyHintFacelets`);`hintBg`(`--background`)提到 if/else 前算一次;carve 走 duck-type `(world.cube as {setCarve?}).setCarve?.(s.debugCarve)`(Cube 实现 `setCarve(on)` 即自动接上)。
 7. `lib/sim-recon-link.ts`:`SimPuzzle` += x;`reconEventForSim` 加分支(无 recon event 返 null)。
-8. 图标先按 `wca-event` skill 查共享 `core/packages/event-icon/svg/unofficial/` 与生成映射；新增原创 SVG 后在 `core/` 运行 `pnpm --filter @cuberoot/event-icon generate`，同步事件到真实图标键的映射；没有图标的 picker 项用明确的 `textLabel`，不要用不存在的 key。
+8. 图标先按 `wca-event` skill 查共享 `core/packages/event-icon/svg/`；缺图时在 `svg/puzzle/` 制作准确原创 SVG，在 `core/` 运行 `pnpm --filter @cuberoot/event-icon generate`，先确认 `/zh/icon` 可查看、双语搜索和下载，再同步 `/sim`、`/scramble/gen`、`/timer` 的真实键与名称；具体拼图不得用 `textLabel` 占位或借用错误图形，运行既有 `puzzle-icon-catalog.test.ts` 防漏接。
 9. 手势先查已有适配，再接 raycast 命中与方向判定；新路径参考 `components/puzzle-models/gestures/duoDrag.ts`，不要在共享引擎里引入页面依赖。
 
 播放循环用 `twist(action,false,false)` + 仅 `started===true` 才推进 step(完成才接下一步);别用 `force=true`+固定 `setInterval`(会在缓动结束前砍掉 120° 转动);NxN 分支先 `if(cube.busy) return`。

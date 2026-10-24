@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useId, useRef, useState } from 'react';
-import { Bluetooth, Globe2, Timer, UserRound, Users } from 'lucide-react';
+import { Bluetooth, Globe2, Timer, UserRound, Users } from '@app-foundation/icons/lucide';
 import { useTranslation } from 'react-i18next';
 import { EventIcon } from '@/components/EventIcon';
 import { tr } from '@/i18n/tr';
@@ -42,7 +42,7 @@ export default function TimerPresencePanel({ snapshot }: { snapshot: TimerPresen
     };
   }, [open]);
 
-  const title = tr({ zh: '当前计时会话', en: 'Live timer sessions' });
+  const title = tr({ zh: '当前在线', en: 'Currently online' });
   const value = (n: number | undefined) => n === undefined ? '—' : String(n);
   const hasLocation = snapshot?.sessions.some(session => session.location) ?? false;
   const modeLabel = (mode: 'solo' | 'local' | 'net') => ({

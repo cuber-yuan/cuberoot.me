@@ -36,6 +36,14 @@ interface AccountPageData {
     }>;
   };
   displayName: string;
+  editingName: boolean;
+  nameDraft: string;
+  nameBusy: boolean;
+  identityRows: Array<{ key: string; label: string; handle: string }>;
+  identitiesOpen: boolean;
+  identitiesBusy: boolean;
+  identitiesError: string;
+  hasPassword: boolean;
   isTimelineEntry: boolean;
   loginBusy: boolean;
   loginError: string;
@@ -55,6 +63,12 @@ interface AccountPageData {
 }
 
 interface AccountPage {
+  signOut(): void;
+  loadIdentities(): Promise<void>;
+  toggleIdentities(): void;
+  editDisplayName(): void;
+  saveDisplayName(): Promise<void>;
+  onHide(): void;
   copyContactValue(event: { currentTarget: { dataset: { value?: unknown } } }): void;
   createAccount(): Promise<void>;
   beginPhoneAuthorization(): void;
@@ -65,6 +79,7 @@ interface AccountPage {
   confirmLinkCode(): Promise<void>;
   previewLinkCode(): Promise<void>;
   openLinkCodeWebsite(): void;
+  openEmailLinkCode(): void;
   onLinkCodeInput(event: { detail: { value: string } }): void;
   data: AccountPageData;
   linkExistingAccount(): void;
@@ -106,6 +121,118 @@ function normalLaunchOptions() {
 }
 
 describe('mini program account page', () => {
+  it('does not open or copy a legacy WCA browser authorization in Douyin', async () => {
+    const openUrl = vi.fn(), setClipboardData = vi.fn(), request = vi.fn();
+    const page = await loadPage({
+      getStorageInfoSync: () => ({ keys: [] }), getStorageSync: () => null,
+      getLaunchOptionsSync: normalLaunchOptions, setNavigationBarTitle: vi.fn(),
+      showShareMenu: vi.fn(), openUrl, setClipboardData, request,
+    }, 'douyin');
+    page.onLoad({ wcaLink: 'a'.repeat(43), wcaUrl: 'https://www.worldcubeassociation.org/oauth/authorize' });
+    expect(openUrl).not.toHaveBeenCalled();
+    expect(setClipboardData).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
+    expect(page.data.loginRequired).toBe(true);
+  });
+  it.each(['confirm', 'cancel', 'switch', 'hide', 'storage-failure'] as const)('signs out only the confirmed current native session: %s', async scenario => {
+    let session: unknown = { token: 't'.repeat(20), user: { uid: 12, name: 'Member', wcaId: null } };
+    let confirm!: (result: { confirm: boolean; cancel: boolean }) => void;
+    const removeStorageSync = vi.fn((key: string) => {
+      expect(key).toBe('cuberoot:session');
+      if (scenario === 'storage-failure') throw new Error('blocked');
+      session = null;
+    });
+    const page = await loadPage({ getStorageSync: () => session, removeStorageSync,
+      showModal(options: { success: typeof confirm }) { confirm = options.success; } });
+    page.setData({ loginRequired: false });
+    page.signOut();
+    if (scenario === 'switch') session = { token: 'b'.repeat(20), user: { uid: 13, name: 'Other', wcaId: null } };
+    if (scenario === 'hide') page.onHide();
+    confirm({ confirm: scenario !== 'cancel', cancel: scenario === 'cancel' });
+    confirm({ confirm: true, cancel: false });
+    if (scenario === 'confirm') {
+      expect(removeStorageSync).toHaveBeenCalledOnce();
+      expect(page.data.loginRequired).toBe(true);
+    } else if (scenario === 'storage-failure') {
+      expect(page.data.loginRequired).toBe(false);
+      expect(page.data.accountError).not.toBe('');
+    } else expect(removeStorageSync).not.toHaveBeenCalled();
+  });
+  it('shows readable handles, collapses Douyin identities and clears private rows on hide', async () => {
+    const session = { token: 't'.repeat(20), user: { uid: 12, name: 'Member', wcaId: null } };
+    const page = await loadPage({
+      getStorageInfoSync: () => ({ keys: ['cuberoot:session'] }),
+      getStorageSync: () => session,
+      request(options: { header: { Authorization: string }; success(value: unknown): void }) {
+        expect(options.header.Authorization).toBe(`Bearer ${session.token}`);
+        options.success({ statusCode: 200, data: { hasPassword: true, identities: [
+          { provider: 'email', providerUid: 'member@example.com' },
+          { provider: 'douyin', providerUid: 'private-openid' },
+          { provider: 'douyin', providerUid: 'private-alliedid' },
+        ] } });
+      },
+    }, 'douyin');
+    page.setData({ loginRequired: false });
+    await page.loadIdentities();
+    expect(page.data.identityRows.map(row => row.handle)).toEqual(['member@example.com', '']);
+    expect(page.data.hasPassword).toBe(true);
+    expect(JSON.stringify(page.data)).not.toContain('private-openid');
+    page.onHide();
+    expect(page.data.identityRows).toEqual([]);
+    expect(page.data.identitiesOpen).toBe(false);
+  });
+
+  it.each(['hide', 'switch', 'malformed'] as const)('does not expose identities after %s', async (scenario) => {
+    let session = { token: 't'.repeat(20), user: { uid: 12, name: 'Member', wcaId: null } };
+    let respond!: (value: unknown) => void;
+    const page = await loadPage({
+      getStorageSync: () => session,
+      request(options: { success(value: unknown): void }) { respond = options.success; },
+    });
+    page.setData({ loginRequired: false });
+    const loading = page.loadIdentities();
+    if (scenario === 'hide') page.onHide();
+    if (scenario === 'switch') session = { ...session, token: 'n'.repeat(20) };
+    respond({ statusCode: 200, data: { hasPassword: false, identities: [{ provider: 'email', providerUid: scenario === 'malformed' ? null : 'member@example.com' }] } });
+    await loading;
+    expect(page.data.identityRows).toEqual([]);
+    expect(page.data.identitiesBusy).toBe(false);
+    if (scenario !== 'hide') expect(page.data.identitiesError).not.toBe('');
+  });
+
+  it('does not apply a display-name draft to a different session', async () => {
+    let stored = { token: 't'.repeat(20), user: { uid: 12, name: 'Old', wcaId: null } };
+    const request = vi.fn();
+    const page = await loadPage({ getStorageSync: () => stored, request });
+    page.setData({ loginRequired: false, displayName: 'Old' });
+    page.editDisplayName();
+    page.setData({ nameDraft: 'Changed' });
+    stored = { token: 'b'.repeat(20), user: { uid: 13, name: 'Other', wcaId: null } };
+    await page.saveDisplayName();
+    expect(request).not.toHaveBeenCalled();
+    expect(page.data.editingName).toBe(false);
+    expect(page.data.displayName).toBe('Other');
+  });
+
+  it('clears a hidden name editor and ignores its late save response', async () => {
+    const session = { token: 't'.repeat(20), user: { uid: 12, name: 'Old', wcaId: null } };
+    let respond!: (value: unknown) => void;
+    const setStorageSync = vi.fn();
+    const page = await loadPage({
+      getStorageSync: () => session, setStorageSync,
+      request(options: { success(value: unknown): void }) { respond = options.success; },
+    });
+    page.setData({ loginRequired: false, displayName: 'Old' });
+    page.editDisplayName();
+    page.setData({ nameDraft: 'Changed' });
+    const saving = page.saveDisplayName();
+    page.onHide();
+    respond({ statusCode: 200, data: { token: 'n'.repeat(20), user: { ...session.user, name: 'Changed', avatar: '' } } });
+    await saving;
+    expect(setStorageSync).not.toHaveBeenCalled();
+    expect(page.data).toMatchObject({ editingName: false, nameDraft: '', nameBusy: false, displayName: 'Old', accountError: '' });
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
@@ -444,7 +571,7 @@ describe('mini program account page', () => {
     expect(page.data.accountLinkCodeMode).toBe(true);
     expect(navigateTo).not.toHaveBeenCalled();
     page.openLinkCodeWebsite();
-    expect(navigateTo).toHaveBeenCalledWith(expect.objectContaining({ url: '/pages/web/index?key=account-link' }));
+    expect(navigateTo).toHaveBeenCalledWith(expect.objectContaining({ url: '/pages/account-link/index' }));
     page.onLinkCodeInput({ detail: { value: ' 123456 ' } });
     await page.previewLinkCode();
     expect(page.data.accountLinkTargetId).toBe(42);
@@ -455,6 +582,16 @@ describe('mini program account page', () => {
     expect(request.mock.calls[2][0].header?.Authorization).toBeUndefined();
     expect(request.mock.calls.every(([options]) => !options.url.includes(ticket) && !options.url.includes('123456'))).toBe(true);
     expect(page.data.uidText).toBe('42'); expect(setStorageSync).toHaveBeenCalledOnce();
+  });
+
+  it('opens native email verification without persisting or transmitting the pending identity', async () => {
+    const { page, request, setStorageSync, navigateTo, ticket } = await douyinChoiceFixture();
+    page.linkExistingAccount();
+    page.openEmailLinkCode();
+    expect(navigateTo).toHaveBeenCalledWith(expect.objectContaining({ url: '/pages/account-link/index' }));
+    expect(JSON.stringify(navigateTo.mock.calls)).not.toContain(ticket);
+    expect(request).toHaveBeenCalledOnce();
+    expect(setStorageSync).not.toHaveBeenCalled();
   });
 
   it('invalidates target confirmation whenever the entered binding code changes or clears', async () => {
@@ -1043,7 +1180,7 @@ describe('mini program account page', () => {
 
     page.openContactWebsite();
     expect(navigateTo).toHaveBeenCalledWith(expect.objectContaining({
-      url: '/pages/web/index?key=contact',
+      url: '/pages/contact/index',
     }));
 
     page.previewWechatQr();

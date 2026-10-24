@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
-import { ArrowRight, ExternalLink, Play, Search } from 'lucide-react';
+import { ArrowRight, ExternalLink, Play, Search } from '@app-foundation/icons/lucide';
 import { parseAsFloat, parseAsInteger, parseAsString, parseAsStringEnum, useQueryState } from 'nuqs';
 import AppLink from '@/components/AppLink';
 import { AccountPanel, LoginForm } from '@/components/AuthPanel';
@@ -42,6 +42,7 @@ import { OnlineCompetitionPreview } from './OnlineCompetitionPreview';
 import { OnlineCompetitions } from './OnlineCompetitions';
 import { PlatformLearningWorkspace, isPlatformLearningWorkspace } from './PlatformLearningWorkspace';
 import { PlatformQrAdmin } from './PlatformQrAdmin';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 const EMPTY_PLATFORM_ENTITIES: PlatformEntity[] = [];
 
@@ -238,7 +239,7 @@ function PlatformLanding() {
             <h2 id="platform-home-learning-title">{t(`${user?.name ?? ''}，继续上次的学习。`, `Continue where you left off, ${user?.name ?? ''}.`)}</h2>
           </div>
           {loading ? (
-            <p className="platform-home-status" role="status" aria-busy="true" aria-live="polite">{t('正在读取学习进度与工作区…', 'Loading your learning and workspaces…')}</p>
+            <p className="platform-home-status" role="status" aria-busy="true" aria-live="polite"><LoadingIndicator>{t('正在读取学习进度与工作区…', 'Loading your learning and workspaces…')}</LoadingIndicator></p>
           ) : currentCourse ? (
             <AppLink className="platform-home-resume" href={continueHref} prefetch={false}>
               <span>
@@ -766,7 +767,7 @@ function PlatformResourceRouteView({
         <div className="platform-route-heading">
           {courseSection && params.id ? <div>
             <AppLink className="platform-home-secondary" href={`/platform/courses/${encodeURIComponent(params.id)}`} prefetch={false}>
-              {t('返回课程', 'Back to course')}
+              <span aria-hidden="true">←</span> <span className="sr-only">{t('返回课程', 'Back to course')}</span>
             </AppLink>
           </div> : null}
           {!inviteManager && !orderPage ? <div className="platform-route-labels">

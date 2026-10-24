@@ -7,7 +7,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from '@/components/AppLink';
 import { useTranslation } from 'react-i18next';
-import { TriangleAlert, ArrowLeft, LogIn } from 'lucide-react';
+import { TriangleAlert, ArrowLeft, LogIn } from '@app-foundation/icons/lucide';
 import type { ReconSolve } from '@cuberoot/shared';
 import { getReconScramble, normalizeReconSolution } from '@cuberoot/shared/recon-completion';
 import { getRecon, addAlternative, updateAlternative } from '@/lib/recon-api';
@@ -24,6 +24,7 @@ import '../../recon.css';
 import '../../submit/recon_submit.css';
 import '../recon_detail.css';
 import { tr } from '@/i18n/tr';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 interface Props {
   parentId: string;
@@ -50,8 +51,10 @@ export default function AltSubmitForm({ parentId, editIdx }: Props) {
 
   useEffect(() => {
     if (!parentId) return;
+    let cancelled = false;
     getRecon(Number(parentId))
       .then(p => {
+        if (cancelled) return;
         setParent(p);
         if (isEditing && editIdx != null) {
           const alt = p.alternatives?.[editIdx];
@@ -60,7 +63,8 @@ export default function AltSubmitForm({ parentId, editIdx }: Props) {
         }
         setLoading(false);
       })
-      .catch((e: Error) => { setError(e.message); setLoading(false); });
+      .catch((e: Error) => { if (!cancelled) { setError(e.message); setLoading(false); } });
+    return () => { cancelled = true; };
   }, [parentId, isEditing, editIdx, t]);
 
   const scramble = parent ? getReconScramble(parent) : '';
@@ -78,7 +82,9 @@ export default function AltSubmitForm({ parentId, editIdx }: Props) {
     setSubmitting(true);
     try {
       if (isEditing && editIdx != null) {
-        await updateAlternative(Number(parentId), editIdx, trimmed);
+        const expected = parent?.alternatives?.[editIdx];
+        if (!expected || parent?.id !== Number(parentId)) throw new Error(t('recon.notFound'));
+        await updateAlternative(Number(parentId), editIdx, trimmed, expected);
       } else {
         await addAlternative(Number(parentId), trimmed);
       }
@@ -93,7 +99,7 @@ export default function AltSubmitForm({ parentId, editIdx }: Props) {
   };
 
   if (loading) {
-    return <div className="recon-page"><div className="recon-loading">{t('common.loading')}</div></div>;
+    return <div className="recon-page"><div className="recon-loading"><LoadingIndicator>{t('common.loading')}</LoadingIndicator></div></div>;
   }
   if (error || !parent) {
     return (
@@ -108,8 +114,8 @@ export default function AltSubmitForm({ parentId, editIdx }: Props) {
         <div className="recon-page-header">
           <div>
             <Link href={`/recon/${parentId}`} className="recon-back-link">
-              <ArrowLeft size={14} /> {tr({ zh: '返回详情', en: 'Back'
-            })}
+              <ArrowLeft size={14} /> <span className="sr-only">{tr({ zh: '返回详情', en: 'Back'
+            })}</span>
             </Link>
           </div>
         </div>
@@ -131,7 +137,7 @@ export default function AltSubmitForm({ parentId, editIdx }: Props) {
         <div className="detail-header">
           <div className="detail-header-nav">
             <Link href={`/recon/${parentId}`} className="recon-back-link">
-              <ArrowLeft size={14} /> {tr({ zh: '返回', en: 'Back' })}
+              <ArrowLeft size={14} /> <span className="sr-only">{tr({ zh: '返回', en: 'Back' })}</span>
             </Link>
           </div>
           <h1>{isEditing ? t('recon.editAlternative') : t('recon.addAlternative')}</h1>

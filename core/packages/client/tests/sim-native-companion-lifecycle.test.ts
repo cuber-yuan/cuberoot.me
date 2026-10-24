@@ -26,10 +26,13 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/sim',
 }));
 vi.mock('@/hooks/useMembership', () => ({ useMembership: () => ({ isMember: false }) }));
-vi.mock('@/app/[lang]/sim/useSimMasks', () => ({ useSimMasks: () => ({ rows: fixture.masks }) }));
+vi.mock('@/app/[lang]/sim/useSimMasks', () => ({ useSimMasks: () => ({ rows: fixture.masks, layouts: [] }) }));
 vi.mock('@/hooks/useT', () => ({ useT: () => (_zh: string, en: string) => en }));
 vi.mock('@/i18n/tr', () => ({ useLang: () => 'en', tr: ({ en }: { en: string }) => en }));
 vi.mock('@/app/[lang]/sim/GroupTheoryPanel', () => ({ default: () => null }));
+vi.mock('@/app/[lang]/sim/PuzzleDrawWorkspace', () => ({
+  default: ({ puzzle, fto }: ComponentProps<typeof import('@/app/[lang]/sim/PuzzleDrawWorkspace').default>) => createElement('div', { 'data-drawing-puzzle': puzzle, 'data-image-alg': puzzle === 'fto' ? fto?.algorithm : undefined }),
+}));
 vi.mock('@/components/HomeLink', () => ({ default: () => null }));
 vi.mock('@/components/AppLink', () => ({ default: () => null }));
 vi.mock('@/lib/puzzle-image/image-export', async (importOriginal) => {
@@ -70,6 +73,7 @@ vi.mock('@/components/TwistySection', async () => {
 function RouteControls() {
   const [, setQuery] = useQueryStates({ puzzle: parseAsString, setup: parseAsString, alg: parseAsString });
   return createElement('div', null,
+    createElement('button', { 'data-route-alg': true, onClick: () => { void setQuery({ alg: 'L' }); } }, 'Change animation algorithm'),
     ...['masterskewb', 'superz'].map((puzzle) => createElement('button', {
       key: puzzle,
       'data-route-puzzle': puzzle,
@@ -139,6 +143,75 @@ function preview() {
   return host.querySelector<SVGElement>('.sim-image-overlay-host .vc-preview svg');
 }
 
+async function setWorkspace(value: 'animation' | 'creation') {
+  await act(async () => {
+    const select = host.querySelector<HTMLSelectElement>('select[aria-label="Workspace mode"]')!;
+    select.value = value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await vi.dynamicImportSettled();
+  });
+}
+
+it('snapshots a legacy drawing puzzle before animation changes its project', async () => {
+  await act(async () => {
+    root.render(createElement(NuqsTestingAdapter, {
+      searchParams: '?tool=draw&puzzle=skewb&renderer=cubing', hasMemory: true,
+      children: [createElement(RouteControls, { key: 'routes' }), createElement(SimPage, { key: 'sim' })],
+    }));
+    await vi.dynamicImportSettled();
+  });
+  await setWorkspace('animation');
+  await navigate('masterskewb');
+  await setWorkspace('creation');
+  expect(host.querySelector('[data-drawing-puzzle]')?.getAttribute('data-drawing-puzzle')).toBe('skewb');
+});
+
+it('keeps canvas and playback tools together and opens settings in a dismissible popover', async () => {
+  await act(async () => root.render(createElement(NuqsTestingAdapter, {
+    searchParams: '?puzzle=skewb&renderer=cubing', hasMemory: true,
+    children: createElement(SimPage),
+  })));
+  expect(host.querySelector('.sim-view-tools .sim-canvas-tools')).not.toBeNull();
+  const controls = host.querySelector('.playback-bar-controls')!;
+  expect(controls.querySelector('.sim-playback-speed')).not.toBeNull();
+  const trigger = controls.querySelector<HTMLButtonElement>('[aria-label="Playback settings"]')!;
+  await act(async () => trigger.click());
+  expect(controls.querySelector('[role="dialog"]')).not.toBeNull();
+  expect(trigger.getAttribute('aria-expanded')).toBe('true');
+  const anchor = controls.querySelector<HTMLButtonElement>('button[aria-label="Anchor: keep the scramble start or the solve end fixed"]')!;
+  expect(anchor).not.toBeNull();
+  const wasEnd = anchor.textContent === 'End';
+  expect(anchor.textContent).toBe(wasEnd ? 'End' : 'Start');
+  await act(async () => anchor.click());
+  const options = [...controls.querySelectorAll<HTMLButtonElement>('.sim-anchor-menu [role="option"]')];
+  expect(options.map(option => option.textContent)).toEqual(['Start', 'End']);
+  expect(options.map(option => option.getAttribute('aria-selected'))).toEqual(wasEnd ? ['false', 'true'] : ['true', 'false']);
+  await act(async () => options[wasEnd ? 0 : 1].click());
+  expect(anchor.textContent).toBe(wasEnd ? 'Start' : 'End');
+  expect(controls.querySelector('.sim-anchor-menu')).toBeNull();
+  await act(async () => anchor.click());
+  const restoredOptions = [...controls.querySelectorAll<HTMLButtonElement>('.sim-anchor-menu [role="option"]')];
+  expect(restoredOptions.map(option => option.getAttribute('aria-selected'))).toEqual(wasEnd ? ['true', 'false'] : ['false', 'true']);
+  await act(async () => restoredOptions[wasEnd ? 1 : 0].click());
+  expect(anchor.textContent).toBe(wasEnd ? 'End' : 'Start');
+  await act(async () => trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+  expect(controls.querySelector('[role="dialog"]')).toBeNull();
+});
+
+it('snapshots a legacy FTO image algorithm before animation changes its formula', async () => {
+  await act(async () => {
+    root.render(createElement(NuqsTestingAdapter, {
+      searchParams: '?tool=image&puzzle=fto&alg=R&renderer=cubing', hasMemory: true,
+      children: [createElement(RouteControls, { key: 'routes' }), createElement(SimPage, { key: 'sim' })],
+    }));
+    await vi.dynamicImportSettled();
+  });
+  await setWorkspace('animation');
+  await act(async () => host.querySelector<HTMLButtonElement>('[data-route-alg]')!.click());
+  await setWorkspace('creation');
+  expect(host.querySelector('[data-image-alg]')?.getAttribute('data-image-alg')).toBe('R');
+});
+
 async function navigate(puzzle: string) {
   await act(async () => host.querySelector<HTMLButtonElement>(`[data-route-puzzle="${puzzle}"]`)!.click());
   expect(host.querySelector('[data-current-puzzle]')?.getAttribute('data-current-puzzle')).toBe(puzzle);
@@ -146,7 +219,7 @@ async function navigate(puzzle: string) {
 
 it('clears the old native image and exports while the next puzzle has no frame, then resumes from a new native player', async () => {
   await act(async () => root.render(createElement(NuqsTestingAdapter, {
-    searchParams: '?puzzle=dogic&renderer=cubing',
+    searchParams: '?tool=capture&puzzle=dogic&renderer=cubing',
     hasMemory: true,
     children: [createElement(RouteControls, { key: 'routes' }), createElement(SimPage, { key: 'sim' })],
   })));

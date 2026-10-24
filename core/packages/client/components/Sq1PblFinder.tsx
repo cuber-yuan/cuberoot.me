@@ -9,7 +9,7 @@ import {
   type ChangeEvent,
 } from 'react';
 import type { AlgSticker } from '@cuberoot/shared';
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy } from '@app-foundation/icons/lucide';
 import { parseAsString } from 'nuqs';
 import { useTrainingQueryState as useQueryState } from '@/lib/training-host';
 import AlgPlayer from '@/components/AlgPlayer';
@@ -34,6 +34,7 @@ import {
   type Sq1PblSolution,
 } from '@/lib/sq1-pbl';
 import styles from './Sq1PblFinder.module.css';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 type WorkerMessage =
   | { id: number; type: 'progress'; completed: number; total: number }
@@ -322,7 +323,7 @@ export default function Sq1PblFinder() {
     return <p className={styles.error} role="alert">{tr({ zh: 'PBL Finder 默认数据加载失败，请稍后重试。', en: 'The PBL Finder defaults could not be loaded. Please try again later.' })}</p>;
   }
   if (!defaults) {
-    return <p className={styles.status} role="status">{tr({ zh: '正在加载 PBL Finder…', en: 'Loading the PBL Finder…' })}</p>;
+    return <p className={styles.status} role="status"><LoadingIndicator>{tr({ zh: '正在加载 PBL Finder…', en: 'Loading the PBL Finder…' })}</LoadingIndicator></p>;
   }
 
   const pllItems = allPlls.map(item => ({

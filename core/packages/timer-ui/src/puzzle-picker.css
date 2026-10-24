@@ -35,13 +35,14 @@
 .pp-trigger-chevron { color: var(--muted-foreground); flex-shrink: 0; }
 
 .pp-popup {
-  /* anchored-panel: clamped (TimerPuzzlePicker layout effect) */
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
+  /* anchored-panel: clamped (shared visualViewport positioning + top layer) */
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  box-sizing: border-box;
   width: max-content;
   max-width: min(560px, calc(100vw - 32px));
-  max-height: 70vh;
+  max-height: calc(100dvh - 16px);
   overflow-y: auto;
   font-size: 0.85rem;
   /* Host token with an opaque page-background fallback for any future consumer. */
@@ -52,6 +53,10 @@
   z-index: 200;
   box-shadow: 0 8px 24px color-mix(in srgb, var(--foreground) 22%, transparent);
 }
+
+/* Only top-layer menus wait for anchored positioning to reveal them.
+   Web link/multiselect menus share these classes but use usePanelClamp. */
+.pp-popup[popover] { visibility: hidden; }
 
 .pp-group + .pp-group { margin-top: 4px; }
 .pp-group-title {
@@ -156,4 +161,29 @@
 .pp-item-check {
   margin-left: auto;
   flex-shrink: 0;
+}
+
+.pp-discovery { display: flex; align-items: center; gap: 4px; padding: 4px; }
+.pp-discovery .search-input { min-width: 0; flex: 1; }
+.pp-discovery .search-control { width: 100%; min-width: 0; font-size: 16px; }
+.pp-favorite {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.pp-favorite[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
+.pp-item-path { display: block; margin-top: 4px; color: var(--muted-foreground); white-space: normal; }
+.pp-empty { padding: 8px; color: var(--muted-foreground); }
+.pp-popup--discovery .pp-group-items { grid-template-columns: 1fr; }
+@media (max-width: 767px) {
+  .pp-popup--discovery .pp-item,
+  .pp-favorite { min-height: 44px; }
 }

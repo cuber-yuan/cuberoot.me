@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { installedPetAvailable } from '@/lib/installed-content';
 import { useRouter } from 'next/navigation';
 import { useQueryState, parseAsInteger, parseAsStringEnum } from 'nuqs';
-import { Bell, BookOpen, Building2, ChevronLeft, ChevronRight, Crown, LockKeyhole, LogOut, Settings, Rewind, IdCard, GraduationCap, Inbox, Lightbulb, Loader2, Pencil, Upload, X, UserRound, Users, UserCog } from 'lucide-react';
+import { Bell, BookOpen, Building2, ChevronLeft, ChevronRight, Crown, LockKeyhole, LogOut, Settings, Rewind, IdCard, GraduationCap, Inbox, Lightbulb, Loader2, Pencil, Upload, X, UserRound, Users, UserCog } from '@app-foundation/icons/lucide';
 import AppLink from '@/components/AppLink';
 import HomeLink from '@/components/HomeLink';
 import { ClearButton } from '@/components/ClearButton';
@@ -70,6 +70,7 @@ import { tr, useLang } from '@/i18n/tr';
 import PetAccountCard from '@/components/PetAccountCard';
 import AccountCardGrid from './AccountCardGrid';
 import './account.css';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 function AccountName({ name, wcaId }: { name: string; wcaId?: string | null }) {
   const t = useT();
@@ -232,7 +233,7 @@ function AvatarChooser({ onClose }: { onClose: () => void }) {
         {preparing && <Loader2 size={14} className="auth-spin" aria-label={t('正在读取图片', 'Reading image')} />}
       </div>}
       {source === 'pet' && <>
-        {catalogLoading ? <p className="auth-hint">{t('正在加载…', 'Loading…')}</p> : catalogError
+        {catalogLoading ? <p className="auth-hint"><LoadingIndicator>{t('正在加载…', 'Loading…')}</LoadingIndicator></p> : catalogError
           ? <button type="button" className="auth-link" onClick={() => setCatalogRetry(n => n + 1)}>{t('加载失败，点击重试', 'Could not load. Retry')}</button>
           : avatarPets.length === 0 ? <p className="auth-hint">{t('暂无可用形象', 'No avatars available')}</p>
           : <select className="auth-input account-avatar-pet-select" aria-label={t('头像形象', 'Avatar character')}
@@ -628,7 +629,7 @@ function BasicProfileEditor() {
             ariaLabel={t('地区', 'Location')}
             label={draft.regionCode
               ? [selectedRegion ? regionLabel(selectedRegion) : draft.regionCode, draft.cityName ? cityLabel(draft.cityName) : null].filter(Boolean).join(' / ')
-              : locationsLoading ? t('正在加载…', 'Loading…')
+              : locationsLoading ? <LoadingIndicator />
                 : locationsError ? t('地区加载失败', 'Could not load locations')
                   : regions.length === 0 ? t('暂无地区', 'No locations')
                     : t('请选择地区', 'Select a location')}
@@ -873,6 +874,8 @@ export default function AccountPage() {
         desc: tr({ zh: '把比赛成绩、个人纪录和复盘接进来', en: 'Bring your results, records and reconstructions here' }),
       },
     ]),
+    { key: 'workspace', href: '/workspace', icon: <Building2 size={22} className="account-card-icon" />, title: tr({ zh: '工作台', en: 'Workspace' }) },
+    { key: 'team', href: '/dev/team', icon: <Users size={22} className="account-card-icon" />, title: tr({ zh: '团队手册', en: 'Team handbook' }) },
     {
       key: 'progress',
       href: '/alg/progress',
@@ -955,7 +958,7 @@ export default function AccountPage() {
         ) : (
           <HomeLink className="account-back" miniProgramTarget="account">
             <ChevronLeft size={16} />
-            <span>{t('返回', 'Back')}</span>
+            <span className="sr-only">{t('返回', 'Back')}</span>
           </HomeLink>
         )}
 

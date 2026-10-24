@@ -17,8 +17,7 @@ import { useQueryState, parseAsString, parseAsStringEnum } from 'nuqs';
 import {
   CalendarDays, ChevronLeft, ChevronRight, Download, Globe, Menu, Plus, Search, Settings,
   Share2, Undo2, Upload, X,
-} from 'lucide-react';
-import BackHome from '@/components/BackHome';
+} from '@app-foundation/icons/lucide';
 import HeaderToggles from '@/components/HeaderToggles';
 import AppLink from '@/components/AppLink';
 import { ListSelect } from '@/components/ListSelect';
@@ -52,6 +51,7 @@ import {
   VIEW_KEYS, VIEW_LABELS, isViewKey, type ViewKey,
 } from './_lib/format';
 import './calendar.css';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 const DAY = 86_400_000;
 
@@ -99,7 +99,7 @@ export default function CalendarClient() {
   // ── URL 状态 ────────────────────────────────────────────────────────────
   const [viewParam, setViewParam] = useQueryState(
     'view',
-    parseAsStringEnum([...VIEW_KEYS]).withDefault('timeGridWeek').withOptions({ history: 'push' }),
+    parseAsStringEnum([...VIEW_KEYS]).withDefault('timeGridWeek').withOptions({ history: 'replace' }),
   );
   const [dateParam, setDateParam] = useQueryState('d', parseAsString.withDefault(''));
   const view: ViewKey = isViewKey(viewParam) ? viewParam : 'timeGridWeek';
@@ -537,7 +537,6 @@ export default function CalendarClient() {
     return (
       <div className="cal-page">
         <div className="cal-topbar">
-          <BackHome />
           <h1 className="cal-brand"><CalendarDays size={20} aria-hidden />{tr({ zh: '日历', en: 'Calendar' })}</h1>
           <span className="cal-foot-gap" />
           <HeaderToggles />
@@ -564,7 +563,6 @@ export default function CalendarClient() {
         >
           <Menu size={18} aria-hidden />
         </button>
-        <BackHome />
         <h1 className="cal-brand">
           <CalendarDays size={20} aria-hidden />
           {tr({ zh: '日历', en: 'Calendar' })}
@@ -710,7 +708,7 @@ export default function CalendarClient() {
               {importing && importing.total > 0
                 ? tr({ zh: `导入中 ${importing.done}/${importing.total}`, en: `Importing ${importing.done}/${importing.total}` })
                 : importing
-                  ? tr({ zh: '读取中…', en: 'Reading…' })
+                  ? <LoadingIndicator>{tr({ zh: '读取中…', en: 'Reading…' })}</LoadingIndicator>
                   : tr({ zh: '导入 .ics / .zip', en: 'Import .ics / .zip' })}
             </button>
             <button type="button" className="cal-btn" onClick={() => void onExport()}>

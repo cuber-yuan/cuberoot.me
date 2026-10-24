@@ -21,7 +21,7 @@
   background: var(--shell-chip, var(--card));
   border: 1px solid var(--shell-divider, var(--border-default));
   border-radius: 999px;
-  color: var(--muted-foreground);
+  color: var(--foreground);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -32,8 +32,7 @@
    桌面收起态的 pill 形态里当它不存在,原有布局一字不改;只有右栏展开态(见 ≥1024 段)
    才把它变成真的 flex 行,好把按钮摆到标题那条分隔线上。 */
 .solver-panel-headrow { display: contents; }
-/* 手机形态:顶栏那排控件里的一员,但不画框 —— 纯文字入口,高度对齐旁边的下拉。
-   (桌面那颗仍是 pill:它在右栏里是唯一的可点物,没有边框就读不出可点。) */
+/* 手机形态:顶栏那排控件里的一员,但不画框 —— 纯文字入口,高度对齐旁边的下拉。 */
 .shell-topbar-left .solver-panel-head {
   height: 32px;
   padding: 0 4px;
@@ -57,8 +56,9 @@
   gap: 6px;
   flex: 0 0 auto;
   min-height: 32px;
-  margin: 0 8px;
-  padding: 6px 8px;
+  margin: 0;
+  width: 33px;
+  padding: 6px;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -70,7 +70,9 @@
   cursor: pointer;
   transition: background 120ms, color 120ms;
 }
-.solver-layout-action:hover { background: var(--shell-hover, var(--muted)); color: var(--foreground); }
+.solver-layout-action:hover { background: transparent; color: var(--foreground); }
+.solver-layout-action { color: var(--foreground); }
+.solver-layout-action .solver-panel-chevron { opacity: 1; }
 .solver-layout-action:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .solver-panel-body { width: 100%; margin-top: 8px; }
 .solver-panel-body .stsv-controls { justify-content: center; }
@@ -105,6 +107,7 @@
    the tap read as a dead button (issue #49). Fixed + inset:0 with its own scroll
    container; ?hints=1 owns the open state so the back gesture closes it. */
 .solver-sheet {
+  --solver-sheet-padding: 12px;
   position: fixed;
   inset: 0;
   /* over the 成绩/图表/工具 bottom sheet (61) and the deskpet (40). Only comparable
@@ -127,11 +130,25 @@
   align-items: center;
   gap: 8px;
   flex: 0 0 auto;
-  padding: calc(10px + env(safe-area-inset-top)) 12px 10px;
+  padding: calc(10px + env(safe-area-inset-top)) var(--solver-sheet-padding) 10px;
   border-bottom: 1px solid var(--shell-divider, var(--border-default));
 }
-.solver-sheet-title { font-size: 15px; font-weight: 600; }
-.solver-settings-slot { display: flex; align-items: center; flex: 1; }
+.solver-view-select {
+  flex: 0 0 auto;
+  align-self: center;
+  max-width: 100%;
+  padding: 6px 8px;
+  appearance: none;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 400;
+  cursor: pointer;
+}
+.solver-sheet-head .solver-settings-slot { justify-content: flex-start; }
+.solver-settings-slot { display: flex; align-items: center; flex: 1; gap: 4px; }
 /* Toolbar convention: title left, close right — the one place a spacer is right. */
 .solver-sheet-close {
   margin-left: auto;
@@ -152,7 +169,7 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 10px 12px calc(16px + env(safe-area-inset-bottom));
+  padding: 10px var(--solver-sheet-padding) calc(16px + env(safe-area-inset-bottom));
 }
 
 /* Desktop: solutions dock on the left of .timer-solver-stage. The right grid column
@@ -186,7 +203,7 @@
   /* :not(.fullscreen) so fullscreen (rail hidden via display:none) doesn't keep a
      phantom left pad — :has() still matches display:none panels otherwise. */
   .timer-solver-stage:not([data-stage-fullscreen='true']):has(.timer-solver-rail .solver-panel[data-open='true']) {
-    --shell-left-inset: var(--solver-rail-w);
+    --shell-left-inset: var(--timer-left-dock-width, var(--solver-rail-w));
   }
   .timer-workspace:has(.timer-solver-rail .solver-panel[data-open='true']) .timer-solver-rail {
     top: 0;
@@ -194,7 +211,7 @@
     bottom: 0;
     align-items: stretch;
     gap: 0;
-    width: var(--solver-rail-w);
+    width: var(--timer-left-dock-width, var(--solver-rail-w));
     border-right: 1px solid var(--shell-divider, var(--border-default));
     background: var(--background);
     overflow-y: auto;
@@ -218,7 +235,9 @@
      好让标题按钮与形态开关共用同一条底边。 */
   .timer-workspace:has(.timer-solver-rail .solver-panel[data-open='true']) .timer-solver-rail .solver-panel-headrow {
     display: flex;
-    align-items: stretch;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
     border-bottom: 1px solid var(--shell-divider, var(--border-default));
   }
   .timer-workspace:has(.timer-solver-rail .solver-panel[data-open='true']) .timer-solver-rail .solver-panel-head {
@@ -232,14 +251,12 @@
   .timer-workspace:has(.timer-solver-rail .solver-panel[data-open='true']) .timer-solver-rail .solver-panel-headrow:has(.solver-settings-slot) .solver-panel-head {
     flex: 0 0 auto;
   }
-  /* Header, rail collapsed (all closed): free-floating pill under the topbar
-     icons (not flush to the viewport edge, so it's rounded all the way round). */
+  /* Collapsed desktop entry: text and chevron, matching the toolbar controls. */
   .timer-solver-rail .solver-panel[data-open='false'] .solver-panel-head {
-    border: 1px solid var(--shell-divider, var(--border-default));
-    border-radius: 999px;
+    border: 0;
+    border-radius: 6px;
     padding: 9px 13px;
-    background: var(--shell-chip, var(--card));
-    box-shadow: 0 2px 12px color-mix(in srgb, var(--foreground) 10%, transparent);
+    background: transparent;
   }
   .timer-solver-rail .solver-panel[data-open='false'] .solver-panel-head:hover { background: var(--shell-hover, var(--muted)); }
 
@@ -270,4 +287,27 @@
 .timer-solver-stage[data-stage-fullscreen='true'] .timer-solver-rail { display: none; }
 @media (max-width: 560px) {
   .shell-topbar-left .solver-panel-head { height: 30px; padding: 0 3px; font-size: 12px; gap: 4px; }
+}
+
+/* Center both solution views; the toolbar occupies the same middle column. */
+@media (min-width: 900px) {
+  .solver-sheet { --solver-sheet-padding: 28px; --solver-sheet-content-width: 640px; }
+  .solver-sheet-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, var(--solver-sheet-content-width)) minmax(0, 1fr);
+    column-gap: 0;
+  }
+  .solver-sheet-head .solver-view-select { justify-self: start; min-width: 0; }
+  .solver-sheet .solver-sheet-body { padding: 20px 28px; scrollbar-gutter: stable both-edges; }
+  .solver-sheet-body > [data-no-timer] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 16px 32px;
+    max-width: var(--solver-sheet-content-width);
+    margin: 0 auto;
+  }
+  .solver-sheet .solver-panel-scramble { grid-column: 1 / -1; margin: 0; }
+  .solver-sheet .stepsolve { margin-top: 0; }
+  .solver-sheet .stsv-player { width: min(100%, 340px); }
 }

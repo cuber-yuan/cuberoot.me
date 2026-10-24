@@ -1,6 +1,8 @@
 'use client';
 
 import {
+  createContext,
+  useContext,
   useCallback,
   useEffect,
   useId,
@@ -10,6 +12,7 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { persistItem } from '@/lib/safe-storage';
 import { useT } from '@/hooks/useT';
 import {
@@ -25,6 +28,7 @@ import type {
   DrawElement,
   RenderDrawSvgOptions,
 } from './types';
+import '@/components/puzzle-image/puzzle-image.css';
 import './draw-canvas.css';
 
 export type {
@@ -35,6 +39,9 @@ export type {
   DrawLine,
   RenderDrawSvgOptions,
 } from './types';
+
+// The simulator supplies a stage; standalone consumers keep the preview inline.
+export const DrawPreviewHostContext = createContext<HTMLElement | null>(null);
 
 const DEFAULT_SIZE = 400;
 const MAX_HISTORY = 14;
@@ -114,6 +121,7 @@ export function renderDrawSvg(options: RenderDrawSvgOptions): string {
     ? options.strokeWidthScale!
     : 1;
   const colors = options.colors ?? {};
+  const strokeColor = escapeAttr(options.strokeColor ?? DRAW_STROKE_COLOR);
   const cellIdByKey = new Map(options.elements.map((element) => [element.key, element.cellId ?? element.key]));
 
   const body = options.elements.map((element) => {
@@ -139,7 +147,7 @@ export function renderDrawSvg(options: RenderDrawSvgOptions): string {
     if (transform) attrs.push(`transform="${escapeAttr(transform)}"`);
     if (element.disShow) attrs.push('opacity="0"');
     const common = attrs.join(' ');
-    const lineWidth = element.disableStrokeWidth ? 0 : strokeWidth * strokeScale;
+    const lineWidth = element.disableStrokeWidth ? 0 : strokeWidth * strokeScale * (element.strokeWidthScale ?? 1);
 
     if (kind === 'text') {
       const textX = element.textPoint?.[0] ?? 0;
@@ -160,13 +168,13 @@ export function renderDrawSvg(options: RenderDrawSvgOptions): string {
     }
 
     if (kind === 'path') {
-      return `<path ${common} d="${escapeAttr(element.d!)}" fill="${escapeAttr(fill)}" stroke="${DRAW_STROKE_COLOR}" stroke-width="${lineWidth}" stroke-linejoin="round"/>`;
+      return `<path ${common} d="${escapeAttr(element.d!)}" fill="${escapeAttr(fill)}" stroke="${strokeColor}" stroke-width="${lineWidth}" stroke-linejoin="round"/>`;
     }
     if (kind === 'polygon') {
-      return `<polygon ${common} points="${escapeAttr(element.points!)}" fill="${escapeAttr(fill)}" stroke="${DRAW_STROKE_COLOR}" stroke-width="${lineWidth}" stroke-linejoin="round"/>`;
+      return `<polygon ${common} points="${escapeAttr(element.points!)}" fill="${escapeAttr(fill)}" stroke="${strokeColor}" stroke-width="${lineWidth}" stroke-linejoin="round"/>`;
     }
     const line = element.line!;
-    return `<line ${common} x1="${line.x1 ?? 0}" y1="${line.y1 ?? 0}" x2="${line.x2 ?? 0}" y2="${line.y2 ?? 0}" fill="none" stroke="${DRAW_STROKE_COLOR}" stroke-width="${lineWidth}" stroke-linejoin="round"/>`;
+    return `<line ${common} x1="${line.x1 ?? 0}" y1="${line.y1 ?? 0}" x2="${line.x2 ?? 0}" y2="${line.y2 ?? 0}" fill="none" stroke="${strokeColor}" stroke-width="${lineWidth}" stroke-linejoin="round"/>`;
   }).filter(Boolean).join('\n  ');
 
   return `<svg xmlns="http://www.w3.org/2000/svg" class="puzzle-draw-svg" width="${width}" height="${height}" viewBox="${escapeAttr(viewBox)}" preserveAspectRatio="xMidYMid meet">\n  ${body}\n</svg>`;
@@ -244,9 +252,12 @@ export function DrawCanvas({
   onElementToggle,
   controls,
   strokeWidthScale = 1,
+  strokeColor,
   className,
+  previewActive = true,
 }: DrawCanvasProps) {
   const t = useT();
+  const previewHost = useContext(DrawPreviewHostContext);
   const controlId = useId();
   const width = safeDimension(widthProp);
   const height = safeDimension(heightProp);
@@ -286,11 +297,12 @@ export function DrawCanvas({
     height,
     strokeWidth,
     strokeWidthScale,
-  }), [elements, colors, viewBox, width, height, strokeWidth, strokeWidthScale]);
+    strokeColor,
+  }), [elements, colors, viewBox, width, height, strokeWidth, strokeWidthScale, strokeColor]);
 
   const previewSvg = useMemo(() => onElementToggle ? renderDrawSvg({
-    elements, colors, viewBox, width, height, strokeWidth, strokeWidthScale, interactive: true,
-  }) : svg, [onElementToggle, elements, colors, viewBox, width, height, strokeWidth, strokeWidthScale, svg]);
+    elements, colors, viewBox, width, height, strokeWidth, strokeWidthScale, strokeColor, interactive: true,
+  }) : svg, [onElementToggle, elements, colors, viewBox, width, height, strokeWidth, strokeWidthScale, strokeColor, svg]);
 
   useEffect(() => {
     onDocumentChange?.({ svg, width, height, filenameBase: resolvedFilenameBase });
@@ -372,29 +384,34 @@ export function DrawCanvas({
     );
   };
 
+  const preview = (
+    <div className="vc-studio draw-canvas-main" style={canvasStyle}>
+      <div
+        className="draw-canvas-preview"
+        onPointerDown={handlePaint}
+        // allow-static-onclick: delegated SVG buttons carry role, tabindex and keyboard handling.
+        onClick={(event) => toggleElement(event.target)}
+        onKeyDown={handleToggleKey}
+        onContextMenu={(event) => event.preventDefault()}
+        dangerouslySetInnerHTML={{ __html: previewSvg }}
+      />
+      {!previewHost && controls && <div className="draw-canvas-controls">{controls}</div>}
+    </div>
+  );
+
   return (
-    <div className={`draw-canvas${className ? ` ${className}` : ''}`} style={canvasStyle}>
-      <div className="draw-canvas-main">
-        <div
-          className="draw-canvas-preview"
-          onPointerDown={handlePaint}
-          // allow-static-onclick: delegated SVG buttons carry role, tabindex and keyboard handling.
-          onClick={(event) => toggleElement(event.target)}
-          onKeyDown={handleToggleKey}
-          onContextMenu={(event) => event.preventDefault()}
-          dangerouslySetInnerHTML={{ __html: previewSvg }}
-        />
-        {controls && <div className="draw-canvas-controls">{controls}</div>}
-      </div>
+    <div className={`vc-studio draw-canvas${className ? ` ${className}` : ''}`} style={canvasStyle}>
+      {previewHost && previewActive ? createPortal(preview, previewHost) : preview}
 
       <div className="draw-canvas-tools">
+        {previewHost && controls && <div className="draw-canvas-controls">{controls}</div>}
         <div className="draw-canvas-tool-section">
-          <label className="draw-canvas-tool-label" htmlFor={`${controlId}-filename`}>
+          <label className="vc-label draw-canvas-tool-label" htmlFor={`${controlId}-filename`}>
             {t('文件名', 'Filename')}
           </label>
           <input
             id={`${controlId}-filename`}
-            className="draw-canvas-text-input"
+            className="vc-num draw-canvas-text-input"
             type="text"
             value={customFilename}
             placeholder={filenameBase}
@@ -403,7 +420,7 @@ export function DrawCanvas({
         </div>
 
         <div className="draw-canvas-tool-section">
-          <label className="draw-canvas-tool-label" htmlFor={`${controlId}-stroke`}>
+          <label className="vc-label draw-canvas-tool-label" htmlFor={`${controlId}-stroke`}>
             {t('线宽', 'Line width')}
           </label>
           <div className="draw-canvas-range-row">
@@ -421,7 +438,7 @@ export function DrawCanvas({
         </div>
 
         <div className="draw-canvas-tool-section">
-          <div className="draw-canvas-tool-label">{t('颜色', 'Colors')}</div>
+          <div className="vc-label draw-canvas-tool-label">{t('颜色', 'Colors')}</div>
           <div className="draw-canvas-swatches">
             {normalizedPresets.map((color) => renderSwatch(color, 'preset'))}
           </div>
@@ -429,7 +446,7 @@ export function DrawCanvas({
 
         {historyColors.length > 0 && (
           <div className="draw-canvas-tool-section">
-            <div className="draw-canvas-tool-label">{t('历史颜色', 'Recent colors')}</div>
+            <div className="vc-label draw-canvas-tool-label">{t('历史颜色', 'Recent colors')}</div>
             <div className="draw-canvas-swatches">
               {historyColors.map((color) => renderSwatch(color, 'history'))}
             </div>
@@ -437,7 +454,7 @@ export function DrawCanvas({
         )}
 
         <div className="draw-canvas-tool-section">
-          <label className="draw-canvas-tool-label" htmlFor={`${controlId}-custom-color`}>
+          <label className="vc-label draw-canvas-tool-label" htmlFor={`${controlId}-custom-color`}>
             {t('自定义颜色', 'Custom color')}
           </label>
           <div className="draw-canvas-custom-row">
@@ -448,13 +465,13 @@ export function DrawCanvas({
               onChange={(event) => setCustomColor(event.target.value)}
               aria-label={t('选择自定义颜色', 'Choose custom color')}
             />
-            <button type="button" className="draw-canvas-button" onClick={rememberCustomColor}>
+            <button type="button" className="vc-btn draw-canvas-button" onClick={rememberCustomColor}>
               {t('使用', 'Use')}
             </button>
           </div>
         </div>
 
-        <button type="button" className="draw-canvas-button" onClick={reset}>
+        <button type="button" className="vc-btn draw-canvas-button" onClick={reset}>
           {t('重置颜色', 'Reset colors')}
         </button>
       </div>

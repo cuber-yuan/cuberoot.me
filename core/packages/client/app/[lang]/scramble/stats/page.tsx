@@ -13,6 +13,8 @@ import PuzzleDistView from './_components/PuzzleDistView';
 import NoBarStats from './_components/NoBarStats';
 import EnumeratedDistView from './_components/EnumeratedDistView';
 import { ENUM_SPECS } from './_components/enumerated-specs';
+import { PRECOMPUTED_EXACT_PUZZLES, PRECOMPUTED_EXACT_SPECS } from './_components/precomputed-exact-specs';
+import { PUBLISHED_EXACT_PUZZLES } from './_components/published-exact-specs';
 import Slide15DistView from './_components/Slide15DistView';
 import SuperFloppyDistView from './_components/SuperFloppyDistView';
 import BicDistView from './_components/BicDistView';
@@ -27,6 +29,7 @@ import FirstAppearanceTimeline, { type TimelineEntry } from './_components/First
 import FullScrambleList, { FullScrambleFilterBar } from './_components/FullScrambleList';
 import AvgExamplesPanel, { type AvgGroupCase } from './_components/AvgExamplesPanel';
 import ExactCoverageMatrix from './_components/ExactCoverageMatrix';
+import ExactDistributionCoverage from './_components/ExactDistributionCoverage';
 import ExactDistTable from './_components/ExactDistTable';
 import {
   EXACT_STAGE_VARIANT, EXACT_VARIANT_STAGES, FRAME_NOTE, SLOT_LABEL, SLOT_OK,
@@ -47,7 +50,7 @@ import PuzzlePicker from '@/components/PuzzlePicker/PuzzlePicker';
 import { CSTIMER_SOLVABLE_IDS } from '@/lib/cstimer-scramble';
 import BoolToggle from '@/components/BoolToggle';
 import { InfoTooltip } from '@/components/InfoTooltip/InfoTooltip';
-import { HelpCircle } from 'lucide-react';
+import { HelpCircle } from '@app-foundation/icons/lucide';
 import { EventIcon } from '@/components/EventIcon/EventIcon';
 import { ScramblePreview2D } from '@/components/ScramblePreview2D';
 import { Flag } from '@/components/Flag';
@@ -59,10 +62,11 @@ import { countryName } from '@/lib/country-name';
 import { fetchByDifficultyCountries, type ByDifficultyCountry } from '@/lib/scramble-by-difficulty';
 import { statsUrl } from '@/lib/stats-base';
 import {
-  stageLabel, uiVariantOf, uiVariantOptions, uiStagesOf, dataVariantOfStage,
+  uiVariantOf, uiVariantOptions, uiStagesOf, dataVariantOfStage,
   normalizeVariantDataRef, variantDataRef,
   type ScrambleVariant,
 } from '@/lib/scramble-variants';
+import { MethodStagePicker } from '@cuberoot/timer-ui/puzzle-picker';
 import { VariantSelect } from '@/components/VariantSelect';
 import SolveTabs, { type SolvePuzzle } from '../_components/SolveTabs';
 import {
@@ -71,6 +75,7 @@ import {
 } from '@/components/SubsetColorPicker/SubsetColorPicker';
 import './scramble_stats.css';
 import { tr } from '@/i18n/tr';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 interface HistEntry {
   min: number;
@@ -492,6 +497,8 @@ export default function ScrambleStatsPage({ embedded = false }: { embedded?: boo
   const availableEvents = useMemo(() => {
     const all = new Set(lengthsData ? Object.keys(lengthsData.events) : []);
     if (tab === 'difficulty') {
+      // Exact WCA views remain discoverable while the remote corpus is loading.
+      for (const id of ['222', 'pyram', 'skewb', 'clock']) all.add(id);
       if (merged || dataset !== 'wca') for (const id of DIFFICULTY_EVENTS) if (id !== '333') all.delete(id);
     } else if (merged) {
       for (const id of MERGED_HIDDEN) all.delete(id);
@@ -526,7 +533,7 @@ export default function ScrambleStatsPage({ embedded = false }: { embedded?: boo
   // difficulty tab's merged-family pseudo-event, always valid there). Non-WCA
   // solvable puzzles (ivy 等)走全空间分布 / 无长度数据,跳过此回退。
   useEffect(() => {
-    if (lengthsData && event !== '' && !CSTIMER_SOLVABLE_IDS.has(event) && !lengthsData.events[event]) {
+    if (lengthsData && event !== '' && !PUZZLE_EVENT_MAP[event] && !CSTIMER_SOLVABLE_IDS.has(event) && !ENUM_SPECS[event] && !lengthsData.events[event]) {
       const first = Object.keys(lengthsData.events)[0];
       if (first) setEvent(first);
     }
@@ -921,7 +928,7 @@ export default function ScrambleStatsPage({ embedded = false }: { embedded?: boo
   const isPuzzleEvent = tab === 'difficulty' && !!PUZZLE_EVENT_MAP[event];
   // 同一个 URL 键跨项目复用；项目切换后把不适用的旧值仅在显示层折回 WCA，避免白屏或菜单悬空。
   const effectiveEssSrc: EssSrc = event === 'skewb'
-    ? (essSrc === 'skewb-fl' ? essSrc : 'wca')
+    ? (essSrc === 'skewb-fl' || (essSrc === 'all' && PRECOMPUTED_EXACT_SPECS.skewb) ? essSrc : 'wca')
     : event === '222'
       ? (essSrc === 'skewb-fl' ? 'wca' : essSrc)
       : event === 'pyram'
@@ -930,7 +937,8 @@ export default function ScrambleStatsPage({ embedded = false }: { embedded?: boo
   // 2×2 / 金字塔的精确枚举视图，及斜转底层全状态精确视图。
   const isEssential = tab === 'difficulty' && (event === '222' || event === 'pyram') && effectiveEssSrc !== 'wca';
   const isSkewbFirstLayer = tab === 'difficulty' && event === 'skewb' && effectiveEssSrc === 'skewb-fl';
-  const isTheoreticalPuzzleView = isEssential || isSkewbFirstLayer;
+  const isSkewbFullSpace = tab === 'difficulty' && event === 'skewb' && effectiveEssSrc === 'all';
+  const isTheoreticalPuzzleView = isEssential || isSkewbFirstLayer || isSkewbFullSpace;
 
   // 长度 tab 第二计步口径钮(顶栏右侧):仅当所选项目带 counts_qtm 时出现。
   const lenCur = useMemo(() => resolveEventLen(lengthsData, event, merged), [lengthsData, event, merged]);
@@ -1107,7 +1115,7 @@ export default function ScrambleStatsPage({ embedded = false }: { embedded?: boo
           {timeline333Qtm
             ? tr({ zh: 'QTM 首次出现即将加入', en: 'QTM first-appearance coming soon' })
             : timelineLoading
-              ? tr({ zh: '加载中…', en: 'Loading…' })
+              ? <LoadingIndicator>{tr({ zh: '加载中…', en: 'Loading…' })}</LoadingIndicator>
               : tr({ zh: '该组合的首次出现数据生成中,稍后再来', en: 'First-appearance data for this selection is being generated, check back soon' })}
         </div>
       )}
@@ -1231,7 +1239,7 @@ export default function ScrambleStatsPage({ embedded = false }: { embedded?: boo
       value={effectiveEssSrc}
       groups={event === 'skewb'
         ? [
-          { label: tr({ zh: '整解', en: 'Full solve' }), options: ['wca'] },
+          { label: tr({ zh: '整解', en: 'Full solve' }), options: PRECOMPUTED_EXACT_SPECS.skewb ? ['wca', 'all'] : ['wca'] },
           { label: tr({ zh: '子目标', en: 'Sub-goals' }), options: ['skewb-fl'] },
         ]
         : has222Stats
@@ -1268,6 +1276,11 @@ export default function ScrambleStatsPage({ embedded = false }: { embedded?: boo
               isZh={isZh}
               wcaEvents={availableEvents}
               availableEvents={CSTIMER_SOLVABLE_IDS}
+              additionalGroups={[{
+                id: 'precomputed-exact', label: tr({ zh: '更多完整分布', en: 'More full distributions' }),
+                items: [...PRECOMPUTED_EXACT_PUZZLES, ...PUBLISHED_EXACT_PUZZLES].filter(puzzle => !PUZZLE_EVENT_MAP[puzzle.id] && !CSTIMER_SOLVABLE_IDS.has(puzzle.id))
+                  .map(puzzle => ({ id: puzzle.id, label: tr(puzzle), iconClass: puzzle.icon })),
+              }]}
               selectedEvent={event}
               onSelect={setEvent}
             />
@@ -1314,13 +1327,14 @@ export default function ScrambleStatsPage({ embedded = false }: { embedded?: boo
           PuzzlePicker 承担,不重复渲染,故非 3×3 时它是空的 —— 直接不挂。 */}
       {!embedded && distPuzzle === '3x3' && <SolveTabs puzzle={distPuzzle} mode="dist" sub="distribution" />}
       {dataset === 'wca' && ['222', '333', '333oh', '333bf', '333mbf', '333fm', '333ft'].includes(event) && <NoBarStats event={event} isZh={isZh} />}
+      {!embedded && <ExactDistributionCoverage />}
     </div>
   );
 
   // Non-WCA "enumerated" puzzles: one config-driven view per ENUM_SPECS entry
   // (see _components/enumerated-specs.ts). The length tab has no data for these,
   // so it shows the spec's own note; difficulty renders <EnumeratedDistView>.
-  const enumSpec = ENUM_SPECS[event];
+  const enumSpec = event === 'skewb' && !isSkewbFullSpace ? undefined : ENUM_SPECS[event];
   if (enumSpec) {
     return (
       <div className="scramble-stats-page">
@@ -1328,7 +1342,7 @@ export default function ScrambleStatsPage({ embedded = false }: { embedded?: boo
         {tab === 'length' ? (
           <div className="scramble-stats-loading">{tr(enumSpec.lengthNote)}</div>
         ) : (
-          <EnumeratedDistView spec={enumSpec} isZh={isZh} />
+          <EnumeratedDistView key={event} spec={enumSpec} isZh={isZh} />
         )}
       </div>
     );
@@ -1453,8 +1467,8 @@ export default function ScrambleStatsPage({ embedded = false }: { embedded?: boo
     return (
       <div className="scramble-stats-page">
         {header}
-        <div className="scramble-stats-loading">{tr({ zh: '加载中…', en: 'Loading…'
-        })}</div>
+        <div className="scramble-stats-loading"><LoadingIndicator>{tr({ zh: '加载中…', en: 'Loading…'
+        })}</LoadingIndicator></div>
       </div>
     );
   }
@@ -1504,37 +1518,14 @@ export default function ScrambleStatsPage({ embedded = false }: { embedded?: boo
             <SubsetColorPicker sel={sel} isZh={isZh} />
           </div>
         )}
-        <label>
-          <VariantSelect
-            className="scramble-stats-select"
-            value={uiVariant}
-            options={methodOptions}
-            onChange={(val) => {
-              const v = val as VariantKey;
-              const s = stagesOfUi(v)[0];
-              if (s) { setVariant(dataVariantOfStage(v, s) as VariantKey); setStage(s); }
-              else setVariant(v);
-            }}
-            isZh={i18n.language.startsWith('zh')}
-            ariaLabel={tr({ zh: '变体', en: 'Variant'
-        })}
-          />
-        </label>
-        <label>
-          <VariantSelect
-            className="scramble-stats-select"
-            value={sourceStage}
-            options={stageOptions}
-            onChange={(s) => {
-              if (isAggregate) setVariant(dataVariantOfStage(uiVariant, s) as VariantKey);
-              setStage(s);
-            }}
-            isZh={isZh}
-            label={stageLabel}
-            ariaLabel={tr({ zh: '阶段', en: 'Stage'
-        })}
-          />
-        </label>
+        <MethodStagePicker
+          isZh={isZh} method={uiVariant} stage={sourceStage} methods={methodOptions}
+          stagesOf={v => v === uiVariant ? stageOptions : stagesOfUi(v)}
+          onSelect={(v, s) => {
+            setVariant((s ? dataVariantOfStage(v, s) : v) as VariantKey);
+            if (s) setStage(s);
+          }}
+        />
         {/* 固定方式:精确穷举集专属。按阶段动态列出有意义的档 —— 十字单色底只有一种解法(取
             最优就是它本身)、XCross 只解 1 槽(谈不上相邻/对角)、XXCross 要 2 槽(谈不上固定
             单个),不适用的入口直接不给,不留会算出垃圾值的选项。只剩一档时不渲染下拉。
@@ -2128,8 +2119,8 @@ function ExamplesPanel({
         />
       )}
       {!showAll && selectedBin !== null && loading && (
-        <div className="scramble-stats-examples-hint">{tr({ zh: '加载中…', en: 'Loading…'
-        })}</div>
+        <div className="scramble-stats-examples-hint"><LoadingIndicator>{tr({ zh: '加载中…', en: 'Loading…'
+        })}</LoadingIndicator></div>
       )}
       {!showAll && selectedBin !== null && errorText && (
         <div className="scramble-stats-examples-hint">{tr({ zh: '加载失败', en: 'Load failed'

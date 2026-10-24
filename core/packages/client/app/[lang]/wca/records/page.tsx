@@ -7,7 +7,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import HomeLink from '@/components/HomeLink';
 import { useQueryStates, parseAsString } from 'nuqs';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, Mars, Venus } from 'lucide-react';
+import { ChevronLeft, Mars, Venus } from '@app-foundation/icons/lucide';
 import WcaEventSelector from '@/components/WcaEventSelector';
 import { EventIcon } from '@/components/EventIcon';
 import { loadFlagData } from '@/lib/country-flags';
@@ -25,6 +25,7 @@ import '../_wca_stats_extra.css';
 import '../_records.css';
 import { tr } from '@/i18n/tr';
 import { useWcaTeachers } from '@/components/WcaTeacherCell';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 interface Row extends WcaRecordRowsTableRow { cc: string }
 
@@ -179,7 +180,7 @@ function RecordsPageInner() {
       <header className="wse-header">
         <div className="wse-header-row">
           <HomeLink className="wse-back">
-            <ChevronLeft size={16} /> {tr({ zh: '首页', en: 'Home' })}
+            <ChevronLeft size={16} /> <span className="sr-only">{tr({ zh: '首页', en: 'Home' })}</span>
           </HomeLink>
         </div>
         <h1>{tr({ zh: '纪录', en: 'Records'
@@ -241,8 +242,8 @@ function RecordsPageInner() {
       </div>
 
       <div className="wse-table-wrapper sticky-scroll">
-        {loading && <div className="wse-state">{tr({ zh: '加载中...', en: 'Loading...'
-        })}</div>}
+        {loading && <div className="wse-state"><LoadingIndicator>{tr({ zh: '加载中...', en: 'Loading...'
+        })}</LoadingIndicator></div>}
         {error && <div className="wse-state wse-state-error">Error: {error}</div>}
         {bundle && !loading && (
           <>
@@ -279,7 +280,7 @@ function RecordsPageInner() {
 
 export default function RecordsPage() {
   return (
-    <Suspense fallback={<div style={{ padding: 16, color: 'var(--muted)' }}>Loading…</div>}>
+    <Suspense fallback={<div style={{ padding: 16, color: 'var(--muted)' }}><LoadingIndicator /></div>}>
       <RecordsPageInner />
     </Suspense>
   );

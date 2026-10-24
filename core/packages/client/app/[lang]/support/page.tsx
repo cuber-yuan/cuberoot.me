@@ -10,7 +10,7 @@ import { useContentRefreshKey } from '@/hooks/useContentRefreshKey';
  * 数据走 /v1/sponsors + /v1/contributors。
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Heart, Plus, Pencil, Trash2, Crown, List, X } from 'lucide-react';
+import { Heart, Plus, Pencil, Trash2, Crown, List, X } from '@app-foundation/icons/lucide';
 import { tr, useLang } from '@/i18n/tr';
 import AppLink from '@/components/AppLink';
 import DonateModal from '@/components/DonateModal';
@@ -24,6 +24,7 @@ import {
 } from '@/lib/sponsors-api';
 import SupportEditor, { type EditorTarget } from './SupportEditor';
 import './support.css';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 const INITIAL_VISIBLE = 18;
 const CURRENCY_SYMBOL: Record<string, string> = { CNY: '¥', USD: '$', EUR: '€' };
@@ -319,8 +320,8 @@ export default function SupportPage() {
         <div className="support-empty">{tr({ zh: '加载失败', en: 'Failed to load'
         })}: {loadErr}</div>
       ) : !sponsors ? (
-        <div className="support-empty">{tr({ zh: '加载中…', en: 'Loading…'
-        })}</div>
+        <div className="support-empty"><LoadingIndicator>{tr({ zh: '加载中…', en: 'Loading…'
+        })}</LoadingIndicator></div>
       ) : (
         <>
           <div className="support-count">

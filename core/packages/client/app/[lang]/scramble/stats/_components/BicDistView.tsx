@@ -8,7 +8,7 @@
 // 语料,但全状态空间可枚举)。God 数 28、均值 ≈ 18.80,出处 jaapsch.net。无浏览器现场 BFS。
 // 态数 ~1.1M(<2M),「下载全部」CSV 先 confirm + 流式生成(分块 Blob,峰值内存有界)。
 import { useEffect, useMemo, useState } from 'react';
-import { Download } from 'lucide-react';
+import { Download } from '@app-foundation/icons/lucide';
 import Link from '@/components/AppLink';
 import DiscreteHistogram, { type HistSeries } from './DiscreteHistogram';
 import { ScramblePreview2D } from '@/components/ScramblePreview2D';
@@ -19,6 +19,7 @@ import {
   type BicTable,
 } from '@cuberoot/puzzle-solvers/bicube';
 import { tr } from '@/i18n/tr';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 const BIC_COLOR = '#8338ec'; // 联体异形紫(数据色,非 UI 灰阶)
 
@@ -80,7 +81,7 @@ export default function BicDistView({ isZh }: { isZh: boolean }) {
       (t) => {
         if (cancelled) return;
         setTable(t);
-        setExamples(bicExamplesByLengthFromTable(t, 12)); // table-driven (no in-browser BFS)
+        setExamples({ ...bicExamplesByLengthFromTable(t, 12), 0: [''] }); // table-driven (no in-browser BFS)
       },
       () => { if (!cancelled) setTableError(true); },
     );
@@ -141,6 +142,7 @@ export default function BicDistView({ isZh }: { isZh: boolean }) {
       <div className="scramble-stats-controls">
         <div className="scramble-stats-puzzle-meta">
           <span>{tr({ zh: '全空间精确枚举(非抽样)', en: 'Full state space, exactly enumerated (not sampled)' })}</span>
+          <span>{tr({ zh: '上帝之数：{n}', en: 'God’s number: {n}' }).replace('{n}', String(st?.max ?? ''))}</span>
           <span className="scramble-stats-puzzle-metric">{tr({ zh: '一次转动 = 1 步(U/F/L/R 90°/180°/270°)', en: 'one turn = 1 move (U/F/L/R 90°/180°/270°)' })}</span>
         </div>
         <button
@@ -148,7 +150,7 @@ export default function BicDistView({ isZh }: { isZh: boolean }) {
           className="ivy-dl-all"
           onClick={downloadAll}
           disabled={dlBusy || !table}
-          title={tr({ zh: '下载全部 1,108,799 条(约 1.1M 行,生成需几秒)', en: 'Download all 1,108,799 scrambles (~1.1M rows, takes a few seconds to build)' })}
+          title={tr({ zh: '下载全部 1,108,800 个状态(约 1.1M 行,生成需几秒)', en: 'Download all 1,108,800 states (~1.1M rows, takes a few seconds to build)' })}
         >
           <Download size={14} aria-hidden />
           {dlBusy
@@ -180,7 +182,7 @@ export default function BicDistView({ isZh }: { isZh: boolean }) {
         </div>
       ) : examples === null ? (
         <div className="scramble-stats-examples-hint">
-          {tr({ zh: '正在加载精确距离表并生成示例…', en: 'Loading the exact-distance table and generating examples…' })}
+          <LoadingIndicator>{tr({ zh: '正在加载精确距离表并生成示例…', en: 'Loading the exact-distance table and generating examples…' })}</LoadingIndicator>
         </div>
       ) : effectiveBin !== null && (
         <div className="scramble-stats-panel scramble-stats-examples-panel">
@@ -202,18 +204,24 @@ export default function BicDistView({ isZh }: { isZh: boolean }) {
             <ul className="scramble-stats-examples-list">
               {shown.map((scr, i) => (
                 <li key={i}>
-                  <Link
-                    className="scramble-stats-examples-cube"
-                    href={solverHref(scr)}
-                    prefetch={false}
-                    aria-label={tr({ zh: '在求解器中打开', en: 'Open in solver' })}
-                  >
-                    <ScramblePreview2D event="bic" scramble={scr} size={26} />
-                  </Link>
-                  <div className="scramble-stats-examples-body">
-                    <Link className="scramble-stats-examples-scramble" href={solverHref(scr)} prefetch={false}>
-                      {scr}
+                  {scr ? (
+                    <Link
+                      className="scramble-stats-examples-cube"
+                      href={solverHref(scr)}
+                      prefetch={false}
+                      aria-label={tr({ zh: '在求解器中打开', en: 'Open in solver' })}
+                    >
+                      <ScramblePreview2D event="bic" scramble={scr} size={26} />
                     </Link>
+                  ) : (
+                    <div className="scramble-stats-examples-cube">
+                      <ScramblePreview2D event="bic" scramble="" size={26} />
+                    </div>
+                  )}
+                  <div className="scramble-stats-examples-body">
+                    {scr ? (
+                      <Link className="scramble-stats-examples-scramble" href={solverHref(scr)} prefetch={false}>{scr}</Link>
+                    ) : <span className="scramble-stats-examples-scramble">{tr({ zh: '已还原', en: 'Solved' })}</span>}
                   </div>
                 </li>
               ))}

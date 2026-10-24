@@ -14,7 +14,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from '@/components/AppLink';
-import { ArrowLeft, Loader2, Dumbbell } from 'lucide-react';
+import { ArrowLeft, Loader2, Dumbbell } from '@app-foundation/icons/lucide';
 import { parseAsStringEnum } from 'nuqs';
 import { useTrainingQueryState as useQueryState } from '@/lib/training-host';
 import { useTranslation } from 'react-i18next';
@@ -41,6 +41,7 @@ import { tr } from '@/i18n/tr';
 import '../../alg.css';
 import '../progress.css';
 import './cases.css';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 const FILTER_LABEL: Record<CaseFilter, () => string> = {
   learning: () => MARK_STATUS_LABEL.learning(),
@@ -257,7 +258,7 @@ export default function AlgProgressCasesPage() {
         </div>
 
         {loading ? (
-          <div className="alg-empty">{tr({ zh: '加载中…', en: 'Loading…' })}</div>
+          <div className="alg-empty"><LoadingIndicator>{tr({ zh: '加载中…', en: 'Loading…' })}</LoadingIndicator></div>
         ) : (
           <>
             {loadingAlgs && (
@@ -337,7 +338,7 @@ function CaseRow({ row, cases }: { row: ProgressCase; cases: AlgCase[] | undefin
   return (
     <Link href={href} className="alg-case-row" prefetch={false}>
       {c
-        ? <CaseThumb puzzle={row.puzzle} set={row.set} sticker={c.sticker}
+        ? <CaseThumb loading="lazy" local puzzle={row.puzzle} set={row.set} sticker={c.sticker}
             alg={alg} setup={c.setup} size={54} />
         : <span className="alg-case-blank" aria-hidden />}
       <span className="alg-case-main">

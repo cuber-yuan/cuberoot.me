@@ -175,7 +175,7 @@ describe('component reuse rule registry', () => {
     const surfaces = [
       join(ROOT, 'components', 'RecentScrambles.tsx'),
       join(ROOT, 'app', '[lang]', 'predict', 'page.tsx'),
-      join(ROOT, 'app', '[lang]', 'sim', 'PlayerControls.tsx'),
+      join(ROOT, 'app', '[lang]', 'sim', 'PuzzleTypeSelect.tsx'),
       join(ROOT, 'app', '[lang]', 'scramble', '_components', 'SolveTabs.tsx'),
       join(ROOT, 'components', 'AlgPuzzlePicker.tsx'),
       join(ROOT, 'app', '[lang]', 'alg', 'time-attack', 'page.tsx'),
@@ -186,6 +186,10 @@ describe('component reuse rule registry', () => {
       expect(source, relative(ROOT, file)).toContain("from '@/components/PuzzlePicker/PuzzlePicker'");
       expect(source, relative(ROOT, file)).toContain('<PuzzlePicker');
     }
+
+    const simPage = readFileSync(join(ROOT, 'app', '[lang]', 'sim', 'SimPage.tsx'), 'utf8');
+    expect(simPage).toContain("from './PuzzleTypeSelect'");
+    expect(simPage).toContain('<PuzzleTypeSelect');
 
     const timer = join(ROOT, 'app', '[lang]', 'timer', '_shell', 'SoloView.tsx');
     const timerSource = readFileSync(timer, 'utf8');
@@ -212,7 +216,11 @@ describe('component reuse rule registry', () => {
     expect(source).toContain('{showSelectedIcons ? (');
     expect(source).toContain('{selectedItems.map(item => (');
     expect(source).toContain(') : <span className="pp-trigger-label">{triggerLabel}</span>}');
-    expect(siteSource.match(/showTriggerIcon=\{false\}/g)).toHaveLength(4);
+    // Events use the shared icon trigger; algorithm sets, methods and countries use text.
+    expect(siteSource.match(/showTriggerIcon=\{false\}/g)).toHaveLength(3);
+    const eventPicker = siteSource.match(/<PuzzlePicker\s[^>]*groups=\{eventPickerGroups\}[^>]*\/>/)?.[0];
+    expect(eventPicker).toBeDefined();
+    expect(eventPicker).not.toContain('showTriggerIcon={false}');
     expect(source).not.toContain('iconOnlyTrigger');
     expect(triggerRule).toContain('border: 1px solid transparent');
     expect(triggerRule).toContain('background: transparent');

@@ -11,7 +11,7 @@
 
 import TrainingStatsPanel, { TrainingSelfPractice } from '@/components/TrainingStatsPanel';
 import React, { useEffect, useReducer, useRef, useState } from 'react';
-import { Info, Star } from 'lucide-react';
+import { Info, Star } from '@app-foundation/icons/lucide';
 import { useTranslation } from 'react-i18next';
 import { parseAsStringEnum } from 'nuqs';
 import { useTrainingQueryState as useQueryState } from '@/lib/training-host';
@@ -31,6 +31,7 @@ import { rt } from './i18n';
 
 import './roux.css';
 import { useT } from "@/hooks/useT";
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 // [mode key, long label, short label] — ported from AppView.tab_modes.
 // (OLLCP / tracking were commented out upstream; we keep them wired so the
@@ -203,7 +204,7 @@ function RouxTrainer() {
 
   if (!mounted) {
     // Lightweight skeleton (no localStorage / no reducer state reads).
-    return <div className="roux-root roux-skeleton" />;
+    return <div className="roux-root roux-skeleton"><LoadingIndicator /></div>;
   }
 
   return (

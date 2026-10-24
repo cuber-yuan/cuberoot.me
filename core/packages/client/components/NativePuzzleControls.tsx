@@ -33,6 +33,9 @@ const NOTES: Record<NativePuzzleId, readonly [string, string]> = {
   cube3heli: ['三阶＋直升机：面转 90°，棱转 180°，支持外层、第二层与宽转；当前仅支持保形转动，不含 jumbling。', '3×3 + Helicopter: 90° face turns and 180° edge turns, with outer, second and wide layers. Supports shape-preserving turns only, without jumbling.'],
   radiojewel: ['Radio Jewel（Radiolarian 7）：二十面体，每面十五个三角形和一个六边形，每步面转 120°，支持外层、第二层与宽转；当前仅支持保形转动，不含 jumbling。', 'Radio Jewel (Radiolarian 7): an icosahedron with fifteen triangles and one hexagon per face. Turns are 120°, with outer, second and wide layers. Supports shape-preserving turns only, without jumbling.'],
   radioweb: ['Radio Web（Radiolarian 6）：二十面体，每步面转 120°，支持外层、第二层与宽转。每面保留 22 个色块，包括细小翼块；当前仅支持保形转动，不含 jumbling。', 'Radio Web (Radiolarian 6): an icosahedron with 120° face turns and outer, second and wide layers. Each face retains 22 stickers, including the small wings. Supports shape-preserving turns only, without jumbling.'],
+  radiojam: ['Radio Jam（Radiolarian 8）：深切面转二十面体，每步 120°，支持外层、第二层与宽转。每面保留 22 个色块，包括细小三角块；当前仅支持保形转动，不含 jumbling。', 'Radio Jam (Radiolarian 8): a deep-cut face-turning icosahedron with 120° outer, second and wide turns. Each face retains 22 stickers, including small triangles. Supports shape-preserving turns only, without jumbling.'],
+  catscradle: ['Cat’s Cradle（Radiolarian 5）：二十面体，每面十五个三角形、三个四边形和一个六边形，每步面转 120°，支持外层、第二层与宽转；当前仅支持保形转动，不含 jumbling。', 'Cat’s Cradle (Radiolarian 5): an icosahedron with fifteen triangles, three quadrilaterals and one hexagon per face. Turns are 120°, with outer, second and wide layers. Supports shape-preserving turns only, without jumbling.'],
+  radiocanon: ['Radio Canon（Radiolarian 1.5）：中心固定的二十面体，每面七个三角形和九个四边形，每步面转 120°，支持外层、第二层与宽转；当前仅支持保形转动，不含 jumbling。', 'Radio Canon (Radiolarian 1.5): an icosahedron with fixed centers, seven triangles and nine quadrilaterals per face. Turns are 120°, with outer, second and wide layers. Supports shape-preserving turns only, without jumbling.'],
 };
 
 /** The same native tokens drive 3D gestures, accessible manual input and 2D. */
@@ -60,8 +63,9 @@ export default function NativePuzzleControls({ id, disabled, showDragDepth, dept
   const token = new Move(current.move).modified({ amount: turnAmount }).toString();
   return (
     <div className="twisty-native-controls">
-      <p className="twisty-fallback-notice">{t(...NOTES[id])}</p>
-      <div className="twisty-fallback-controls" role="group" aria-label={t('手动转动', 'Manual turns')}>
+      {/* Keep these native form controls on their shared CSS radii. The global
+          corner surface decorator must not repaint the measured control strip. */}
+      <div className="twisty-fallback-controls" data-corner-shape="native" role="group" aria-label={t('手动转动', 'Manual turns')}>
         <label className="twisty-fallback-angle-label">
           <span>{t('转轴', 'Move')}</span>
           <select className="btn-secondary twisty-fallback-angle" aria-label={t('转动记号', 'Move notation')} value={current.move} onChange={(e) => setSelected(e.target.value)}>
@@ -93,6 +97,7 @@ export default function NativePuzzleControls({ id, disabled, showDragDepth, dept
       </div>
       <details className="twisty-native-notation">
         <summary>{t('记号说明', 'Notation guide')}</summary>
+        <p className="twisty-fallback-notice">{t(...NOTES[id])}</p>
         {mixedOrders && <p>{t('不同转轴使用不同的基本转角，以“角度”选项为准。转轴名称与手动转动列表一致，后缀 v 表示绕该轴整体转体。', 'Different axes use different base angles, as shown in the Angle options. Axis names match the manual-turn list; the v suffix rotates the whole puzzle around that axis.')}</p>}
         {rangeWide && <p>{t('对列表中使用层号范围的转轴 A：A 转外层，2A 只转第二层，1-2A 同时转最外两层，Av 转动整体。', 'For an axis A that uses layer ranges in the move list: A turns the outer layer, 2A turns only the second layer, 1-2A turns both outer layers, and Av rotates the whole puzzle.')}</p>}
         {suffixWide && <p>{t('对列表中使用 w 的转轴 A：A 转外层，2A 只转第二层，Aw 同时转最外两层，Av 转动整体。', 'For an axis A that uses w in the move list: A turns the outer layer, 2A turns only the second layer, Aw turns both outer layers, and Av rotates the whole puzzle.')}</p>}

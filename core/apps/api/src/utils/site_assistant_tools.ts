@@ -10,6 +10,7 @@ import { mergeCompetitionIndexes } from '@cuberoot/shared/competition-index';
 import type { AssistantArtifact, AssistantSource, AssistantTable } from '@cuberoot/shared/site-assistant';
 import { findAssistantPeople } from './site_assistant_people.js';
 import { analysisSchemaCall, analysisQueryCall } from './site_assistant_analysis.js';
+import { readAssistantNews } from './site_assistant_news.js';
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,100}$/);
 const competitionId = id.refine(value=>!/^\d{4}[A-Z]{4}\d{2}$/.test(value),'This is a person WCA ID; use wcaId, not compId.');
@@ -19,6 +20,9 @@ const date=z.string().refine(isValidIsoDate,'Expected an ISO calendar date');
 export const toolCallSchema = z.discriminatedUnion('tool', [
   analysisSchemaCall,
   analysisQueryCall,
+  z.object({ tool: z.literal('deliberate') }).strict(),
+  z.object({ tool: z.literal('web_search'), query: z.string().trim().min(2).max(300), recency: z.enum(['any','day','week','month','year']).default('any') }).strict(),
+  z.object({ tool: z.literal('news'), from: date.optional(), to: date.optional(), limit: z.number().int().min(1).max(10).default(5) }).strict().refine(value=>!value.from || !value.to || value.from<=value.to,{message:'Date range is reversed'}),
   z.object({ tool: z.literal('records'), event, region: z.string().regex(/^(world|[A-Z]{2})$/).default('world') }).strict(),
   z.object({ tool: z.literal('find_person'), query }).strict(),
   z.object({ tool: z.literal('person_countries'), wcaId: z.string().regex(/^\d{4}[A-Z]{4}\d{2}$/) }).strict(),
@@ -55,7 +59,8 @@ const url = (path: string, params: Record<string, string | number | undefined>) 
 const source = (id: string, title: string, href: string): AssistantSource => ({ id, title, href, read: true });
 
 /** Only fixed public origins/endpoints. Never forwards cookies or credentials. */
-export async function runDataTool(call: Exclude<AssistantToolCall, {tool:'pages'|'navigation'|'analysis_schema'|'analysis_query'}>, lang: 'zh'|'en', read: JsonReader, findPeople = findAssistantPeople,today=new Date().toISOString().slice(0,10)): Promise<ToolResult> {
+export async function runDataTool(call: Exclude<AssistantToolCall, {tool:'pages'|'navigation'|'analysis_schema'|'analysis_query'|'web_search'|'deliberate'}>, lang: 'zh'|'en', read: JsonReader, findPeople = findAssistantPeople,today=new Date().toISOString().slice(0,10),timeZone='UTC'): Promise<ToolResult> {
+  if (call.tool === 'news') return readAssistantNews(call, lang, read, timeZone);
   const label = (zh: string, en: string) => ({ zh, en })[lang];
   const name = (raw: string) => displayCuberName(raw, lang === 'zh');
   const compNames = lang === 'zh' && ['records','rankings','competitions'].includes(call.tool) ? await read(`${stat}/comp_names_zh.json`).catch(() => ({})) : {};
@@ -162,7 +167,7 @@ export async function runDataTool(call: Exclude<AssistantToolCall, {tool:'pages'
     const period = call.from && call.to ? formatDateRangeIso(call.from,call.to) : call.from ? label(`${call.from} 起`,`since ${call.from}`) : call.to ? label(`截至 ${call.to}`,`through ${call.to}`) : label('全部年份','all years');
     out.factualSummary = (call.from && call.from>today
       ? label(`${period} 尚未发生，当前没有该期间的正式比赛成绩，无法提供未来的确切成绩。`,`The period ${period} is in the future. Official results do not exist yet, so exact future results are unavailable.`)
-      : label(`按已导入的 WCA 官方成绩，${title}在 ${period} 参加过 ${count} 场比赛，以比赛开始日期计。`,`Imported official WCA results show ${count} competitions for ${title} (${period}), counted by competition start date.`))
+      : label(`${title}在 ${period} 参加过 ${count} 场比赛，以比赛开始日期计。`,`${title} competed in ${count} competitions (${period}), counted by competition start date.`))
       + (unknownDateCompetitions ? label(`另有 ${unknownDateCompetitions} 场比赛缺少有效日期，未计入，以上数量可能不完整。`,` ${unknownDateCompetitions} competitions lack valid dates and are excluded; this count may be incomplete.`) : '');
     if (byYear.length) table(label('按年参赛数','Competitions by year'),[label('年份','Year'),label('比赛数','Competitions')],byYear.map(row=>[row.year,String(row.competitions)]));
   } else if (call.tool === 'person_countries') {

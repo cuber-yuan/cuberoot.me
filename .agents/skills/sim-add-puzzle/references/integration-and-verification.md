@@ -61,7 +61,7 @@
 - 将无上游事件键的生成器接入 `packages/client/lib/native-scramble.ts`，由其派生事件 ID、双语名称和选择器项。
 - 外观变体先核对 `packages/client/lib/shape-mod-scramble.ts` 的来源映射，让比赛与批量复用现有生成器，同时在图示分发中保留变体 ID。
 - 让比赛和批量的生成分支复用该 native 入口；让输入模式复用同一项目识别和图示入口。
-- 通过生成页 `_event-picker.ts` 处理分组；使用真实图标或可读 `textLabel`，核对多选后结果对应所选项目。
+- 通过生成页 `_event-picker.ts` 处理分组；具体拼图使用已在 `/zh/icon` 收录的真实共享图标，训练/自定义模式才保留语义 `textLabel`，核对多选后结果对应所选项目。
 - 将共享 SVG 接入 `packages/client/components/scramble-preview-svg.ts` 的支持列表和分发；从解析后的状态生成颜色和片位。
 - 在生成页 `_tnoodle-pdf.ts` 核对图示入口与宽高比；让网页、PDF 和 Timer 共用 SVG，避免各画一份轮廓或调色表。
 - 分别检查还原态与合法打乱态，核对片数、面色和方向；错误输入不得静默画成另一个项目或宣称已还原。
@@ -80,9 +80,9 @@
 | 种子生成 | `packages/shared/src/timer/seeded/generate.ts` |
 | csTimer 交换格式 | `packages/shared/src/timer/export-cstimer.ts`、`import-cstimer.ts` |
 
-- 在 `TIMER_SCRAMBLE_CAPABILITIES` 注册真实能力；按 `timerScrambleCapability` 选择 shared、worker、manual 等现有分支。
+- 在 `TIMER_SCRAMBLE_CAPABILITIES` 注册真实能力；按 `timerScrambleCapability` 选择 shared、worker、manual 等现有分支。同步 `timer_scramble_runtime.test.ts` 的独立能力清单及适用的生成、worker 和错误传播参数名单，保留逐项目集合对账。
 - 让普通生成和种子生成调用同一纯生成器；按同一随机输入核对结果，保留确定性和来源信息。
-- 从 `TIMER_EVENT_PICKER_ITEMS` 或其查询函数读取可展示项目；允许 `icon` 或 `textLabel`，不要要求每个非 WCA 项目都有 csTimer key 和图标。
+- 从 `TIMER_EVENT_PICKER_ITEMS` 或其查询函数读取可展示项目；具体拼图在 `EVENTS.icon` 登记与模拟器和图标库一致的共享键，训练/自定义模式可用 `textLabel`；独立核对生成器来源，不要求非 WCA 项目一定有 csTimer key。
 - 区分事件语义分组与选择器视觉分组；保留各自契约，不要求 `nonwca` 与选择器的 `other` 字面相等。
 - 核对 Timer 的实际 SVG 消费入口；保持普通与种子打乱的图示、计时记录和项目 ID 一致。
 - 核对共享 `packages/timer-ui/src/TimerCubePreview.tsx` 的外层分发与 `TimerScramblePreview.tsx` 的实际渲染；子组件支持不代表项目能穿过外层判断。
@@ -96,7 +96,7 @@
 | 变更类别 | 核对或运行的最小契约 |
 | --- | --- |
 | puzzle-solvers 公开 subpath | 所属 `package.json` 与 `packages/client/tests/puzzle-solvers-package-contract.test.ts` 的 `PUBLIC_SUBPATHS`、Node/browser 出口 |
-| Timer 事件、来源或选择器 | `packages/client/tests/timer_battle_event_sync.test.ts`、`timer_nonwca_scramble.test.ts`；按变更选择相关断言 |
+| Timer 事件、来源或选择器 | `packages/client/tests/timer_scramble_runtime.test.ts`、`timer_battle_event_sync.test.ts`、`timer_nonwca_scramble.test.ts`；按变更选择相关断言 |
 | Timer 导入导出 | `packages/client/tests/timer_cstimer_io.test.ts` 及 `timer_battle_event_sync.test.ts` 的逐项目往返契约 |
 | app-ui 来源消费 | 仅影响该消费者时检查 `packages/app-ui/src/scramble-source-contract.test.ts`、`scramble-source-matrix.audit.test.ts` |
 | 原生生成页接入 | 参考 `packages/client/tests/pyraminx-duo-native-scramble.test.ts` 的 native 路由、选择器和公开名称契约 |
@@ -142,6 +142,7 @@
 - 在可用的 3D 浏览器中检查还原态、随机打乱终态、转动中间帧、拖拽追加 token 和回放；以可见模型变化核对动作。
 - 原生 PG 的 tap、按钮或 orbit 均不作为拖拽转层证据；实际拖可抓件，切换可用深度与观察角度，核对层、转向、追加记号及重放结果。
 - 3D 受阻时优先完成生成页、Timer 和 SVG 的有用验证，并提供可打开的链接；明确保留尚未验证的动画与拖拽。
+- 原生手动控件组保留 `data-corner-shape="native"`，用现有 CSS 圆角承载选择器与按钮，避免把全局圆角装饰引入该控制区。遇到初始图像可见、随后操作卡住时，先用相同 PG 描述的自定义切割和既有原生项目作对照；模型、布局与全局样式分别取证，不凭初始显示或 jsdom 中无真实布局的通过结果宣布修复。
 - 截取实际操作后的页面，不以设计稿或离线帧替代浏览器结果；按照当前工具规定保存截图，不让截图落点触发开发服务重载。
 
 ## 交付证据

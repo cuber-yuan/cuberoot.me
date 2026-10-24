@@ -35,6 +35,8 @@ import { decodeMiniProgramSessionMessage } from './web-session-contract';
 import { applyLocalizedTabBar, localizedWebsitePath, receiveNativeLocale, tr } from './i18n';
 import { publicPageSharePath, decodePageShareMessage, type PageShareMessage } from '@cuberoot/shared/page-share';
 import { applyNativeAppearance, receiveNativeAppearance } from './appearance';
+import { nativeWebDestination } from './native-web-destination';
+import { queueNativeTimerLink } from './native-timer-link';
 
 export interface WebViewPageData {
   appearanceStyle: string;
@@ -306,6 +308,32 @@ export async function openWebRoute(context: WebViewPageContext, key: unknown): P
   if (disposedPages.has(context)) return false;
 
   const route = resolveWebRoute(key, sharedDestinations.get(context));
+  if (route && isDouyinMiniProgram()) {
+    const destination = nativeWebDestination(route.path);
+    if (destination) {
+      const attempt = beginRouteAttempt(context);
+      context.setData({ src: '', routeKey: String(key), canRetry: false, errorTitle: '', errorMessage: '', viewAttempt: attempt });
+      let cancelLink: (() => void) | undefined;
+      const fail = () => {
+        cancelLink?.();
+        if (!isCurrentAttempt(context, attempt)) return;
+        context.setData({ canRetry: true, errorTitle: tr({ zh: '无法打开', en: 'Unable to open' }),
+          errorMessage: tr({ zh: '页面跳转失败，请重试。', en: 'Navigation failed. Please retry.' }) });
+      };
+      try {
+        if (destination.timerLink) cancelLink = queueNativeTimerLink(destination.timerLink);
+        miniProgramApi()[destination.method]({ url: destination.url, fail });
+      } catch { fail(); }
+      return false;
+    }
+    if (!['account', 'account-link', 'logout'].includes(String(key))) {
+      const attempt = beginRouteAttempt(context);
+      context.setData({ src: '', routeKey: String(key), canRetry: false, viewAttempt: attempt,
+        errorTitle: tr({ zh: '暂不支持此链接', en: 'Link not supported yet' }),
+        errorMessage: tr({ zh: '此链接包含尚未支持的页面或参数。', en: 'This link contains a page or options not yet supported.' }) });
+      return false;
+    }
+  }
   updateShareMenu(key);
   if (!route) {
     const attempt = beginRouteAttempt(context);
@@ -551,6 +579,13 @@ export function createWebViewPageOptions(
 
     onLoad(options) {
       if (!fixedRouteKey && ['tools', 'timer', 'account'].includes(options.nativeTab ?? '')) {
+        if (isDouyinMiniProgram() && options.nativeTab !== 'account' && options.path !== undefined) {
+          let path = options.path;
+          try { if (!path.startsWith('/')) path = decodeURIComponent(path); } catch { path = ''; }
+          sharedDestinations.set(this, path);
+          void openWebRoute(this, 'home');
+          return;
+        }
         if (options.nativeTab === 'tools') {
           let path = options.path ?? '/';
           try { if (!path.startsWith('/')) path = decodeURIComponent(path); } catch { path = '/'; }

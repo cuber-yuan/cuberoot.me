@@ -14,10 +14,185 @@
       "Existing findings are exact legacy debt: deletion is allowed, substitution or addition fails.",
       "New @cuberoot/shared root imports are forbidden; use an explicit exported subpath.",
       "Apps and jobs may not import another app's private source or public directory.",
-      "Build, test, artifact, subprocess and deploy edges require an explicit contract."
+      "Build, test, artifact, subprocess and deploy edges require an explicit contract.",
+      "Package-local scripts/ CLIs directly declared by build or build:* use package.json as their build subprocess contract; production imports of those CLIs remain forbidden.",
+      "Inert path strings in test fixtures are data; module imports, path construction and actual file/process consumers remain dependency edges."
     ]
   },
   "manualContracts": [
+    {
+      "id": "nginx-cache-purge-isolated-regression",
+      "from": "packages/client/tests/nginx-api-cache-purge.test.ts",
+      "to": "local Node subprocesses operating only on test temporary directories",
+      "phase": "subprocess-native",
+      "mechanism": "Run the production purge script with its fixed root substituted in a test-only copy; a separate Node process writes concurrent cache fixtures.",
+      "owner": "deployment workflows",
+      "rationale": "Verify deletion scope, symlink rejection, concurrent writes and real permission failures without accessing production caches or SSH.",
+      "replacement": "Keep execution isolated to temporary fixtures and preserve the production script's fixed path.",
+      "subprocessCalls": [
+        {"file":"packages/client/tests/nginx-api-cache-purge.test.ts","mechanism":"spawnSync","target":"<dynamic>","count":1},
+        {"file":"packages/client/tests/nginx-api-cache-purge.test.ts","mechanism":"spawn","target":"<dynamic>","count":1}
+      ],
+      "evidence": [{"file":"ops/nginx/purge-api-cache.ts","contains":"const cacheRoot = '/var/cache/nginx/api'"}]
+    },
+    {
+      "id": "client-small-fmc-quotient-native-export",
+      "from": "packages/client/scripts/fmc-goal-exact-distributions.mts",
+      "to": "solver/target/release/dist_htr_fr",
+      "phase": "subprocess-native",
+      "mechanism": "One fixed shell-free native binary exports bounded HTR or FR quotient tables; native child remains in the guarded worker process group.",
+      "owner": "client puzzle solvers",
+      "rationale": "Reuse the Rust exact HTR and FR models without disk-table managers or the FR full-state HashMap. HTR construction arrays are bounded below 24 MiB and FR below 4 MiB.",
+      "replacement": "Keep this offline adapter behind the existing serial small-distribution guard; accept only htr-dr/fr-htr and a result path, never arbitrary commands.",
+      "subprocessCalls": [
+        {"file":"packages/client/scripts/fmc-goal-exact-distributions.mts","mechanism":"spawnSync","target":"<dynamic>","count":1}
+      ],
+      "evidence": [{"file":"solver/src/bin/dist_htr_fr.rs","contains":"No table manager, mmap or disk-table load"}]
+    },
+    {
+      "id": "client-small-puzzle-distribution-measurement",
+      "from": "packages/client/scripts/measure-small-puzzle-distributions.mts",
+      "to": "fixed local Node worker and macOS resource observation commands",
+      "phase": "subprocess-native",
+      "mechanism": "Shell-free serial Node workers with 128 MiB heaps; read-only vm_stat, sysctl, ps and git HEAD queries through one adapter",
+      "owner": "client puzzle solvers",
+      "rationale": "Measure bounded full-state distributions one puzzle at a time while recording a fixed swap baseline, process-tree RSS and conservative memory headroom.",
+      "replacement": "Keep this local-only measurement CLI separate from product runtime and large-table computation scopes; do not accept arbitrary worker commands.",
+      "subprocessCalls": [
+        {"file":"packages/client/scripts/measure-small-puzzle-distributions.mts","mechanism":"execFileSync","target":"<dynamic>","count":1},
+        {"file":"packages/client/scripts/measure-small-puzzle-distributions.mts","mechanism":"spawn","target":"<dynamic>","count":1}
+      ],
+      "evidence": [{"file":"core/packages/client/scripts/measure-small-puzzle-distributions.mts","contains":"const rssLimitBytes = 512 * 2 ** 20"}]
+    },
+    {
+      "id": "watch-reconstruction-test-inputs",
+      "from": "client integration tests",
+      "to": "app-ui timer persistence and native Watch DTO; shared reconstruction fixtures",
+      "phase": "test-contract",
+      "mechanism": "Exact test-only source reads and imports recorded in legacyFindings.",
+      "owner": "timer and reconstruction maintainers",
+      "rationale": "Tests inspect canonical implementations and fixture guard coverage without copying production logic.",
+      "replacement": "Keep these exact bounded calls and test-only references; do not introduce production cross-package source imports.",
+      "evidence": [
+        {
+          "file": "core/packages/client/tests/recon-ground-truth-gate.test.ts"
+        },
+        {
+          "file": "core/packages/client/tests/timer-scramble-click-action-shared.test.ts"
+        },
+        {
+          "file": "core/packages/client/tests/watch_timer_import.test.ts"
+        },
+        {
+          "file": "core/packages/client/tests/watch_timer_native.test.ts"
+        },
+        {
+          "file": "core/packages/client/tests/watch_timer_sync.test.ts"
+        }
+      ]
+    },
+    {
+      "id": "recon-local-fingerprint-subprocess",
+      "from": "packages/client/app/api/admin/recon-tests/route.ts",
+      "to": "local toolchain",
+      "phase": "subprocess-native",
+      "mechanism": "Authenticated admin development endpoint invokes the fixed fingerprint command; production returns cloud scope before spawning.",
+      "owner": "timer and reconstruction maintainers",
+      "rationale": "Authenticated admin development endpoint invokes the fixed fingerprint command; production returns cloud scope before spawning.",
+      "replacement": "Keep these exact bounded calls and test-only references; do not introduce production cross-package source imports.",
+      "subprocessCalls": [
+        {
+          "file": "packages/client/app/api/admin/recon-tests/route.ts",
+          "mechanism": "spawnSync",
+          "target": "<dynamic>",
+          "count": 1
+        }
+      ],
+      "evidence": [
+        {
+          "file": "core/packages/client/app/api/admin/recon-tests/route.ts",
+          "contains": "timeout: 5000"
+        }
+      ]
+    },
+    {
+      "id": "recon-gate-test-subprocess",
+      "from": "packages/client/tests/recon-ground-truth-gate.test.ts",
+      "to": "local toolchain",
+      "phase": "subprocess-native",
+      "mechanism": "Isolated temporary-repository tests exercise the real gate and fixed fixture executables.",
+      "owner": "timer and reconstruction maintainers",
+      "rationale": "Isolated temporary-repository tests exercise the real gate and fixed fixture executables.",
+      "replacement": "Keep these exact bounded calls and test-only references; do not introduce production cross-package source imports.",
+      "subprocessCalls": [
+        {
+          "file": "packages/client/tests/recon-ground-truth-gate.test.ts",
+          "mechanism": "spawnSync",
+          "target": "<dynamic>",
+          "count": 2
+        }
+      ],
+      "evidence": [
+        {
+          "file": "core/packages/client/tests/recon-ground-truth-gate.test.ts",
+          "contains": "spawnSync"
+        }
+      ]
+    },
+    {
+      "id": "recon-intake-node-runtime-test",
+      "from": "packages/client/tests/recon-intake.test.ts",
+      "to": "local Node and tsx runtime",
+      "phase": "subprocess-native",
+      "mechanism": "One fixed Node import with a 30 second timeout validates the AI checker outside Vitest.",
+      "owner": "timer and reconstruction maintainers",
+      "rationale": "Vitest can load CommonJS code that fails on cubing's import-only exports in the real CLI; exercise the actual ESM loader.",
+      "replacement": "Keep this bounded test-only command; it accepts no user-provided executable or script.",
+      "subprocessCalls": [
+        {
+          "file": "packages/client/tests/recon-intake.test.ts",
+          "mechanism": "spawnSync",
+          "target": "<dynamic>",
+          "count": 1
+        }
+      ],
+      "evidence": [
+        {
+          "file": "core/packages/client/tests/recon-intake.test.ts",
+          "contains": "timeout: 30000"
+        }
+      ]
+    },
+    {
+      "id": "watch-native-test-subprocess",
+      "from": "packages/client/tests/watch_timer_native.test.ts",
+      "to": "local toolchain",
+      "phase": "subprocess-native",
+      "mechanism": "Darwin-only contract test compiles the canonical Foundation DTO and runs the temporary test binary.",
+      "owner": "timer and reconstruction maintainers",
+      "rationale": "Darwin-only contract test compiles the canonical Foundation DTO and runs the temporary test binary.",
+      "replacement": "Keep these exact bounded calls and test-only references; do not introduce production cross-package source imports.",
+      "subprocessCalls": [
+        {
+          "file": "packages/client/tests/watch_timer_native.test.ts",
+          "mechanism": "spawnSync",
+          "target": "xcrun",
+          "count": 1
+        },
+        {
+          "file": "packages/client/tests/watch_timer_native.test.ts",
+          "mechanism": "spawnSync",
+          "target": "<dynamic>",
+          "count": 1
+        }
+      ],
+      "evidence": [
+        {
+          "file": "core/packages/client/tests/watch_timer_native.test.ts",
+          "contains": "describe.skipIf(process.platform"
+        }
+      ]
+    },
     {
       "id": "mobile-android-release-build",
       "from": "apps/mobile release build CLI",
@@ -191,7 +366,7 @@
       "rationale": "Reviewed for the user-requested 7555446-state local shortcut: retains boot/swap baseline, verifies checkpoints, monitors the process tree, never publishes or commits.",
       "replacement": "Keep native execution in this offline job. UI consumes only verified artifacts.",
       "subprocessCalls": [
-        { "file": "jobs/alg-build/src/double-zbll-symmetry.mts", "mechanism": "spawn", "target": "<dynamic>", "count": 1 },
+        { "file": "jobs/alg-build/src/double-zbll-symmetry.mts", "mechanism": "spawn", "target": "<dynamic>", "count": 2 },
         { "file": "jobs/alg-build/src/double-zbll-symmetry.mts", "mechanism": "spawn", "target": "caffeinate", "count": 1 },
         { "file": "jobs/alg-build/src/double-zbll-symmetry.mts", "mechanism": "execFileSync", "target": "vm_stat", "count": 1 },
         { "file": "jobs/alg-build/src/double-zbll-symmetry.mts", "mechanism": "execFileSync", "target": "sysctl", "count": 2 },
@@ -253,6 +428,21 @@
       "replacement": "Keep observational and bounded; never execute service actions or accept request-provided command arguments.",
       "subprocessCalls": [{"file":"apps/api/src/cubeopt/diagnostics.ts","mechanism":"exec","target":"systemctl","count":1}],
       "evidence": [{"file":"core/apps/api/src/cubeopt/diagnostics.ts","contains":"timeout: 1500, maxBuffer: 65536"}]
+    },
+    {
+      "id": "server-cubeopt-cli-symlink-regression",
+      "from": "apps/api CubeOpt artifact CLI regression tests",
+      "to": "temporary esbuild prepare/provision CLI bundles through a dist directory symlink",
+      "phase": "subprocess-native",
+      "mechanism": "Three shell-free process.execPath spawnSync calls with temporary fixture CLI paths and a 10 second timeout; no solver process or production data",
+      "owner": "server",
+      "rationale": "Reviewed by the parent task agent: reproduce the production argv/import.meta symlink mismatch and verify actual CLI publication, which an imported-function test cannot cover.",
+      "replacement": "Keep test-only, fixed Node executable, temporary bundles and small synthetic tables; do not accept user-provided executables or production artifact stores.",
+      "subprocessCalls": [{"file":"apps/api/tests/cubeopt_artifact.test.mjs","mechanism":"spawnSync","target":"<dynamic>","count":3}],
+      "evidence": [
+        {"file":"core/apps/api/tests/cubeopt_artifact.test.mjs","contains":"publishes a small fixture with the bundled prepare CLI through a dist symlink"},
+        {"file":"core/apps/api/tests/cubeopt_artifact.test.mjs","contains":"timeout: 10_000"}
+      ]
     },
     {
       "id": "server-backup-shell-regression",
@@ -413,7 +603,7 @@
     {
       "id": "nemesizer-generated-runtime-artifacts",
       "from": "jobs/stats-build nemesizer job",
-      "to": "repo stats/nemesizer and apps/api runtime loader",
+      "to": "latest-data Release and apps/api runtime loader",
       "phase": "generated-artifact",
       "mechanism": "workflow-generated binary files consumed through NEMESIZER_DATA_DIR",
       "owner": "stats-build and server",
@@ -422,11 +612,11 @@
       "evidence": [
         {"file":"core/jobs/stats-build/src/bin/nemesizer.ts","contains":"const OUTPUT_DIR = resolve(__dirname, '../../../../../stats/nemesizer')"},
         {"file":".github/workflows/stats.yml","contains":"Generate nemesizer dataset"},
-        {"file":".github/workflows/stats.yml","contains":"git add -A stats/"},
-        {"file":".github/workflows/stats.yml","contains":"gh workflow run sync_toolkit.yml"},
-        {"file":".github/workflows/sync_toolkit.yml","contains":"REMOTE=/www/wwwroot/toolkit"},
-        {"file":".github/workflows/sync_toolkit.yml","contains":"for dir in tools stats; do"},
-        {"file":".github/workflows/sync_toolkit.yml","contains":"\"$dir/\" \"${USER}@${HOST}:${REMOTE}/${dir}/\""},
+        {"file":".github/workflows/stats.yml","contains":"node scripts/wca-data/cli.ts submit stats"},
+        {"file":".github/workflows/stats.yml","contains":"node scripts/wca-data/snapshot-cli.ts submit wca stats"},
+        {"file":".github/workflows/wca_data_release.yml","contains":"group: deploy-core-production"},
+        {"file":"scripts/wca-data/deploy.ts","contains":"/www/wwwroot/toolkit/stats"},
+        {"file":".github/workflows/sync_toolkit.yml","contains":"stats/tutorial/ \"${USER}@${HOST}:${REMOTE}/stats/tutorial/\""},
         {"file":"core/apps/api/src/nemesizer/loader.ts","contains":"process.env.NEMESIZER_DATA_DIR"},
         {"file":"core/apps/api/src/nemesizer/loader.ts","contains":"'/www/wwwroot/toolkit/stats/nemesizer'"},
         {"file":"core/apps/api/src/nemesizer/loader.ts","contains":"readFile(path.join(DATA_DIR, 'persons.bin.gz'))"}
@@ -530,20 +720,74 @@
   ],
   "legacyFindings": [
     {
-      "file": "packages/client/tests/auth-doc-sync.test.ts",
-      "mechanism": "path-literal",
+      "file": "packages/client/tests/timer-scramble-click-action-shared.test.ts",
+      "mechanism": "readFileSync",
       "rule": "cross-package-path",
       "sourceKind": "test",
-      "specifier": "apps/api/migrations/0265_home_onboarding.sql",
-      "target": "server"
+      "specifier": "../timer-ui/src/TimerDisplaySettings.tsx",
+      "target": "timer-ui"
     },
     {
-      "file": "packages/client/tests/auth-doc-sync.test.ts",
-      "mechanism": "path-literal",
+      "file": "packages/client/tests/watch_timer_import.test.ts",
+      "importKind": "runtime",
+      "mechanism": "static-import",
+      "rule": "cross-package-relative-module",
+      "sourceKind": "test",
+      "specifier": "../../app-ui/src/data/timer-repository",
+      "target": "app-ui"
+    },
+    {
+      "file": "packages/client/tests/watch_timer_import.test.ts",
+      "importKind": "runtime",
+      "mechanism": "static-import",
+      "rule": "cross-package-relative-module",
+      "sourceKind": "test",
+      "specifier": "../../app-ui/src/watch-timer",
+      "target": "app-ui"
+    },
+    {
+      "file": "packages/client/tests/watch_timer_native.test.ts",
+      "importKind": "runtime",
+      "mechanism": "static-import",
+      "rule": "cross-package-relative-module",
+      "sourceKind": "test",
+      "specifier": "../../app-ui/src/watch-timer",
+      "target": "app-ui"
+    },
+    {
+      "file": "packages/client/tests/watch_timer_native.test.ts",
+      "mechanism": "path-resolve",
       "rule": "cross-package-path",
       "sourceKind": "test",
-      "specifier": "apps/api/src/routes/onboarding.ts",
-      "target": "server"
+      "specifier": "../../apps/mobile/ios/App/WatchShared/WatchTimerWire.swift",
+      "target": "mobile"
+    },
+    {
+      "file": "packages/client/tests/watch_timer_sync.test.ts",
+      "importKind": "runtime",
+      "mechanism": "static-import",
+      "rule": "cross-package-relative-module",
+      "sourceKind": "test",
+      "specifier": "../../app-ui/src/watch-timer-sync",
+      "target": "app-ui"
+    },
+    {
+      "file": "packages/client/tests/watch_timer_sync.test.ts",
+      "importKind": "runtime",
+      "mechanism": "static-import",
+      "rule": "cross-package-relative-module",
+      "sourceKind": "test",
+      "specifier": "../../app-ui/src/watch-timer",
+      "target": "app-ui"
+    },
+    {
+      "file": "packages/client/tests/watch_timer_sync.test.ts",
+      "importKind": "type-only",
+      "mechanism": "static-import",
+      "rule": "cross-package-relative-module",
+      "sourceKind": "test",
+      "specifier": "../../app-ui/src/data/timer-repository",
+      "target": "app-ui"
     },
     {
       "file": "apps/api/src/calc/live_relay.ts",
@@ -634,22 +878,6 @@
       "sourceKind": "test",
       "specifier": "@cuberoot/shared",
       "rule": "shared-root-import",
-      "target": "shared"
-    },
-    {
-      "file": "apps/miniprogram/tests/release-check.test.mjs",
-      "mechanism": "path-literal",
-      "rule": "cross-package-path",
-      "sourceKind": "test",
-      "specifier": "/packages/shared/package.json",
-      "target": "shared"
-    },
-    {
-      "file": "apps/miniprogram/tests/release-check.test.mjs",
-      "mechanism": "path-literal",
-      "rule": "cross-package-path",
-      "sourceKind": "test",
-      "specifier": "/packages/shared/src/smart_cube/relay.ts",
       "target": "shared"
     },
     {
@@ -764,15 +992,6 @@
     },
     {
       "file": "packages/client/components/AlgPuzzlePicker.tsx",
-      "importKind": "runtime",
-      "mechanism": "static-import",
-      "sourceKind": "runtime",
-      "specifier": "@cuberoot/shared",
-      "rule": "shared-root-import",
-      "target": "shared"
-    },
-    {
-      "file": "packages/client/app/[lang]/alg/_trainer/events.ts",
       "importKind": "runtime",
       "mechanism": "static-import",
       "sourceKind": "runtime",
@@ -2070,37 +2289,6 @@
     },
     {
       "file": "packages/client/tests/recon_ground_truth.test.ts",
-      "mechanism": "spawnSync",
-      "rule": "subprocess-call",
-      "sourceKind": "subprocess",
-      "target": "<dynamic>"
-    },
-    {
-      "file": "packages/client/tests/recon-ground-truth-gate.test.ts",
-      "mechanism": "path-literal",
-      "rule": "cross-package-path",
-      "sourceKind": "test",
-      "specifier": "core/apps/api/migrations/0106_recon_ground_truth_candidates.sql",
-      "target": "server"
-    },
-    {
-      "file": "packages/client/tests/recon-ground-truth-gate.test.ts",
-      "mechanism": "path-literal",
-      "rule": "cross-package-path",
-      "sourceKind": "test",
-      "specifier": "core/apps/api/src/routes/recon_ground_truth.ts",
-      "target": "server"
-    },
-    {
-      "file": "packages/client/tests/recon-ground-truth-gate.test.ts",
-      "mechanism": "path-literal",
-      "rule": "cross-package-path",
-      "sourceKind": "test",
-      "specifier": "core/packages/shared/src/recon_ground_truth.ts",
-      "target": "shared"
-    },
-    {
-      "file": "packages/client/tests/recon-ground-truth-gate.test.ts",
       "mechanism": "spawnSync",
       "rule": "subprocess-call",
       "sourceKind": "subprocess",

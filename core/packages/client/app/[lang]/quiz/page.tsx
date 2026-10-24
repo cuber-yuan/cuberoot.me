@@ -15,7 +15,7 @@ import '@cuberoot/timer-ui/compact-select.css';
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useQueryState, parseAsStringLiteral } from 'nuqs';
-import { Shuffle, PenLine } from 'lucide-react';
+import { Shuffle, PenLine } from '@app-foundation/icons/lucide';
 import BackHome from '@/components/BackHome';
 import HeaderToggles from '@/components/HeaderToggles';
 import Link from '@/components/AppLink';
@@ -28,6 +28,7 @@ import { MIXED_ROUND_SIZE } from './_lib/deck';
 import { countByCat, forLevel } from './_lib/community';
 import QuizRunner from './_components/QuizRunner';
 import './quiz.css';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 // 'mixed' 不是分类,是「全题库随机抽 20 道」的模式标记。
 const MODES = [...CAT_IDS, 'mixed'] as const;
@@ -179,7 +180,7 @@ function QuizPage() {
 export default function Page() {
   // useQueryState 要读 searchParams,SSG 下必须包 Suspense。
   return (
-    <Suspense fallback={<div className="quiz-page" />}>
+    <Suspense fallback={<div className="quiz-page"><LoadingIndicator /></div>}>
       <QuizPage />
     </Suspense>
   );

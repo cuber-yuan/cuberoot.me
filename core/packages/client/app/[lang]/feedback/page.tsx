@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { parseAsInteger, parseAsStringEnum, useQueryState } from 'nuqs';
-import { ChevronDown, ChevronLeft, Lightbulb, Bug, Link2, MessageSquare, Plus } from 'lucide-react';
+import { ChevronDown, ChevronLeft, Lightbulb, Bug, Link2, MessageSquare, Plus } from '@app-foundation/icons/lucide';
 import { CompactSelect } from '@/components/CompactSelect';
 import HomeLink from '@/components/HomeLink';
 import AppLink from '@/components/AppLink';
@@ -28,6 +28,7 @@ import {
   type PublicFeedbackPage,
 } from '@/lib/feedback-api';
 import './feedback.css';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 const KIND_ICON: Record<FeedbackKind, typeof Bug> = { need: Lightbulb, bug: Bug, other: MessageSquare };
 const STATUS_FILTERS: Array<'all' | FeedbackStatus> = ['all', 'new', 'triaged', 'done'];
@@ -42,7 +43,7 @@ export default function FeedbackPage() {
   const login = useAuthStore((s) => s.login);
   const [mounted, setMounted] = useState(false);
   const [page, setPage] = useQueryState(
-    'page', parseAsInteger.withDefault(1).withOptions({ history: 'push' }),
+    'page', parseAsInteger.withDefault(1).withOptions({ history: 'replace' }),
   );
   const [size, setSize] = useQueryState('size', parseAsInteger.withDefault(20));
   const [status, setStatus] = useQueryState('status', parseAsStringEnum(STATUS_FILTERS).withDefault('all'));
@@ -130,7 +131,7 @@ export default function FeedbackPage() {
   return (
     <div className="fbm-page">
       <header className="fbm-header">
-        <HomeLink className="fbm-back"><ChevronLeft size={16} /><span>{t('首页', 'Home')}</span></HomeLink>
+        <HomeLink className="fbm-back"><ChevronLeft size={16} /><span className="sr-only">{t('首页', 'Home')}</span></HomeLink>
       </header>
       <div className="fbm-titlerow">
         <div>
@@ -161,7 +162,7 @@ export default function FeedbackPage() {
       )}
 
       {err && <div className="fbm-error">{err}</div>}
-      {loading && !err && <div className="fbm-empty">{t('加载中…', 'Loading…')}</div>}
+      {loading && !err && <div className="fbm-empty"><LoadingIndicator>{t('加载中…', 'Loading…')}</LoadingIndicator></div>}
       {safeSelectedId == null && data && data.items.length === 0 && (
         <div className="fbm-empty">
           <p>{t('没有符合条件的反馈。', 'No feedback matches this filter.')}</p>

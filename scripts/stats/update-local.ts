@@ -1,19 +1,24 @@
 /** One local TypeScript entry for stages, 3x3 optimal, and puzzle statistics. */
 import { availableParallelism } from 'node:os';
-import { appendFile, mkdir, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, open, readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
-  analyzer, appendData, appendUniqueById, coreDir, exe, exists, fileSize, ids, jobDir, lineCount, lines,
+  appendUniqueById, coreDir, exe, exists, fileSize, ids, jobDir, lineCount, openAnalyzerSession,
   puzzleDir, recordSeconds, repoRoot, run, runNode, runPnpm, runTs, solverDir, stamp,
   tableDir, taskProgress, wcaDir,
 } from './common.js';
 import { runPuzzles } from './puzzles.js';
+import { sq1GrindResourcePlan } from './sq1-grind.js';
+import { syncAnalyzerChunks, validateAnalyzerOutput } from './analyzer-chunks.js';
+import { preflightStatsEngine, statsEngine } from '../../solver/333opt/stats-engine.mts';
+import { registerStatsSummary, statsProtectionReason, statsResourcePlan, withStatsResourceMonitor } from './resource-monitor.js';
 
 type Job = 'stages' | '333opt' | 'puzzles';
 type Options = {
   jobs: Job[]; puzzles: string[]; variants: string[]; maxChunks: number;
   chunkSize?: number; dryRun: boolean; useCached: boolean; sourceCsv?: string;
-  skipSolve333: boolean; plan: boolean; noPublish: true;
+  skipSolve333: boolean; skipSq1Grind: boolean; plan: boolean; noPublish: true;
 };
 const variantBins: Record<string, string> = {
   daisy: 'daisy_analyzer', first_layer: 'first_layer_analyzer', eo: 'eo_cross_analyzer',
@@ -77,16 +82,20 @@ async function syncStageTriplet(required: boolean): Promise<boolean> {
   const addedStd = await appendUniqueById(join(wcaDir, 'stats', 'std.csv'), pendingStd, true, true);
   const addedMaster = await appendUniqueById(master, pendingInput, false, false);
   const addedSplit = await appendUniqueById(join(wcaDir, 'input', 'wca_scrambles_split_mbf.csv'), pendingSplit, true, true);
+  for (const path of [join(wcaDir, 'stats', 'std.csv'), master, join(wcaDir, 'input', 'wca_scrambles_split_mbf.csv')]) {
+    const file = await open(path, 'r');
+    try { await file.sync(); } finally { await file.close(); }
+  }
   if (addedStd || addedMaster || addedSplit) console.log(`[stages] 恢复/保存增量：std ${addedStd}，master ${addedMaster}，元数据 ${addedSplit}`);
   return Boolean(addedStd || addedMaster || addedSplit);
 }
 
 function csv(value: string): string[] { return value === 'none' ? [] : value.split(',').map(item => item.trim()).filter(Boolean); }
-function parse(argv: string[]): Options {
+export function parseLocalArgs(argv: string[]): Options {
   const options: Options = {
     jobs: ['stages', '333opt', 'puzzles'], puzzles: ['222', 'pyraminx', 'skewb', 'clock', 'sq1'],
     variants: Object.keys(variantBins), maxChunks: 0, dryRun: false, useCached: false,
-    skipSolve333: false, plan: false, noPublish: true,
+    skipSolve333: false, skipSq1Grind: false, plan: false, noPublish: true,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -95,6 +104,7 @@ function parse(argv: string[]): Options {
     else if (arg === '--dry-run') options.dryRun = true;
     else if (arg === '--use-cached') options.useCached = true;
     else if (arg === '--skip-solve-333') options.skipSolve333 = true;
+    else if (arg === '--skip-sq1-grind') options.skipSq1Grind = true;
     else if (arg === '--jobs') {
       const items = csv(argv[++i] ?? '');
       options.jobs = items.includes('all') ? ['stages', '333opt', 'puzzles'] : items as Job[];
@@ -135,65 +145,79 @@ function stageEnv(): NodeJS.ProcessEnv {
   return env;
 }
 async function syncVariant(name: string, options: Options): Promise<boolean> {
-  const csvFile = join(wcaDir, 'stats', `${name}.csv`);
-  const have = await ids(csvFile, true);
-  const missing: string[] = [];
-  for await (const row of lines(master)) {
-    const comma = row.indexOf(',');
-    if (comma > 0 && !have.has(row.slice(0, comma))) missing.push(row);
-  }
-  if (!missing.length) { console.log(`[${name}] 已最新 (${have.size} 条)`); return false; }
-  const size = options.chunkSize ?? defaultChunks[name];
-  console.log(`[${name}] 待补 ${missing.length} 条，chunk=${size}`);
-  const input = join(incremental, `sync_${name}.txt`);
-  const output = join(incremental, `sync_${name}_${name}.csv`);
-  const log = join(incremental, `sync_${name}.analyzer.log`);
-  let chunks = 0;
-  for (let i = 0; i < missing.length; i += size) {
-    const expected = Math.min(size, missing.length - i);
-    await writeFile(input, `${missing.slice(i, i + size).join('\n')}\n`);
-    if (await exists(output)) await unlink(output);
-    await analyzer(exe(variantBins[name]), [input], log, stageEnv(), name);
-    const got = Math.max(0, (await lineCount(output)) - 1);
-    if (got !== expected) throw new Error(`[${name}] analyzer returned ${got}/${expected} rows`);
-    await appendData(csvFile, output, await fileSize(csvFile) > 0);
-    await unlink(output);
-    chunks++;
-    if (options.maxChunks && chunks >= options.maxChunks) break;
-  }
-  console.log(`[${name}] 已补 ${Math.min(chunks * size, missing.length)}/${missing.length} 条`);
-  return true;
+  return (await syncAnalyzerChunks({
+    binary: exe(variantBins[name]), input: join(incremental, `sync_${name}.txt`),
+    output: join(incremental, `sync_${name}_${name}.csv`), log: join(incremental, `sync_${name}.analyzer.log`),
+    env: stageEnv(), label: name, master, target: join(wcaDir, 'stats', `${name}.csv`),
+    chunkSize: options.chunkSize ?? defaultChunks[name], maxChunks: options.maxChunks,
+  })) > 0;
 }
 
 async function runStages(options: Options): Promise<{ nNew: number; stdChanged: boolean; variantChanged: boolean }> {
   const units = 2 + options.variants.length;
   let completedUnits = 0;
-  const recovered = options.dryRun ? false : await syncStageTriplet(false);
-  console.log('\n=== stages: 增量取数 ===');
-  const incrArgs = ['--data-dir', wcaDir];
-  if (options.sourceCsv) incrArgs.push('--source-csv', options.sourceCsv);
-  if (options.useCached) incrArgs.push('--use-cached');
-  if (options.dryRun) incrArgs.push('--dry-run');
-  await runTs(join(jobDir, 'src', 'incremental.ts'), incrArgs);
-  if (!options.dryRun) taskProgress('stages', ++completedUnits, units);
-  if (options.dryRun) {
-    console.log('[dry-run] 只读检查完成');
-    return { nNew: 0, stdChanged: false, variantChanged: false };
-  }
-  const input = pendingInput;
-  const nNew = await lineCount(input);
-  console.log(`新打乱 ${nNew} 条`);
-  let stdChanged = recovered;
+  let stdSession: Awaited<ReturnType<typeof openAnalyzerSession>> | undefined;
+  const solveStd = async () => {
+    stdSession ??= await openAnalyzerSession(exe('std_analyzer'), join(incremental, 'std_analyzer.log'),
+      { ...stageEnv(), CUBE_RUN_FULL_STD: '1' }, 'std');
+    await stdSession.run(pendingInput, pendingStd);
+    await validateAnalyzerOutput(pendingInput, pendingStd);
+  };
+  const clearStdCheckpoint = async () => {
+    for (const suffix of ['.checkpoint', '.checkpoint.meta']) {
+      if (await exists(pendingStd + suffix)) await unlink(pendingStd + suffix);
+    }
+  };
+  let nNew = 0;
+  let stdChanged = false;
   let variantChanged = false;
-  if (nNew > 0) {
-    console.log('\n=== stages: std_analyzer ===');
-    const output = pendingStd;
-    if (await exists(output)) await unlink(output);
-    await analyzer(exe('std_analyzer'), [input], join(incremental, 'std_analyzer.log'), { ...stageEnv(), CUBE_RUN_FULL_STD: '1' }, 'std');
-    const got = Math.max(0, (await lineCount(output)) - 1);
-    if (got !== nNew) throw new Error(`std returned ${got}/${nNew} rows`);
-    console.log('\n=== stages: 幂等同步 CSV ===');
-    stdChanged = await syncStageTriplet(true) || stdChanged;
+  try {
+    if (!options.dryRun) {
+      const pending = await exists(pendingStd + '.checkpoint') || await exists(pendingStd + '.checkpoint.meta');
+      if (pending) {
+        // Recover the old exact input before incremental.ts replaces any triplet member.
+        const expected = await ids(pendingInput);
+        const saved = await Promise.all([
+          ids(join(wcaDir, 'stats', 'std.csv'), true), ids(master),
+          ids(join(wcaDir, 'input', 'wca_scrambles_split_mbf.csv'), true),
+        ]);
+        const alreadyCommitted = expected.size > 0 && saved.every(set => [...expected].every(id => set.has(id)));
+        if (!alreadyCommitted) {
+          await solveStd();
+          stdChanged = await syncStageTriplet(true);
+        }
+        await clearStdCheckpoint();
+      } else stdChanged = await syncStageTriplet(false);
+    }
+    console.log('\n=== stages: 增量取数 ===');
+    const incrArgs = ['--data-dir', wcaDir];
+    if (options.sourceCsv) incrArgs.push('--source-csv', options.sourceCsv);
+    if (options.useCached) incrArgs.push('--use-cached');
+    if (options.dryRun) incrArgs.push('--dry-run');
+    await runTs(join(jobDir, 'src', 'incremental.ts'), incrArgs);
+    if (!options.dryRun) taskProgress('stages', ++completedUnits, units);
+    if (options.dryRun) {
+      console.log('[dry-run] 只读检查完成');
+      return { nNew: 0, stdChanged: false, variantChanged: false };
+    }
+    const input = pendingInput;
+    nNew = await lineCount(input);
+    console.log(`新打乱 ${nNew} 条`);
+    if (nNew > 0) {
+      console.log('\n=== stages: std_analyzer ===');
+      const output = pendingStd;
+      if (await exists(output)) await unlink(output);
+      await solveStd();
+      const got = Math.max(0, (await lineCount(output)) - 1);
+      if (got !== nNew) throw new Error(`std returned ${got}/${nNew} rows`);
+      console.log('\n=== stages: 幂等同步 CSV ===');
+      stdChanged = await syncStageTriplet(true) || stdChanged;
+      await clearStdCheckpoint();
+    }
+  } finally {
+    if (stdSession) {
+      try { await stdSession.close(); } catch (error) { await stdSession.abort(); throw error; }
+    }
   }
   taskProgress('stages', ++completedUnits, units);
   if (options.variants.length) {
@@ -212,7 +236,7 @@ async function run333(options: Options, inject: boolean): Promise<boolean> {
   const units = Number(solve) + (inject ? 3 : 0);
   let completedUnits = 0;
   if (options.jobs.includes('333opt') && !options.skipSolve333) {
-    console.log('\n=== 333opt: H48 h10 续解 ===');
+    console.log('\n=== 333opt: ' + statsEngine(repoRoot).engine + ' 续解 ===');
     await runTs(join(solverDir, '333opt', 'solve_h10.mts'), [], coreDir, { ...process.env, CUBE_TABLE_DIR: tableDir, RAYON_NUM_THREADS: String(availableParallelism()) });
     taskProgress('333opt', ++completedUnits, units);
   }
@@ -227,11 +251,15 @@ async function run333(options: Options, inject: boolean): Promise<boolean> {
   return true;
 }
 
-type Summary = { startedAt: string; finishedAt?: string; status: string; active?: string; partial?: string[]; steps: Array<{ name: string; seconds: number }> };
+type Summary = { startedAt: string; finishedAt?: string; status: string; protectionReason?: string; active?: string; partial?: string[]; steps: Array<{ name: string; seconds: number }> };
 async function main(): Promise<void> {
-  const options = parse(process.argv.slice(2));
+  const options = parseLocalArgs(process.argv.slice(2));
   if (options.plan) {
-    console.log(JSON.stringify({ ...options, analyzers: requiredAnalyzers(options), repoRoot, coreDir, jobDir, wcaDir, puzzleDir, tableDir, publish: false }, null, 2));
+    const resourceBudgets = [
+      ...statsResourcePlan(requiredAnalyzers(options), stageEnv(), options.jobs.includes('333opt')),
+      ...(options.jobs.includes('puzzles') && options.puzzles.includes('sq1') && !options.skipSq1Grind ? sq1GrindResourcePlan(stageEnv()) : []),
+    ];
+    console.log(JSON.stringify({ ...options, analyzers: requiredAnalyzers(options), resourceBudgets, repoRoot, coreDir, jobDir, wcaDir, puzzleDir, tableDir, optimalEngine: statsEngine(repoRoot), publish: false }, null, 2));
     return;
   }
   if (options.dryRun) {
@@ -241,8 +269,7 @@ async function main(): Promise<void> {
   }
   const runStart = Date.now();
   if (options.jobs.includes('333opt') && !options.skipSolve333) {
-    const h10 = resolve(process.env.H48_H10_TABLE || join(tableDir, 'h48-nissy-core', 'h48h10.dat'));
-    if (await fileSize(h10) !== 30_336_314_216) throw new Error(`H48 h10 table missing/incomplete: ${h10}`);
+    preflightStatsEngine(repoRoot);
   }
   if (options.jobs.includes('puzzles') && options.puzzles.includes('sq1')) {
     const sq1 = join(tableDir, 'sq1_wca_jsqfull.bin');
@@ -251,7 +278,14 @@ async function main(): Promise<void> {
   await mkdir(tableDir, { recursive: true });
   const summaryPath = join(tableDir, `stats-local-${new Date().toISOString().replaceAll(':', '-')}.json`);
   const summary: Summary = { startedAt: new Date().toISOString(), status: 'running', steps: [] };
-  const persist = () => writeFile(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
+  registerStatsSummary(summaryPath);
+  const persist = async () => {
+    const reason = statsProtectionReason();
+    if (reason) { summary.status = 'protected-stop'; summary.protectionReason = reason; }
+    const temporary = `${summaryPath}.${process.pid}.new`;
+    await writeFile(temporary, `${JSON.stringify(summary, null, 2)}\n`);
+    await rename(temporary, summaryPath);
+  };
   const step = async (name: string, action: () => Promise<void>) => {
     const started = Date.now();
     summary.active = name;
@@ -273,7 +307,7 @@ async function main(): Promise<void> {
       ({ nNew, stdChanged, variantChanged } = await runStages(options));
     });
     if (options.jobs.includes('puzzles')) await step('puzzles', async () => {
-      partial.push(...await runPuzzles(options.puzzles));
+      partial.push(...await runPuzzles(options.puzzles, 0, { skipSq1Grind: options.skipSq1Grind }));
       taskProgress('puzzles', 1, 4);
       await runPnpm(['--filter', '@cuberoot/scramble-stats-build', 'build:puzzle-examples']);
       taskProgress('puzzles', 2, 4);
@@ -293,7 +327,7 @@ async function main(): Promise<void> {
     const refreshRecentEvents = async () => {
       if (options.jobs.includes('stages') || options.jobs.includes('puzzles')) await step('recent-events', () => runPnpm(['--filter', '@cuberoot/scramble-stats-build', 'build:recent-scrambles-events'], coreDir, buildEnv));
     };
-    const willInject = options.jobs.includes('333opt') || (options.jobs.includes('stages') && (stdChanged || variantChanged));
+    const willInject = options.jobs.includes('333opt') || stageBuildPending;
     if (!stageBuildPending && !willInject && !puzzleChanged) {
       await refreshRecentEvents();
       console.log('没有数据变化，结束。');
@@ -319,8 +353,13 @@ async function main(): Promise<void> {
       await step('scramble-steps', () => runPnpm(['--filter', '@cuberoot/scramble-stats-build', 'build:scramble-steps'], coreDir, buildEnv));
     }
     summary.status = partial.length ? 'partial' : 'complete';
-    if (partial.length) { summary.partial = partial; process.exitCode = 2; }
-    console.log(`\n统计完成：${((Date.now() - runStart) / 60_000).toFixed(1)} 分钟；只写本地文件。`);
+    if (partial.length) {
+      summary.partial = partial;
+      process.exitCode = 2;
+      for (const reason of partial) console.warn(`[统计待完成] ${reason}`);
+      console.warn('已保存本轮结果；退出码 2 表示仍有待解/待定状态，下次从保存结果继续。');
+    }
+    console.log(`\n统计${partial.length ? '产物已生成（仍有待完成项）' : '完成'}：${((Date.now() - runStart) / 60_000).toFixed(1)} 分钟；只写本地文件。`);
   } catch (error) {
     summary.status = `failed: ${String(error)}`;
     throw error;
@@ -331,4 +370,7 @@ async function main(): Promise<void> {
     console.log(`Run summary: ${summaryPath}`);
   }
 }
-void main().catch(error => { console.error(error); process.exitCode = 1; });
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const readOnly = process.argv.includes('--plan') || process.argv.includes('--dry-run');
+  void (readOnly ? main() : withStatsResourceMonitor(main)).catch(error => { console.error(error); process.exitCode = 1; });
+}

@@ -11,6 +11,11 @@ const page = (sources = entries, reason = 'Reviewed sign-in, linking, merging an
   `/* auth-doc-review ${JSON.stringify({ fingerprint: fingerprintAuthSources(sources), reason })} */`;
 
 describe('/dev/auth source-review drift', () => {
+  it('tracks private smart-cube addresses and their account lifecycle', () => {
+    for (const path of [...['src/routes/smart_cube_macs.ts', 'migrations/0285_smart_cube_macs.sql']
+      .map(file => relative(CORE_ROOT, workspaceFixturePath('@cuberoot/server', file))),
+      'packages/client/lib/bluetooth/mac-account.ts']) expect(isAuthDocSource(path)).toBe(true);
+  });
   it('tracks account tour state and its homepage trigger', () => {
     for (const path of ['apps/api/src/routes/onboarding.ts', 'apps/api/migrations/0265_home_onboarding.sql',
       'packages/client/lib/onboarding.ts', 'packages/client/components/OnboardingGuideModal.tsx',
@@ -19,9 +24,20 @@ describe('/dev/auth source-review drift', () => {
   it('tracks the complete remote SSH enrollment boundary', () => {
     for (const path of [...['src/routes/remote_access.ts', 'migrations/0272_remote_access.sql', 'scripts/remote-access-host.ts'].map(file => relative(CORE_ROOT, workspaceFixturePath('@cuberoot/server', file))), relative(CORE_ROOT, workspaceFixturePath('@cuberoot/shared', 'src/remote-access.ts')), 'packages/client/lib/remote-access-key.ts']) expect(isAuthDocSource(path)).toBe(true);
   });
+  it('tracks membership signing identity and handoff boundaries', () => {
+    for (const path of [...['src/payment/membership-handoff.ts', 'src/routes/membership_subscriptions.ts'].map(file => relative(CORE_ROOT, workspaceFixturePath('@cuberoot/server', file))), relative(CORE_ROOT, workspaceFixturePath('@cuberoot/miniprogram', 'src/pages/membership/index.ts')), 'packages/client/lib/membership-api.ts', 'packages/client/app/[lang]/membership/AutoRenewModal.tsx']) expect(isAuthDocSource(path)).toBe(true);
+  });
   it('requires the real page to acknowledge the current authentication sources', () => {
     const sources = collectAuthDocSources();
     expect(sources.length).toBeGreaterThan(20);
+    for (const file of [
+      'src/pages/account-link/index.wxml', 'src/pages/account-delete/index.wxml',
+      'src/pages/account-settings/index.wxml', 'src/lib/native-account-link.ts',
+      'src/lib/native-route-page.ts',
+    ]) {
+      expect(sources.map(([path]) => path))
+        .toContain(relative(CORE_ROOT, workspaceFixturePath('@cuberoot/miniprogram', file)));
+    }
     expect(sources.some(([path]) => path.endsWith('/external-timer/index.ts'))).toBe(true);
     expect(sources.map(([path]) => path)).toContain('packages/client/app/[lang]/calendar/_components/GoogleBackupPanel.tsx');
     expect(checkAuthDocReview(readFileSync(resolve(CORE_ROOT, DOC_PATH), 'utf8'), sources)).toEqual([]);

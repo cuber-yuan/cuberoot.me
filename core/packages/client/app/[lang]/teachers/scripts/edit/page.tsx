@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { parseAsInteger, useQueryState } from 'nuqs';
-import { Plus } from 'lucide-react';
+import { Plus } from '@app-foundation/icons/lucide';
 import AppLink from '@/components/AppLink';
 import BackHome from '@/components/BackHome';
 import BoolToggle from '@/components/BoolToggle';
@@ -22,6 +22,7 @@ import {
   type LocalizedScriptText,
   type TeacherLiveScriptDraft,
 } from '@/lib/teacher-live-scripts-api';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 const blankText = (): LocalizedScriptText => ({ zh: '', en: '' });
 const blankSection = (index: number): LiveScriptSection => ({
@@ -101,7 +102,7 @@ function ScriptEditor() {
   };
 
   if (!user) return <main className="script-editor-page"><div className="scripts-back-row"><BackHome /></div><section className="scripts-empty"><p>{tr({ zh: '登录后才能编辑直播话术。', en: 'Sign in to edit livestream scripts.' })}</p><AppLink href={`/account${nextQuery(pathname)}`} className="script-text-action">{tr({ zh: '登录', en: 'Sign in' })}</AppLink></section></main>;
-  if (loading) return <main className="script-state-page"><p>{tr({ zh: '正在加载编辑器…', en: 'Loading the editor…' })}</p></main>;
+  if (loading) return <main className="script-state-page"><p><LoadingIndicator>{tr({ zh: '正在加载编辑器…', en: 'Loading the editor…' })}</LoadingIndicator></p></main>;
   if (entries.length === 0) return <main className="script-editor-page"><div className="scripts-back-row"><BackHome /></div><section className="scripts-empty"><p>{tr({ zh: '请先建立老师或机构主页。', en: 'Create a teacher or school profile first.' })}</p><AppLink href="/teachers/edit" className="script-text-action">{tr({ zh: '建立教学主页', en: 'Build a profile' })}</AppLink></section></main>;
 
   return <main className="script-editor-page"><div className="scripts-back-row"><BackHome /></div><header className="script-editor-hero"><p className="scripts-kicker">{tr({ zh: editId ? '修改话术' : '新建话术', en: editId ? 'Edit script' : 'New script' })}</p><h1>{tr({ zh: '把直播排成一条线', en: 'Build a Clear Run of Show' })}</h1><p>{tr({ zh: '先定标题和时长，再按直播顺序写章节。正文是主播直接说的话；动作、互动和转场只作为现场提示。', en: 'Set the title and timing, then write sections in broadcast order. Spoken copy is read aloud; action, audience, and transition lines are presenter cues.' })}</p></header>
@@ -114,7 +115,7 @@ function ScriptEditor() {
       <section className="script-form-section"><header><span>05</span><div><h2>{tr({ zh: '现场提醒', en: 'Presenter notes' })}</h2></div></header><BilingualRows rows={draft.content.notes} onChange={(notes) => setContent({ ...draft.content, notes })} addLabel={{ zh: '添加提醒', en: 'Add note' }} /></section>
       <section className="script-form-section"><header><span>06</span><div><h2>{tr({ zh: '相关链接', en: 'Related links' })}</h2></div></header><div className="script-outline">{draft.content.referenceLinks.map((link, index) => <div className="script-form-grid" key={index}><label className="script-field"><span>{tr({ zh: '链接', en: 'URL' })}</span><input className="script-control" value={link.href} onChange={(event) => setContent({ ...draft.content, referenceLinks: draft.content.referenceLinks.map((item, itemIndex) => itemIndex === index ? { ...item, href: event.target.value } : item) })} /></label><label className="script-field"><span>{tr({ zh: '中文名称', en: 'Chinese label' })}</span><input className="script-control" value={link.label.zh} onChange={(event) => setContent({ ...draft.content, referenceLinks: draft.content.referenceLinks.map((item, itemIndex) => itemIndex === index ? { ...item, label: { ...item.label, zh: event.target.value } } : item) })} /></label><label className="script-field"><span>{tr({ zh: '英文名称', en: 'English label' })}</span><input className="script-control" value={link.label.en} onChange={(event) => setContent({ ...draft.content, referenceLinks: draft.content.referenceLinks.map((item, itemIndex) => itemIndex === index ? { ...item, label: { ...item.label, en: event.target.value } } : item) })} /><button type="button" className="script-add-button" onClick={() => setContent({ ...draft.content, referenceLinks: draft.content.referenceLinks.filter((_, itemIndex) => itemIndex !== index) })}>{tr({ zh: '删除链接', en: 'Remove link' })}</button></label></div>)}<button type="button" className="script-add-button" onClick={() => setContent({ ...draft.content, referenceLinks: [...draft.content.referenceLinks, { href: '', label: blankText() } as LiveScriptLink] })}><Plus size={14} /> {tr({ zh: '添加链接', en: 'Add link' })}</button></div></section>
       {message && <p className="script-form-message">{message} {savedId && <AppLink href={`/teachers/scripts/edit?id=${savedId}`} prefetch={false}>{tr({ zh: '继续编辑已保存版本', en: 'Continue editing the saved version' })}</AppLink>}</p>}
-      <div className="script-save-row"><button type="submit" className="script-save-button" disabled={saving}>{saving ? tr({ zh: '保存中…', en: 'Saving…' }) : tr({ zh: '保存话术', en: 'Save script' })}</button><AppLink href="/teachers/scripts/manage" className="script-text-action">{tr({ zh: '返回管理页', en: 'Back to manage' })}</AppLink></div>
+      <div className="script-save-row"><button type="submit" className="script-save-button" disabled={saving}>{saving ? tr({ zh: '保存中…', en: 'Saving…' }) : tr({ zh: '保存话术', en: 'Save script' })}</button><AppLink href="/teachers/scripts/manage" className="script-text-action"><span aria-hidden="true">←</span> <span className="sr-only">{tr({ zh: '返回管理页', en: 'Back to manage' })}</span></AppLink></div>
     </form>
   </main>;
 }

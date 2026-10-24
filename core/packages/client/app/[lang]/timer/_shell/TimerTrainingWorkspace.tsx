@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import { useTimerSearchParams as useSearchParams } from '@/lib/timer-practice-url-adapter';
 import { useQueryState } from 'nuqs';
 import { tr } from '@/i18n/tr';
 import { TIMER_TRAINING_HELP } from '@/lib/timer-training-help';
@@ -12,7 +13,7 @@ import TimerTrainingContent from './TimerTrainingContent';
 import TimerTrainingMenu from './TimerTrainingMenu';
 // Own the common trainer styles at the workspace boundary so switching lazy
 // select/run surfaces cannot render the trainer before its layout is available.
-// Standalone trainers continue importing these same styles themselves.
+// Legacy /alg URLs redirect here before their standalone surfaces can render.
 import '@/app/[lang]/alg/_trainer/trainer.css';
 import '@/app/[lang]/alg/_trainer/memory.css';
 import '@/app/[lang]/alg/alg.css';
@@ -25,7 +26,8 @@ export default function TimerTrainingWorkspace() {
   const search = searchParams.toString();
   const target = useMemo(() => training && training !== 'home' ? resolveTrainingTarget(training) : null, [training]);
   const [settingsPortal, setSettingsPortal] = useState<HTMLDivElement | null>(null);
-  const practiceSettings = useMemo(() => <TimerTrainingMenu settingsOnly />, []);
+  const [contextPortal, setContextPortal] = useState<HTMLDivElement | null>(null);
+  const [devicePortal, setDevicePortal] = useState<HTMLDivElement | null>(null);
   const mapHref = useCallback((href: string) => timerTrainingHref(href, {
     timerPathname: pathname,
     currentSearch: search,
@@ -38,16 +40,21 @@ export default function TimerTrainingWorkspace() {
     params: target.params,
     mapHref,
     settingsPortal,
-    practiceSettings,
-  } : null, [target, mapHref, settingsPortal, practiceSettings]);
+    contextPortal,
+    devicePortal,
+  } : null, [target, mapHref, settingsPortal, contextPortal, devicePortal]);
 
   return (
     <main className="timer-training-workspace" data-timer-training>
       {/* This non-sticky toolbar must not create a backdrop root: its menu needs
           to blur and cover the training cards outside the toolbar. */}
       <div className="timer-training-workspace__toolbar" data-no-timer>
+        <div className="timer-training-workspace__navigation">
+        {target?.kind === 'alg-run' && <div className="timer-training-workspace__settings" ref={setDevicePortal} />}
         <TimerTrainingMenu />
         {target?.kind === 'alg-run' && <div className="timer-training-workspace__settings" ref={setSettingsPortal} />}
+        </div>
+        {target?.kind === 'alg-run' && <div className="timer-training-workspace__context" ref={setContextPortal} />}
       </div>
       {host && target ? (
         <TrainingHostProvider value={host}>

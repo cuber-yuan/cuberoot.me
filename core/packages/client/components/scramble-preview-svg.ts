@@ -1,29 +1,10 @@
+import { renderWcaPreviewSvg } from '@cuberoot/puzzle-render-core/wca-preview-svg';
 /**
  * Single renderer contract for scramble preview SVGs.
  *
  * The React thumbnail and PDF exporter must call this same dispatcher: a puzzle
  * advertised as having a preview must never silently become an empty PDF cell.
  */
-import {
-  renderClockScrambleSvg,
-  DEFAULT_CLOCK_COLORS,
-} from '@/app/[lang]/scramble/gen/_svg/clock_svg';
-import {
-  renderSq1ScrambleSvg,
-  DEFAULT_SQ1_COLORS,
-} from '@/lib/sq1-svg';
-import {
-  renderMegaScrambleSvg,
-  DEFAULT_MEGA_COLORS,
-} from '@/app/[lang]/scramble/gen/_svg/mega_svg';
-import {
-  renderPyraScrambleSvg,
-  PYRA_DEFAULT_COLORS,
-} from '@/app/[lang]/scramble/gen/_svg/pyraminx_svg';
-import {
-  renderSkewbScrambleSvg,
-  SKEWB_DEFAULT_COLORS,
-} from '@/app/[lang]/scramble/gen/_svg/skewb_svg';
 import { renderMirrorBlocksScrambleSvg } from '@/app/[lang]/scramble/gen/_svg/mirror_blocks_svg';
 import { renderIvyScrambleSvg } from '@/app/[lang]/scramble/gen/_svg/ivy_svg';
 import { renderFloppyScrambleSvg } from '@/app/[lang]/scramble/gen/_svg/floppy_svg';
@@ -56,10 +37,9 @@ import { renderBakedNet } from '@/app/[lang]/scramble/gen/_svg/_baked_nets';
 import { renderPyraminxDuoSvg } from '@cuberoot/puzzle-render-core/pyraminx-duo-svg';
 import { renderMagicSvg } from '@cuberoot/puzzle-render-core/magic-svg';
 import { renderSphereScrambleSvg } from '@cuberoot/puzzle-render-core/sphere-svg';
-import { renderNativePuzzleSvg } from '@cuberoot/puzzle-render-core/native-puzzle-svg';
+import { renderNativePuzzleSvg, renderPuzzleGeometrySvg } from '@cuberoot/puzzle-render-core/native-puzzle-svg';
 import { NATIVE_PUZZLE_IDS, isNativePuzzleId } from '@cuberoot/puzzle-solvers/native-puzzles';
 import {
-  renderUnfoldedSvgForEvent,
   eventToCubeSize,
 } from '@cuberoot/shared/cube-unfolded-svg';
 import type { MaskRenderOptions } from '@/lib/puzzle-image/mask-core';
@@ -91,6 +71,8 @@ export interface ScramblePreviewSvgOptions {
   sq1Colors?: Record<string, string>;
   megaColors?: Record<string, string>;
   mask?: MaskRenderOptions;
+  /** Existing PG catalog definition, for puzzles without a registered scramble event. */
+  puzzleDescription?: string;
 }
 
 export function renderScramblePreviewSvg({
@@ -100,19 +82,18 @@ export function renderScramblePreviewSvg({
   sq1Colors,
   megaColors,
   mask,
+  puzzleDescription,
 }: ScramblePreviewSvgOptions): string | null {
   const eff = previewSource(event);
   try {
+    if (puzzleDescription) return renderPuzzleGeometrySvg({ id: event, description: puzzleDescription }, scramble);
     if (event === 'mirror_333') return renderMirrorBlocksScrambleSvg(scramble);
     if (event === 'sphere') return renderSphereScrambleSvg(scramble);
     if (isNativePuzzleId(eff)) return renderNativePuzzleSvg(eff, scramble);
     if (eff === 'pyraminx_duo') return renderPyraminxDuoSvg(scramble);
     if (eff === 'magic' || eff === 'mmagic') return renderMagicSvg(eff, scramble);
-    if (eff === 'clock') return renderClockScrambleSvg(scramble, clockColors ?? DEFAULT_CLOCK_COLORS);
-    if (eff === 'sq1') return renderSq1ScrambleSvg(scramble, sq1Colors ?? DEFAULT_SQ1_COLORS);
-    if (eff === 'minx') return renderMegaScrambleSvg(scramble, megaColors ?? DEFAULT_MEGA_COLORS, mask);
-    if (eff === 'pyram') return renderPyraScrambleSvg(scramble, PYRA_DEFAULT_COLORS, mask);
-    if (eff === 'skewb') return renderSkewbScrambleSvg(scramble, SKEWB_DEFAULT_COLORS, mask);
+    const wca = renderWcaPreviewSvg({ event: eff, scramble, clockColors, sq1Colors, megaColors, mask });
+    if (wca) return wca;
     if (eff === 'ivy') return renderIvyScrambleSvg(scramble);
     if (eff === '133') return renderFloppyScrambleSvg(scramble);
     if (eff === '223') return renderCuboid223ScrambleSvg(scramble);
@@ -142,7 +123,6 @@ export function renderScramblePreviewSvg({
     if (eff === 'sia222') return renderSia222ScrambleSvg(scramble);
     const baked = renderBakedNet(eff, scramble);
     if (baked) return baked;
-    if (eventToCubeSize(eff)) return renderUnfoldedSvgForEvent(eff, scramble, mask);
     return null;
   } catch (err) {
     console.warn(`[scramble-preview] ${event} (eff=${eff}) render failed`, err);

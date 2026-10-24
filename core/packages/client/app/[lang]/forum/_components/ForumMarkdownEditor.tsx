@@ -21,7 +21,7 @@ import dynamic from 'next/dynamic';
 import {
   Bold, Heading, Highlighter, Info, Image as ImageIcon, Rows3, Play, Box,
   Video as VideoIcon, X,
-} from 'lucide-react';
+} from '@app-foundation/icons/lucide';
 import type { EditorView } from '@codemirror/view';
 import { FORUM_VIDEO_MAX_DURATION_SECONDS } from '@cuberoot/shared/forum';
 import { ForumVideoPlayer } from '@/components/forum/ForumVideoPlayer';
@@ -35,11 +35,12 @@ import {
 } from '@/lib/forum-api';
 import { useT } from '@/hooks/useT';
 import './forum_editor.css';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 // CodeMirror chunk stays out of the server / SSG bundle. ssr:false → only mounts client-side.
 const CodeMirror = dynamic(() => import('@uiw/react-codemirror'), {
   ssr: false,
-  loading: () => <div className="forum-editor-cm-loading" />,
+  loading: () => <div className="forum-editor-cm-loading"><LoadingIndicator /></div>,
 });
 
 // markdown() + a class-based highlight style, loaded lazily alongside the editor. basicSetup's

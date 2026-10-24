@@ -11,9 +11,70 @@ import {
   completeMiniProgramIdentity,
   previewIdentityLinkCode,
   validateStoredSession,
+  updateNativeDisplayName,
+  unlinkNativeAccountIdentity,
+  requestJson,
 } from '../src/lib/auth';
 
 describe('mini program authentication', () => {
+  it.each(['success', 'last', 'switched'] as const)('uses canonical unlink semantics and protects the session: %s', async scenario => {
+    const original = { token: 't'.repeat(20), user: { uid: 12, name: 'Member', wcaId: null } };
+    let stored = original;
+    let respond!: (value: unknown) => void;
+    const setStorageSync = vi.fn();
+    const request = vi.fn((options: { success(value: unknown): void }) => { respond = options.success; });
+    vi.stubGlobal('wx', { getStorageSync: () => stored, setStorageSync, request });
+    const result = unlinkNativeAccountIdentity(original, { provider: 'douyin', providerUid: 'private-id' }, () => true);
+    expect(request.mock.calls[0][0]).toMatchObject({ data: { provider: 'douyin' } });
+    if (scenario === 'switched') stored = { ...original, token: 'b'.repeat(20) };
+    respond({ statusCode: scenario === 'last' ? 409 : 200, data: scenario === 'last'
+      ? { error: 'cannot unlink your only login method' }
+      : { token: 'n'.repeat(20), user: { ...original.user, avatar: '' } } });
+    if (scenario === 'success') {
+      await expect(result).resolves.toMatchObject({ user: { uid: 12 } });
+      expect(setStorageSync).toHaveBeenCalledOnce();
+    } else {
+      await expect(result).rejects.toBeInstanceOf(ApiError);
+      expect(setStorageSync).not.toHaveBeenCalled();
+    }
+  });
+  it.each(['success', 'changed', 'hidden', 'wrong-user', 'storage'] as const)('guards profile session installation: %s', async (scenario) => {
+    const session = { token: 't'.repeat(20), user: { uid: 12, name: 'Old', wcaId: null } };
+    let stored = session;
+    let active = true;
+    let respond!: (value: unknown) => void;
+    const setStorageSync = vi.fn(() => { if (scenario === 'storage') throw new Error('full'); });
+    const request = vi.fn((options: { success(value: unknown): void }) => { respond = options.success; });
+    vi.stubGlobal('wx', { getStorageSync: () => stored, setStorageSync, request });
+    const result = updateNativeDisplayName(session, ' New ', () => active);
+    if (scenario === 'changed') stored = { ...session, token: 'b'.repeat(20) };
+    if (scenario === 'hidden') active = false;
+    respond({ statusCode: 200, data: { token: 'n'.repeat(20), user: { ...session.user, uid: scenario === 'wrong-user' ? 13 : 12, name: 'New', avatar: '' } } });
+    if (scenario === 'success') await expect(result).resolves.toMatchObject({ user: { uid: 12, name: 'New' } });
+    else await expect(result).rejects.toBeInstanceOf(ApiError);
+    expect(request.mock.calls[0][0]).toMatchObject({ data: { name: 'New' }, header: { Authorization: `Bearer ${session.token}` } });
+    if (['changed', 'hidden', 'wrong-user'].includes(scenario)) expect(setStorageSync).not.toHaveBeenCalled();
+  });
+
+  it('rejects WCA names and invalid input before sending a profile update', async () => {
+    const request = vi.fn();
+    vi.stubGlobal('wx', { request });
+    const session = { token: 't'.repeat(20), user: { uid: 12, name: 'Old', wcaId: null } };
+    await expect(updateNativeDisplayName(session, '\n', () => true)).rejects.toBeInstanceOf(ApiError);
+    await expect(updateNativeDisplayName({ ...session, user: { ...session.user, wcaId: '2017YANR02' } }, 'New', () => true)).rejects.toBeInstanceOf(ApiError);
+    expect(request).not.toHaveBeenCalled();
+  });
+  it('settles a cancelled native request even if abort throws and a late success arrives', async () => {
+    let success!: (value: unknown) => void;
+    const abort = vi.fn(() => { throw new Error('native abort failure'); });
+    vi.stubGlobal('wx', { request(options: { success(value: unknown): void }) { success = options.success; return { abort }; } });
+    const controller = new AbortController();
+    const result = requestJson('/wca/scrambles/random', { signal: controller.signal });
+    controller.abort();
+    await expect(result).rejects.toMatchObject({ status: 0, message: 'request cancelled' });
+    success({ statusCode: 200, data: { late: true } });
+    expect(abort).toHaveBeenCalledOnce();
+  });
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();

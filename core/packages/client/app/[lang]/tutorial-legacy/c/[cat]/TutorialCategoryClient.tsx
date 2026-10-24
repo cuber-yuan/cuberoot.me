@@ -4,12 +4,13 @@ import { Suspense, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'next/navigation';
 import { useQueryState, parseAsStringEnum } from 'nuqs';
-import { Search as SearchIcon } from 'lucide-react';
+import { Search as SearchIcon } from '@app-foundation/icons/lucide';
 import Fuse from 'fuse.js';
 import { useTutorialCatalog, type CatalogEntry, type Lang } from '../../_lib/useTutorialCatalog';
 import { TutorialCard } from '../../_components/TutorialCard';
 import '../../tutorial.css';
 import { tr } from '@/i18n/tr';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 function TutorialCategoryPageInner() {
   const { catalog, loading, error } = useTutorialCatalog();
@@ -120,8 +121,8 @@ function TutorialCategoryPageInner() {
       )}
 
       <div className="tutorial-card-grid">
-        {loading && <div className="tutorial-empty-state">{tr({ zh: '加载中…', en: 'Loading…'
-        })}</div>}
+        {loading && <div className="tutorial-empty-state"><LoadingIndicator>{tr({ zh: '加载中…', en: 'Loading…'
+        })}</LoadingIndicator></div>}
         {error && (
           <div className="tutorial-empty-state">
             {tr({ zh: '加载失败: ', en: 'Load failed: '
@@ -145,7 +146,7 @@ function TutorialCategoryPageInner() {
 
 export default function TutorialCategoryClient() {
   return (
-    <Suspense fallback={<div className="tutorial-root"><div className="tutorial-empty-state">Loading…</div></div>}>
+    <Suspense fallback={<div className="tutorial-root"><div className="tutorial-empty-state"><LoadingIndicator /></div></div>}>
       <TutorialCategoryPageInner />
     </Suspense>
   );

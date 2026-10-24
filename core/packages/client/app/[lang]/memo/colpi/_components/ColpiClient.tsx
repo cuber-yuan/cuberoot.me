@@ -17,7 +17,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Search, Eye, EyeOff, ThumbsUp, ThumbsDown, Flag as FlagIcon, X,
   Pencil, Trash2,
-} from 'lucide-react';
+} from '@app-foundation/icons/lucide';
 import WcaAuth from '@/components/WcaAuth';
 import { SearchInput } from '@/components/SearchInput';
 import { Flag } from '@/components/Flag';
@@ -35,6 +35,7 @@ import { getAlphabet, defaultPairFor } from '../_lib/data';
 import '../colpi.css';
 import { tr } from '@/i18n/tr';
 import i18n from '@/i18n/i18n-client';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 type LangFilter = string;
 type ViewMode = 'all' | 'mine';
@@ -589,8 +590,8 @@ export default function ColpiClient() {
           <span className="colpi-legend-swatch empty" /> {tr({ zh: '空缺', en: 'Empty' })}
           <span className="colpi-legend-meta">
             {loading
-              ? tr({ zh: '加载中…', en: 'Loading…'
-                                          })
+              ? <LoadingIndicator>{tr({ zh: '加载中…', en: 'Loading…'
+                                          })}</LoadingIndicator>
               : loadError
                 ? ((isZh ? `加载失败: ${loadError}` : `Load failed: ${loadError}`))
                 : (isZh

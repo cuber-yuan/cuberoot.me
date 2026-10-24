@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, type FormEvent } from 'react';
-import { ImagePlus, RotateCcw, Trash2 } from 'lucide-react';
+import { ImagePlus, RotateCcw, Trash2 } from '@app-foundation/icons/lucide';
 import { parseAsString, useQueryState } from 'nuqs';
 import AppLink from '@/components/AppLink';
 import HeaderToggles from '@/components/HeaderToggles';
@@ -16,6 +16,7 @@ import {
 } from '@/lib/music-api';
 import { loadMusicLibrary, loadStaticMusicManifest } from '@/lib/music-player';
 import '../music.css';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 type ManagedTrack = Pick<MusicApiTrack, 'id' | 'title' | 'artist' | 'album' | 'genre' | 'lyricsLrc' | 'status' | 'reviewNote'> & {
   source: 'static' | 'upload';
@@ -176,7 +177,6 @@ export default function MusicManagePage() {
   return <main className="music-page music-manage-page">
     <header className="music-header">
       <div>
-        <span className="music-kicker">{tr({ zh: 'CUBEROOT 音频', en: 'CUBEROOT AUDIO' })}</span>
         <h1>{isAdmin ? tr({ zh: '审核与管理', en: 'Review & manage' }) : tr({ zh: '我的上传', en: 'My uploads' })}</h1>
         <p>{isAdmin ? tr({ zh: '管理静态曲库与会员上传内容。', en: 'Manage the library and member uploads.' }) : tr({ zh: '查看审核状态、修改待审核内容，或删除自己上传的音乐（包括已发布曲目）。', en: 'Check review status, edit pending uploads, or delete your own music, including published tracks.' })}</p>
         <AppLink href="/music" className="music-credits-link">{tr({ zh: '打开音乐播放器', en: 'Open music player' })}<span aria-hidden="true">→</span></AppLink>
@@ -186,7 +186,7 @@ export default function MusicManagePage() {
 
     {membershipLoading ? <p className="music-state">{tr({ zh: '正在确认会员状态…', en: 'Checking membership…' })}</p>
       : !isMember ? <p className="music-state">{tr({ zh: '会员可以上传和管理音乐。', en: 'Members can upload and manage music.' })}{' '}<AppLink href="/membership">{tr({ zh: '查看会员', en: 'View membership' })}</AppLink></p>
-        : loading ? <p className="music-state">{tr({ zh: '正在载入曲库…', en: 'Loading library…' })}</p>
+        : loading ? <p className="music-state"><LoadingIndicator>{tr({ zh: '正在载入曲库…', en: 'Loading library…' })}</LoadingIndicator></p>
           : <div className="music-manager-layout">
             <div className="music-manager-list" aria-label={tr({ zh: '曲库内容', en: 'Library content' })}>
               {!tracks.length && <p className="music-state">{tr({ zh: '曲库为空', en: 'The library is empty' })}</p>}

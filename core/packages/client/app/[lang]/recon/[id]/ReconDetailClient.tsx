@@ -1,7 +1,10 @@
 'use client';
 
+import { reconVideoGroups } from '@/lib/recon-video-url';
+import { loadBiliVideo, loadVideoTitle } from '@/lib/recon-video-cover';
 import { WcaPersonTeamBadge } from '@/components/WcaPersonTeamBadge';
 import { useContentRefreshKey } from '@/hooks/useContentRefreshKey';
+import { useCopy } from '@/hooks/useCopy';
 
 /**
  * /recon/[id] — full detail page, ported from packages/client-vite/src/pages/recon/ReconDetailPage.tsx.
@@ -21,12 +24,12 @@ import {
   ChevronDown, ChevronUp,
   ArrowLeft, Copy, Check, Maximize2, Minimize2,
   Lock, Link2, LogIn, ExternalLink, Share2, Download,
-} from 'lucide-react';
+} from '@app-foundation/icons/lucide';
 import type { ReconSolve, ReconComment, ReconAlternative } from '@cuberoot/shared';
 import { cleanFtoReconAlgForPlayer, getReconScramble } from '@cuberoot/shared/recon-completion';
 import { ReconCompletionBadge } from '@/components/recon/ReconCompletionBadge';
 import {
-  listComments, addComment, updateComment, deleteComment, pinComment, getBiliCover, getDouyinCover,
+  listComments, addComment, updateComment, deleteComment, pinComment, getDouyinCover,
   listRecons, deleteAlternative, getSameScramble,
 } from '@/lib/recon-api';
 import { revalidateRecon } from '../revalidate-action';
@@ -42,10 +45,12 @@ import { displayCuberName } from '@/lib/cuber-name-display';
 import { eventDisplayName, toWcaEventId } from '@/lib/wca-events';
 import { EventIcon } from '@/components/EventIcon';
 import { loadFlagData, flagDataVersion, personFlagIso2 } from '@/lib/country-flags';
+import { CompCell } from '@/components/CompCell/CompCell';
 import { Flag } from '@/components/Flag';
 import { localizeCompName } from '@/lib/comp-localize';
 import { displayCity } from '@/lib/city-display';
 import { cleanForPlayer, countMovesExpanded } from '@/lib/recon-alg-utils';
+import ScrambleStatistics from '@/components/ScrambleStatistics';
 import {
   extractPersonCompetitionResults, fetchAttempts, fetchCubingAttempts, fetchScrambles, fetchWcaResults, matchRoundType,
 } from '@/lib/wca-results-api';
@@ -89,6 +94,7 @@ import { CompactSelect } from '@/components/CompactSelect';
 import { saveBlob } from '@/lib/puzzle-image/image-export';
 import { exportReconImages, type ReconImageFont, type ReconImageStyle } from './export-recon-image';
 import { buildSimQuery, simPuzzleForReconEvent } from '@/lib/sim-recon-link';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 const YOUTUBE_LOGO = '/assets/youtube_logo.svg';
 const BILIBILI_LOGO = '/assets/bilibili_logo.svg';
@@ -174,7 +180,7 @@ export default function ReconDetailClient({ initialSolve, initialSameScramble }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (loading) return <div className="recon-page"><div className="recon-loading">{t('common.loading')}</div></div>;
+  if (loading) return <div className="recon-page"><div className="recon-loading"><LoadingIndicator>{t('common.loading')}</LoadingIndicator></div></div>;
   // 私享复盘对非添加者本人:服务端 403 → getRecon 抛「private」→ 这里给一个体面的私享门,
   // 而不是裸报错。未登录则提示登录(登录后可能是本人 → 重新拉即可见)。
   if (error) {
@@ -185,7 +191,7 @@ export default function ReconDetailClient({ initialSolve, initialSameScramble }:
           <div className="detail-header-block">
             <div className="detail-header-nav">
               <Link href="/recon" className="recon-back-link">
-                <ArrowLeft size={14} /> {tr({ zh: '返回列表', en: 'Back to list' })}
+                <ArrowLeft size={14} /> <span className="sr-only">{tr({ zh: '返回列表', en: 'Back to list' })}</span>
               </Link>
             </div>
           </div>
@@ -220,7 +226,7 @@ export default function ReconDetailClient({ initialSolve, initialSameScramble }:
       <div className="detail-header-block">
         <div className="detail-header-nav">
           <Link href="/recon" className="recon-back-link">
-            <ArrowLeft size={14} /> {tr({ zh: '返回列表', en: 'Back to list' })}
+            <ArrowLeft size={14} /> <span className="sr-only">{tr({ zh: '返回列表', en: 'Back to list' })}</span>
           </Link>
         </div>
         <div className="detail-header">
@@ -256,7 +262,7 @@ export default function ReconDetailClient({ initialSolve, initialSameScramble }:
             {' '}
             {solutionText && <span className="detail-share-target" ref={setShareTarget} />}
             {' '}
-            <Link href={`/recon/submit/${solve.id}`} className="recon-btn recon-btn-edit detail-title-edit" title={t('recon.edit')} aria-label={t('recon.edit')}>
+            <Link href={`/recon/submit/${solve.id}`} className="detail-title-edit detail-title-edit--accent" title={t('recon.edit')} aria-label={t('recon.edit')}>
               <Pencil size={14} />
             </Link>
           </h1>
@@ -265,14 +271,13 @@ export default function ReconDetailClient({ initialSolve, initialSameScramble }:
           {solve.date && <span className="detail-meta-item">{solve.date.slice(0, 10)}</span>}
           {solve.comp && (
             <span className="detail-meta-item">
-              {solve.country && <Flag iso2={solve.country} className="recon-inline-flag" />}
               <span>
                 {/* 同一条 meta bar 左边已经写着日期 —— 比赛名里的年号剥掉 */}
                 {solve.compWcaId ? (
                   <Link {...compLinkProps(solve.compWcaId)}>
-                    {localizeCompName(solve.compWcaId ?? '', solve.comp, isZh, { date: solve.date })}
+                    <CompCell compId={solve.compWcaId ?? ''} compName={solve.comp} country={solve.country} isZh={isZh} date={solve.date ?? null} />
                   </Link>
-                ) : localizeCompName(solve.compWcaId ?? '', solve.comp, isZh, { date: solve.date })}
+                ) : <CompCell compId={solve.compWcaId ?? ''} compName={solve.comp} country={solve.country} isZh={isZh} date={solve.date ?? null} />}
                 {solve.round && (isZh ? `，${localizeRound(solve.round, t)}` : `, ${localizeRound(solve.round, t)}`)}
               </span>
             </span>
@@ -319,6 +324,7 @@ function ReconDetailBody({ scramble, solutionText, solve, comments, onUpdate, in
 }) {
   const [sameCompHasRows, setSameCompHasRows] = useState(false);
   const [sameSessionHasRows, setSameSessionHasRows] = useState(false);
+  const { copied: scrambleCopied, copy: copyScramble } = useCopy();
   const { t, i18n } = useTranslation();
   const isZh = i18n.language === 'zh';
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -417,6 +423,15 @@ function ReconDetailBody({ scramble, solutionText, solve, comments, onUpdate, in
             )}
             <div className="detail-scramble-line">
               {scramble ? <>{displayScramble}{optimalScrambleTag}</> : tr({ zh: '暂无打乱', en: 'No scramble available' })}
+              {scramble && <> <button
+                type="button"
+                className="normalized-cross-copy"
+                aria-label={scrambleCopied ? tr({ zh: '已复制', en: 'Copied' }) : tr({ zh: '复制打乱', en: 'Copy scramble' })}
+                title={scrambleCopied ? tr({ zh: '已复制', en: 'Copied' }) : tr({ zh: '复制打乱', en: 'Copy scramble' })}
+                onClick={() => copyScramble(scramble)}
+              >
+                {scrambleCopied ? <Check size={14} /> : <Copy size={14} />}
+              </button></>}
             </div>
             {solutionText && (
               <SolutionView
@@ -441,8 +456,15 @@ function ReconDetailBody({ scramble, solutionText, solve, comments, onUpdate, in
           </div>
         )}
 
+        <ScrambleStatistics
+          compId={solve.compWcaId}
+          event={solve.event}
+          scramble={solve.wcaScramble || solve.scramble || scramble}
+          optimalScramble={solve.optimalScramble}
+          resolveOriginal
+        />
+
         <SameScrambleNav key={`same-scramble-${solve.id}`} solve={solve} initial={initialSameScramble} />
-        {solve.comp && solve.round && solve.solveNum && <Link href={`/recon?view=rounds&roundId=${solve.id}`} prefetch={false}>{tr({ zh: '查看整轮打乱与复盘', en: 'View this round’s scrambles and reconstructions' })}</Link>}
 
         <StatsGrid solve={solve} />
 
@@ -571,8 +593,10 @@ function ExternalLinks({ event, scramble, alg, solveId, copyText, shareTarget, o
   return shareTarget ? createPortal(
     <CompactSelect
       ariaLabel={tr({ zh: '分享', en: 'Share' })}
-      label={<span className="recon-png-label"><Share2 size={15} aria-hidden="true" />{tr({ zh: '分享', en: 'Share' })}</span>}
-      triggerClassName="recon-btn detail-title-edit"
+      label={<Share2 size={15} aria-hidden="true" />}
+      triggerClassName="detail-title-edit"
+      variant="plain"
+      unstyledTrigger
       popupClassName="recon-share-menu"
       showArrow={false}
       items={[]}
@@ -703,8 +727,14 @@ function StatsGrid({ solve }: { solve: ReconSolve }) {
 }
 
 export function VideoSection({ videoUrl }: { videoUrl: string }) {
-  const urls = videoUrl.split('\n').map(u => u.trim()).filter(u => u);
+  const groups = reconVideoGroups(videoUrl);
+  if (!groups.length) return null;
+  return <div className="detail-section detail-video-row">
+    {groups.map((urls, index) => <VideoSourceGroup key={index + ':' + urls.join('\n')} urls={urls} />)}
+  </div>;
+}
 
+function VideoSourceGroup({ urls }: { urls: string[] }) {
   const ytUrls: string[] = [];
   const biliUrls: string[] = [];
   const douyinUrls: string[] = [];
@@ -718,10 +748,24 @@ export function VideoSection({ videoUrl }: { videoUrl: string }) {
 
   const [country, setCountry] = useState<string | null>(null);
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
+  const [titles, setTitles] = useState<Record<string, string>>({});
+  const sourceKey = urls.join('\n');
+  useEffect(() => {
+    const links = sourceKey.split('\n');
+    if (links.length < 2) return;
+    let alive = true;
+    for (const url of links) {
+      void loadVideoTitle(url).then(title => {
+        if (alive && title) setTitles(previous => ({ ...previous, [url]: title }));
+      });
+    }
+    return () => { alive = false; };
+  }, [sourceKey]);
   const sources = [
-    { url: ytUrls[0], platform: 'youtube', label: 'YouTube', logo: YOUTUBE_LOGO },
-    { url: biliUrls[0], platform: 'bilibili', label: tr({ zh: 'B 站', en: 'Bilibili' }), logo: BILIBILI_LOGO },
-    { url: douyinUrls[0], platform: 'douyin', label: tr({ zh: '抖音', en: 'Douyin' }), logo: DOUYIN_LOGO },
+    ...ytUrls.map(url => ({ url, platform: 'youtube', label: 'YouTube', logo: YOUTUBE_LOGO })),
+    ...biliUrls.map(url => ({ url, platform: 'bilibili', label: tr({ zh: 'B 站', en: 'Bilibili' }), logo: BILIBILI_LOGO })),
+    ...douyinUrls.map(url => ({ url, platform: 'douyin', label: tr({ zh: '抖音', en: 'Douyin' }), logo: DOUYIN_LOGO })),
+    ...otherUrls.map(url => ({ url, platform: 'other', label: tr({ zh: '视频链接', en: 'Video link' }), logo: '' })),
   ].filter(source => source.url);
   const hasChoice = sources.length > 1;
   useEffect(() => {
@@ -731,39 +775,30 @@ export function VideoSection({ videoUrl }: { videoUrl: string }) {
     return () => { cancelled = true; };
   }, [hasChoice]);
 
-  const priority = country === 'cn' ? ['bilibili', 'douyin', 'youtube'] : ['youtube', 'bilibili', 'douyin'];
+  const priority = country === 'cn' ? ['bilibili', 'douyin', 'youtube', 'other'] : ['youtube', 'bilibili', 'douyin', 'other'];
   const preferred = sources.find(source => source.platform === priority.find(platform => sources.some(item => item.platform === platform)));
   // Wait for the bounded IP lookup before loading either platform's cover. A manual
   // choice takes precedence and is never replaced by a late region response.
   const active = sources.find(source => source.url === selectedUrl)
     ?? (!hasChoice || country !== null ? preferred : undefined);
-  const linkUrls = [...ytUrls.slice(1), ...biliUrls.slice(1), ...douyinUrls.slice(1), ...otherUrls];
-  if (!sources.length && !linkUrls.length) return null;
+  if (!sources.length) return null;
 
   return (
-    <div className="detail-section">
-      {sources.length > 0 && <div className="detail-video-row">
-        <div className="detail-video-player">
-          {active ? <VideoEmbed key={active.url} url={active.url} /> : <div className="detail-video-wrap" aria-busy="true" />}
-          {hasChoice && <div className="detail-video-switches">
-            {sources.filter(source => source !== active).map(source => {
-              const label = tr({ zh: `切换到 ${source.label}`, en: `Switch to ${source.label}` });
-              return <Tooltip key={source.platform} content={label}>{tip => (
-                <button {...tip} type="button" className="detail-video-switch"
-                  aria-label={label} onClick={() => setSelectedUrl(source.url)}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={source.logo} alt="" width={26} height={26} />
-                </button>
-              )}</Tooltip>;
-            })}
-          </div>}
-        </div>
+    <div className="detail-video-player">
+      {active ? <VideoEmbed key={active.url} url={active.url} /> : <div className="detail-video-wrap" aria-busy="true" />}
+      {hasChoice && <div className="detail-video-switches">
+        {sources.filter(source => source !== active).map(source => {
+          const title = titles[source.url] || source.url;
+          const label = tr({ zh: `切换到 ${source.label}：${title}`, en: `Switch to ${source.label}: ${title}` });
+          return <Tooltip key={source.url} content={title}>{tip => (
+            <button {...tip} type="button" className="detail-video-switch"
+              aria-label={label} onClick={() => setSelectedUrl(source.url)}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {source.logo ? <img src={source.logo} alt="" width={26} height={26} /> : <Video size={26} />}
+            </button>
+          )}</Tooltip>;
+        })}
       </div>}
-      {linkUrls.map((url, i) => (
-        <a key={`l${i}`} href={url} target="_blank" rel="noopener noreferrer" className="detail-video-link">
-          <Video size={16} /> {url}
-        </a>
-      ))}
     </div>
   );
 }
@@ -805,7 +840,7 @@ function VideoEmbed({ url }: { url: string }) {
   const isB23 = /b23\.tv/i.test(url);
   if (bvMatch) {
     const bvId = bvMatch[1];
-    return <BilibiliFacade bvId={bvId} href={`https://www.bilibili.com/video/${bvId}`} />;
+    return <BilibiliFacade bvId={bvId} href={url} />;
   }
   if (isB23) {
     return <BilibiliFacade bvId={null} href={url} />;
@@ -815,9 +850,18 @@ function VideoEmbed({ url }: { url: string }) {
     return <DouyinFacade url={url} />;
   }
 
+  if (/\/v1\/recon\/video\/\d+(?:[?#]|$)|\.(?:mp4|webm|mov)(?:[?#]|$)/i.test(url)) {
+    return <div className="detail-video-wrap">
+      <video src={url} controls preload="metadata" playsInline aria-label={tr({ zh: '视频', en: 'Video' })} />
+    </div>;
+  }
+
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer" className="detail-video-link">
-      <Video size={16} /> {url}
+    <a href={url} target="_blank" rel="noopener noreferrer" className="detail-video-wrap detail-video-facade">
+      <span className="detail-video-fallback">
+        <Video size={40} aria-hidden="true" />
+        {tr({ zh: '打开视频', en: 'Open video' })}
+      </span>
     </a>
   );
 }
@@ -1663,9 +1707,11 @@ function BilibiliFacade({ bvId, href }: { bvId: string | null; href: string }) {
 
   useEffect(() => {
     if (!bvId) return;
-    getBiliCover(bvId).then(res => {
-      if (res.pic) setCover(res.pic);
+    let alive = true;
+    loadBiliVideo(bvId).then(res => {
+      if (alive && res?.pic) setCover(res.pic);
     }).catch(() => { /* ignore */ });
+    return () => { alive = false; };
   }, [bvId]);
 
   return (
@@ -1754,7 +1800,9 @@ function AlternativesSection({ reconId, alts, setAlts, solveTime, event }: {
   const handleDelete = async (idx: number) => {
     if (!confirm(t('recon.confirmDeleteAlternative'))) return;
     try {
-      const updated = await deleteAlternative(reconId, idx);
+      const expected = alts[idx];
+      if (!expected) return;
+      const updated = await deleteAlternative(reconId, idx, expected);
       setAlts(updated);
       // setAlts updates this view instantly; bust the ISR cache for the next visitor.
       await revalidateRecon(reconId);

@@ -12,11 +12,12 @@ import '@cuberoot/timer-ui/compact-select.css';
  * tree (owned by another subagent).
  */
 
+import { MethodStagePicker } from '@cuberoot/timer-ui/puzzle-picker';
 import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useQueryState, useQueryStates, parseAsString, parseAsInteger, parseAsStringEnum } from 'nuqs';
 import Link from '@/components/AppLink';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight, Copy, Check, Clapperboard } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, Check, Clapperboard } from '@app-foundation/icons/lucide';
 import { buildReconSubmitQuery, type ReconScrambleSource } from '@/lib/sim-recon-link';
 import { wcaToReconEvent } from '@/lib/wca-events';
 import { Spinner } from '@/components/Spinner/Spinner';
@@ -47,9 +48,10 @@ import { EventIcon } from '@/components/EventIcon/EventIcon';
 import { localizeCompName } from '@/lib/comp-localize';
 import { compSourceLine } from '@/lib/comp-schedule';
 import { loadFlagData, compFlagIso2 } from '@/lib/country-flags';
-import { variantLabel, stageLabel, variantDataRef } from '@/lib/scramble-variants';
+import { variantDataRef } from '@/lib/scramble-variants';
 import SolveTabs from '../_components/SolveTabs';
 import './analyze.css';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 const DEFAULT_SCRAMBLE = "B2 L F' U R' D R' F2 D L R2 D R B' D' L2 D2 R' U'";
 
@@ -636,32 +638,11 @@ function AnalyzePageInner() {
           {running ? <Spinner size={16} /> : null}
           {t('求解', 'Solve')}
         </button>
-        <label className="analyze-control">
-          <select
-            className="analyze-control-select"
-            value={variant}
-            aria-label={t('变体', 'Variant')}
-            onChange={(e) => setVariant(e.target.value as Variant)}
-            disabled={running}
-          >
-            {VARIANT_VALUES.map((v) => (
-              <option key={v} value={v}>{variantLabel(v, lang === 'zh')}</option>
-            ))}
-          </select>
-        </label>
-        <label className="analyze-control">
-          <select
-            className="analyze-control-select"
-            value={stage}
-            aria-label={t('阶段', 'Stage')}
-            onChange={(e) => setStage(e.target.value as Stage)}
-            disabled={running}
-          >
-            {STAGE_VALUES.map((s) => (
-              <option key={s} value={s}>{stageLabel(s, lang === 'zh')}</option>
-            ))}
-          </select>
-        </label>
+        <MethodStagePicker
+          disabled={running} isZh={lang === 'zh'} method={variant} stage={stage}
+          methods={VARIANT_VALUES} stagesOf={() => STAGE_VALUES}
+          onSelect={(v, s) => { setVariant(v as Variant); setStage(s as Stage); }}
+        />
         <select
           value={howfar}
           onChange={(e) => setHowfar(Number(e.target.value) as Howfar)}
@@ -833,7 +814,7 @@ function AnalyzePageInner() {
 
 export default function AnalyzePage() {
   return (
-    <Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
+    <Suspense fallback={<div style={{ padding: 16 }}><LoadingIndicator /></div>}>
       <AnalyzePageInner />
     </Suspense>
   );

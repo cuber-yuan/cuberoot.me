@@ -16,11 +16,18 @@ interface Card {
 
 const CARDS: Card[] = [
   {
-    href: '/account/get-started',
-    glyph: '→',
+    href: '/dev/continuous-corners',
+    glyph: '◜',
+    accent: 'var(--signal-info)',
+    zh: { title: '连续圆角', sub: 'Continuous Corners', tagline: 'SwiftUI 路径重建、贝塞尔数学、同心圆角与误差测量', meta: '交互实验 / 数学推导 / TypeScript' },
+    en: { title: 'Continuous Corners', sub: 'Design & Geometry', tagline: 'SwiftUI path reconstruction, Bézier mathematics, concentric corners and error measurements', meta: 'Interactive labs / Mathematics / TypeScript' },
+  },
+  {
+    href: '/workspace',
+    glyph: '↗',
     accent: 'var(--accent)',
-    zh: { title: '新员工入门', sub: '交给 AI · 由自己完成', tagline: '软件安装、环境配置与接入申请', meta: 'AI 带练 / 协作基础' },
-    en: { title: 'Staff onboarding', sub: 'Delegate to AI · Do yourself', tagline: 'Install apps, set up your environment and request access', meta: 'AI coaching / collaboration basics' },
+    zh: { title: 'Workspace', sub: '', tagline: '项目、工作记录与团队协作', meta: '入职 / 离职 / SOP' },
+    en: { title: 'Workspace', sub: '', tagline: 'Projects, work updates and team collaboration', meta: 'Onboarding / Offboarding / SOP' },
   },
   {
     href: '/dev/dns-routing',
@@ -430,18 +437,14 @@ export default function DevIndexPage() {
       <header className="code-index-head">
         <div className="code-index-topbar">
           <HomeLink className="code-index-back">
-            ← {tr({ zh: '回首页', en: 'Home'
-            })}
+            ← <span className="sr-only">{tr({ zh: '回首页', en: 'Home'
+            })}</span>
           </HomeLink>
         </div>
         <h1 className="code-index-title">
           <span className="code-index-prefix">/</span>dev
           <span className="code-index-cursor">_</span>
         </h1>
-        <p className="code-index-sub">
-          {tr({ zh: '开发相关的两条线:CubeRoot 这个站点本身是怎么搭的,以及一些写给爱好者看的编程语言长篇导览。', en: 'Two development threads: how this site itself is built, and long-form guides to programming languages.'
-        })}
-        </p>
       </header>
 
       <main className="code-index-grid">
@@ -457,10 +460,9 @@ export default function DevIndexPage() {
             >
               <div className="code-index-card-top">
                 <div className="code-index-card-glyph">{c.glyph}</div>
-                <div className="code-index-card-route">{c.href}</div>
+                <div className="code-index-card-title">{t.title}</div>
               </div>
-              <div className="code-index-card-title">{t.title}</div>
-              <div className="code-index-card-sub">{t.sub}</div>
+              {t.sub && <div className="code-index-card-sub">{t.sub}</div>}
               <p className="code-index-card-tagline">{t.tagline}</p>
               <div className="code-index-card-foot">
                 <span className="code-index-card-meta">{t.meta}</span>

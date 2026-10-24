@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { renderIvyScrambleSvg } from '@cuberoot/puzzle-render-core/ivy-svg';
 import { renderMegaScrambleSvg as webMega } from '@/app/[lang]/scramble/gen/_svg/mega_svg';
 import { renderSq1ScrambleSvg as webSq1 } from '@/lib/sq1-svg';
 import { renderMegaScrambleSvg as sharedMega } from '@cuberoot/puzzle-render-core/mega-svg';
@@ -47,6 +48,20 @@ describe('shared timer scramble preview', () => {
     host.remove();
   });
 
+  it('renders Ivy with the sheet renderer and updates its state', async () => {
+    for (const scramble of ['', "R' D' R' L' R L'"]) {
+      await act(async () => root.render(createElement(TimerCubePreview, {
+        event: 'ivy', scramble, fill: true,
+      })));
+      const expected = document.createElement('div');
+      expected.innerHTML = renderIvyScrambleSvg(scramble);
+      expect(host.querySelector('svg')?.innerHTML).toBe(expected.querySelector('svg')?.innerHTML);
+      expect(host.querySelectorAll('path')).toHaveLength(18);
+      expect(host.textContent).not.toContain('no preview');
+      expect(timerCubePreviewAspect('ivy', scramble)).toBe(4 / 3);
+    }
+  });
+
   it('keeps Web renderer imports as identity re-exports', () => {
     expect(webMega).toBe(sharedMega);
     expect(webSq1).toBe(sharedSq1);
@@ -77,6 +92,8 @@ describe('shared timer scramble preview', () => {
     { event: 'cube3heli', faces: 6 },
     { event: 'radiojewel', faces: 20 },
     { event: 'radioweb', faces: 20 },
+    { event: 'radiojam', faces: 20 },
+    { event: 'catscradle', faces: 20 },
   ] as const)('renders the complete $event net and recovers from invalid input', async ({ event, faces }) => {
     const render = async (scramble: string) => act(async () => root.render(createElement(TimerCubePreview, {
       event, scramble, visualization: '3D', height: 240, ariaLabel: 'Native state',
@@ -349,12 +366,12 @@ describe('shared timer scramble preview', () => {
       'lattice', 'hyperx', 'latticex', 'masterbrilic', 'masterftov2',
       'quadx', 'dinoocta', 'fto5', 'eto', 'radiocrystal',
       'cube3skewb', 'heliskewb', 'comboctahedron', 'circoradiolarian', 'icosababyface',
-      'cube2heli', 'cube3heli', 'radiojewel', 'radioweb',
+      'cube2heli', 'cube3heli', 'radiojewel', 'radioweb', 'radiojam', 'catscradle',
     ] as const) {
       expect(timerCubePreviewAspect(event)).toBe(nativePuzzleSvgAspect(event));
     }
     expect(timerCubePreviewAspect('mmagic', null)).toBe(magicSvgAspect('mmagic'));
-    expect(timerCubePreviewAspect('ivy')).toBe(8 / 5);
+    expect(timerCubePreviewAspect('ivy')).toBe(4 / 3);
     expect(timerCubePreviewAspect('magic', 'M Forward')).toBe(8 / 5);
     expect(timerCubePreviewAspect('mmagic', 'R U')).toBe(8 / 5);
   });

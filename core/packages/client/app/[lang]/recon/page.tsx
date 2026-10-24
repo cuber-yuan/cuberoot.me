@@ -13,7 +13,7 @@ import Link from '@/components/AppLink';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { useQueryState, parseAsBoolean, parseAsStringEnum } from 'nuqs';
-import { CirclePlus, HelpCircle, TriangleAlert, LayoutGrid, List, TestTube2, Check, Bookmark } from 'lucide-react';
+import { CirclePlus, HelpCircle, TriangleAlert, LayoutGrid, List, TestTube2, Check, Bookmark } from '@app-foundation/icons/lucide';
 import type { ReconSolve } from '@cuberoot/shared';
 import { useReconStore, type SortKey, type SortDir } from '@/lib/recon-store';
 import {
@@ -23,6 +23,7 @@ import {
 import { compLinkProps } from '@/lib/comp-link';
 import { displayCuberName } from '@/lib/cuber-name-display';
 import { loadFlagData, flagDataVersion, personFlagIso2 } from '@/lib/country-flags';
+import { CompCell } from '@/components/CompCell/CompCell';
 import { Flag } from '@/components/Flag';
 import { localizeCompName } from '@/lib/comp-localize';
 import { reconPathSeg } from '@/lib/recon-seo';
@@ -44,12 +45,11 @@ import { tr } from '@/i18n/tr';
 import { useIsAdmin, useAuthUser, useAuthStore } from '@/lib/auth-store';
 import { CompactSelect } from '@/components/CompactSelect';
 import { ReconCompletionBadge } from '@/components/recon/ReconCompletionBadge';
-import dynamic from 'next/dynamic';
-const ReconRoundOverview = dynamic(() => import('./ReconRoundOverview'));
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 // ── 视图模式 ──
-type ViewMode = 'list' | 'grid' | 'rounds';
-const VIEW_MODES: ViewMode[] = ['list', 'grid', 'rounds'];
+type ViewMode = 'list' | 'grid';
+const VIEW_MODES: ViewMode[] = ['list', 'grid'];
 
 // ── 卡片视图排序选项 (key:dir 编码) ──
 const GRID_SORTS: { key: SortKey; dir: SortDir; zh: string; en: string }[] = [
@@ -244,7 +244,7 @@ export default function ReconListPage() {
   const owner = String(user?.uid ?? '');
   const ownerRef = useRef(owner);
   ownerRef.current = owner;
-  const [favoritesOnly, setFavoritesOnly] = useQueryState('favorites', parseAsBoolean.withDefault(false));
+  const [favoritesOnly] = useQueryState('favorites', parseAsBoolean.withDefault(false));
   const [favoriteState, setFavoriteState] = useState<{ owner: string; rows: ReconSolve[] } | null>(null);
   const [favoriteRevision, setFavoriteRevision] = useState(0);
   const favorites = favoriteState?.owner === owner ? favoriteState.rows : null;
@@ -289,12 +289,12 @@ export default function ReconListPage() {
     };
   };
 
-  // ── 列表 / 卡片视图切换（进 URL，后退可返回）──
+  // ── 列表 / 卡片布局切换（替换 URL，不堆积返回记录）──
   // 显式写视图：grid / list 都挂 ?view=（clearOnDefault:false 关掉默认省略），
   // 这样卡片视图也显示 ?view=grid。
   const [viewMode, setViewMode] = useQueryState(
     'view',
-    parseAsStringEnum<ViewMode>(VIEW_MODES).withDefault('grid').withOptions({ history: 'push', clearOnDefault: false }),
+    parseAsStringEnum<ViewMode>(VIEW_MODES).withDefault('grid').withOptions({ history: 'replace', clearOnDefault: false }),
   );
   const [unsolvedOnly, setUnsolvedOnly] = useQueryState(
     'unsolved',
@@ -867,13 +867,10 @@ export default function ReconListPage() {
       case 'date':
         return solve.date ? solve.date.slice(0, 10) : '';
       case 'comp': {
-        const flag = solve.country ? <Flag iso2={solve.country} className="recon-inline-flag" /> : null;
-        const rawName = solve.comp || '';
-        const displayName = localizeCompName(solve.compWcaId ?? '', rawName, isZh, { date: solve.date });
+        const displayName = <CompCell compId={solve.compWcaId ?? ''} compName={solve.comp} country={solve.country} isZh={isZh} date={solve.date ?? null} />;
         if (solve.compWcaId) {
           return (
             <>
-              {flag}{' '}
               <Link
                 {...compLinkProps(solve.compWcaId)}
                 onClick={(e) => e.stopPropagation()}
@@ -883,7 +880,7 @@ export default function ReconListPage() {
             </>
           );
         }
-        return <>{flag} {displayName}</>;
+        return displayName;
       }
       case 'round':
         return formatRound(solve.round, solve.solveNum);
@@ -1003,7 +1000,6 @@ export default function ReconListPage() {
           </div>}
         />
         <div className="recon-view-toggle">
-          <button type="button" className={`toggle-btn${viewMode === 'rounds' ? ' active' : ''}`} onClick={() => setViewMode('rounds')} aria-pressed={viewMode === 'rounds'}>{tr({ zh: '整轮', en: 'Rounds' })}</button>
           <button
             className={`toggle-btn${viewMode === 'list' ? ' active' : ''}`}
             onClick={() => setViewMode('list')}
@@ -1037,17 +1033,7 @@ export default function ReconListPage() {
               <TestTube2 size={17} />
             </Link>
           ) : null}
-          <button type="button" className="btn-secondary" aria-pressed={favoritesOnly}
-            title={tr({ zh: '收藏夹', en: 'Favorites' })}
-            aria-label={tr({ zh: '收藏夹', en: 'Favorites' })}
-            onClick={() => {
-              if (!user) { useAuthStore.getState().login(); return; }
-              if (favorites === null) setFavoriteRevision(value => value + 1);
-              void setFavoritesOnly(!favoritesOnly);
-            }}>
-            <Bookmark size={17} fill={favoritesOnly ? 'currentColor' : 'none'} aria-hidden="true" />
-          </button>
-          <WcaAuth />
+          <WcaAuth href={user?.wcaId ? `/recon/person/${user.wcaId}` : '/account'} />
           <SearchInput
             value={filters.search}
             onChange={(v) => setFilter('search', v)}
@@ -1060,8 +1046,8 @@ export default function ReconListPage() {
 
       {favoritesOnly && !user && <button type="button" className="btn-secondary" onClick={() => useAuthStore.getState().login()}>{tr({ zh: '登录后查看收藏夹', en: 'Sign in to view favorites' })}</button>}
       {user && favorites === null && curationError && <button type="button" className="btn-secondary" onClick={() => { setCurationError(null); setFavoriteRevision(value => value + 1); }}>{tr({ zh: '重试加载收藏夹', en: 'Retry loading favorites' })}</button>}
-      {favoritesOnly && user && favorites === null && !curationError && <p role="status">{t('common.loading')}</p>}
-      {loading && <div className="recon-loading">{t('common.loading')}</div>}
+      {favoritesOnly && user && favorites === null && !curationError && <p role="status"><LoadingIndicator>{t('common.loading')}</LoadingIndicator></p>}
+      {loading && <div className="recon-loading"><LoadingIndicator>{t('common.loading')}</LoadingIndicator></div>}
       {error && <div className="recon-error"><TriangleAlert size={16} /> {error}</div>}
 
       {!loading && !error && (
@@ -1104,7 +1090,6 @@ export default function ReconListPage() {
             </div>
           )}
 
-          {viewMode === 'rounds' && <ReconRoundOverview filtered={filtered} all={useReconStore.getState().allSolves} />}
           {viewMode === 'list' && (
           <div className="recon-table-wrap sticky-scroll-mobile">
             <table className="recon-table sticky-thead">
@@ -1205,7 +1190,7 @@ export default function ReconListPage() {
           )}
 
           {/* 无限滚动 sentinel + 分页信息 */}
-          {viewMode !== 'rounds' && <div className="recon-pagination">
+          <div className="recon-pagination">
             {hasMore ? (
               <span className="recon-showing">
                 {t('recon.showing', { shown: displayed.length, total: filtered.length })}
@@ -1215,8 +1200,8 @@ export default function ReconListPage() {
                 {t('recon.total', { count: filtered.length })}
               </span>
             )}
-          </div>}
-          {viewMode !== 'rounds' && hasMore && <div ref={sentinelRef} style={{ height: 1 }} />}
+          </div>
+          {hasMore && <div ref={sentinelRef} style={{ height: 1 }} />}
         </>
       )}
     </div>

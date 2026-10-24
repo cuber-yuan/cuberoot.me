@@ -5,7 +5,7 @@ import '@cuberoot/timer-ui/compact-select.css';
 // 待审队列先来先审;每项就地 通过/驳回(驳回可附原因,随站内通知+邮件发给作者)。
 
 import { useCallback, useEffect, useState } from 'react';
-import { Hourglass, Check, CircleX, ExternalLink } from 'lucide-react';
+import { Hourglass, Check, CircleX, ExternalLink } from '@app-foundation/icons/lucide';
 import Link from '@/components/AppLink';
 import BoolToggle from '@/components/BoolToggle';
 import { UserIdLabel } from '@/components/UserIdLabel';
@@ -21,6 +21,7 @@ import { ForumBreadcrumbs } from '../_components/ForumBreadcrumbs';
 import { formatRelativeTime } from '@/lib/forum-format';
 import '../forum.css';
 import './forum_review.css';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 export default function ForumReviewPage() {
   const lang = useLang();
@@ -118,7 +119,7 @@ export default function ForumReviewPage() {
 
       {showQueue && (
         !items ? (
-          !error && <div className="forum-loading"><T zh="加载中…" en="Loading…" /></div>
+          !error && <div className="forum-loading"><LoadingIndicator><T zh="加载中…" en="Loading…" /></LoadingIndicator></div>
         ) : items.length === 0 ? (
           <div className="forum-empty"><T zh="队列空了,没有待审核的内容。" en="Queue is clear — nothing awaiting review." /></div>
         ) : (
@@ -170,7 +171,7 @@ export default function ForumReviewPage() {
 
       {!showQueue && (
         !reports ? (
-          !error && <div className="forum-loading"><T zh="加载中…" en="Loading…" /></div>
+          !error && <div className="forum-loading"><LoadingIndicator><T zh="加载中…" en="Loading…" /></LoadingIndicator></div>
         ) : (
           <>
             <BoolToggle

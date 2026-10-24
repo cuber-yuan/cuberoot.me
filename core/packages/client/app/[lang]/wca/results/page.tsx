@@ -18,7 +18,7 @@ import dynamic from 'next/dynamic';
 import { WcaPersonRelationCells, useWcaTeams } from './_components/WcaTeamCell';
 import { useQueryStates, parseAsString } from 'nuqs';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, HelpCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronLeft, HelpCircle, ChevronDown, ChevronRight } from '@app-foundation/icons/lucide';
 import Paginator from '@/components/wca-stats/Paginator';
 import NameStatsView, { type NameStatsData } from '@/components/wca-stats/NameStatsView';
 import { type NameMode, NAME_MODES, nameByMode, FormerNames } from '@/components/wca-stats/nameMode';
@@ -51,6 +51,7 @@ import {
   WcaTeacherColumnHeader,
   useWcaTeachers,
 } from '@/components/WcaTeacherCell';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 // Persons / Results display mode for the WCA ranking view — was exported by the
 // (now removed) ShowToggle component; this page is its sole consumer.
@@ -60,7 +61,7 @@ type ShowMode = 'persons' | 'results';
 // 图表自身带 height:190,但 chunk 到之前这块是 0 高 → 常显位置会跳一下。占位补上。
 const ReactECharts = dynamic(() => import('echarts-for-react'), {
   ssr: false,
-  loading: () => <div style={{ height: 190 }} aria-hidden="true" />,
+  loading: () => <div style={{ height: 190 }}><LoadingIndicator /></div>,
 });
 const SorRace = dynamic(() => import('@/components/wca-stats/SorRace'), { ssr: false });
 // 单项视图(单次 / 平均)排名表上方常显的「纪录走势」bar chart race —— 复用 wr_metric 的同款组件(受控:
@@ -564,7 +565,7 @@ function AllResultsPageInner() {
     <div className="wse-page">
       <header className="wse-header">
         <div className="wse-header-row">
-          <HomeLink className="wse-back"><ChevronLeft size={16} /> {tr({ zh: '首页', en: 'Home' })}</HomeLink>
+          <HomeLink className="wse-back"><ChevronLeft size={16} /> <span className="sr-only">{tr({ zh: '首页', en: 'Home' })}</span></HomeLink>
         </div>
         <h1 className="wse-title-row">
           {tr({ zh: '排名', en: 'Rankings' })}
@@ -721,7 +722,7 @@ function AllResultsPageInner() {
           {/* ── 姓名分布 ── */}
           <h2 className="wse-section-title">{tr({ zh: '姓名分布', en: 'Name distribution' })}</h2>
           <div className="wse-table-wrapper">
-            {loading && !nameStats && <div className="wse-state">{tr({ zh: '加载中...', en: 'Loading...' })}</div>}
+            {loading && !nameStats && <div className="wse-state"><LoadingIndicator>{tr({ zh: '加载中...', en: 'Loading...' })}</LoadingIndicator></div>}
             {error && !nameStats && <div className="wse-state wse-state-error">Error: {error}</div>}
             {nameStats && (
               <>
@@ -777,7 +778,7 @@ function AllResultsPageInner() {
             </div>
           </div>
           <div className="wse-table-wrapper sticky-scroll">
-            {loading && !dirData && <div className="wse-state">{tr({ zh: '加载中...', en: 'Loading...' })}</div>}
+            {loading && !dirData && <div className="wse-state"><LoadingIndicator>{tr({ zh: '加载中...', en: 'Loading...' })}</LoadingIndicator></div>}
             {error && !dirData && <div className="wse-state wse-state-error">Error: {error}</div>}
             {dirData && (
               <>
@@ -838,7 +839,7 @@ function AllResultsPageInner() {
           </div>
 
           <div className="wse-table-wrapper sticky-scroll">
-            {loading && <div className="wse-state">{tr({ zh: '加载中...', en: 'Loading...' })}</div>}
+            {loading && <div className="wse-state"><LoadingIndicator>{tr({ zh: '加载中...', en: 'Loading...' })}</LoadingIndicator></div>}
             {error && <div className="wse-state wse-state-error">Error: {error}</div>}
             {data && !loading && data.mode === 'results' && (
               <>
@@ -956,7 +957,7 @@ function AllResultsPageInner() {
                     <div className="sor-census-chart-hint">{tr({ zh: '历年“名次和第一”不同人数 — 点某年看名单', en: 'Distinct #1-holders by year — click a year' })}</div>
                   </div>
                 )}
-                {!census && <div className="sor-tool-hint">{tr({ zh: '加载中…', en: 'Loading…' })}</div>}
+                {!census && <div className="sor-tool-hint"><LoadingIndicator>{tr({ zh: '加载中…', en: 'Loading…' })}</LoadingIndicator></div>}
                 {census && (
                   <>
                     <p className="sor-census-lead">{isZh
@@ -988,7 +989,7 @@ function AllResultsPageInner() {
           </div>
 
           <div className="wse-table-wrapper sticky-scroll">
-            {loading && <div className="wse-state">{tr({ zh: '加载中...', en: 'Loading...' })}</div>}
+            {loading && <div className="wse-state"><LoadingIndicator>{tr({ zh: '加载中...', en: 'Loading...' })}</LoadingIndicator></div>}
             {error && <div className="wse-state wse-state-error">{error}</div>}
             {sorData && !loading && (
               <>
@@ -1073,7 +1074,7 @@ function AllResultsPageInner() {
 
 export default function AllResultsPage() {
   return (
-    <Suspense fallback={<div style={{ padding: 16, color: 'var(--muted)' }}>Loading…</div>}>
+    <Suspense fallback={<div style={{ padding: 16, color: 'var(--muted)' }}><LoadingIndicator /></div>}>
       <AllResultsPageInner />
     </Suspense>
   );

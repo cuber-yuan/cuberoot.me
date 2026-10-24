@@ -4,7 +4,7 @@
 // 首页「报名」tab(RegistrationComps)与 /wca/comp 卡片视图复用同一份视觉(registration_comps.css 的 .rc-* 类)。
 // 纯展示组件:报名状态 pill 由调用方算好(各页里程碑口径不同)传进来,卡片本身不碰时间逻辑。
 import { useMemo, type ReactNode } from 'react';
-import { Users } from 'lucide-react';
+import { Users } from '@app-foundation/icons/lucide';
 import Link from '@/components/AppLink';
 import PersonLink from '@/components/PersonLink';
 import { WCA_EVENT_ORDER } from '@cuberoot/shared/wca-events';
@@ -12,7 +12,6 @@ import { FollowStar } from '@/components/CompFollow';
 import { compLinkProps } from '@/lib/comp-link';
 import { localizeCompName } from '@/lib/comp-localize';
 import { localizeCity } from '@/lib/city-localize';
-import { countryName } from '@/lib/country-name';
 import { toWcaEventId } from '@/lib/wca-events';
 import { Flag } from '@/components/Flag';
 import { CubingIcon } from '@/components/EventIcon';
@@ -65,10 +64,13 @@ export interface CompCardFollow {
   onRequireLogin?: () => void;
 }
 
-export function CompCard({ comp, isZh, lang, pill, dimmed, follow, competitorLimit, eventRounds, topCubers, children }: {
+export function CompCard({ comp, isZh, lang, pill, dimmed, follow, competitorLimit, eventRounds, topCubers, compactDetails = false, showCountryFlag = true, children }: {
   comp: CompCardComp;
   isZh: boolean;
   lang: 'zh' | 'en';
+  /** Homepage cards: shorten Chinese competition names and show only name/date. */
+  compactDetails?: boolean;
+  showCountryFlag?: boolean;
   /** 报名状态 pill(调用方按各自里程碑口径算好);null/缺省则不渲染 pill */
   pill?: CompCardPill | null;
   /** 已截止 / 已取消等淡化样式 */
@@ -85,8 +87,9 @@ export function CompCard({ comp, isZh, lang, pill, dimmed, follow, competitorLim
   children?: ReactNode;
 }) {
   const name = localizeCompName(comp.id, comp.name, isZh, { explicitNameZh: comp.name_zh ?? undefined, date: comp.start_date });
-  const city = comp.city ? (isZh ? localizeCity(comp.city, true, comp.country) : comp.city) : '';
-  const country = countryName(comp.country, isZh);
+  const displayName = compactDetails && isZh && comp.country.toUpperCase() === 'CN'
+    ? name.replace(/(?:公开赛|赛)$/, '') : name;
+  const city = !compactDetails && comp.city ? (isZh ? localizeCity(comp.city, true, comp.country) : comp.city) : '';
   const dateStr = formatDateRangeIso(comp.start_date, comp.end_date || comp.start_date).replace(/20\d\d-/g, '');
   const events = useMemo(
     () => [...new Set((comp.events ?? []).map(toWcaEventId).filter(Boolean))]
@@ -108,23 +111,25 @@ export function CompCard({ comp, isZh, lang, pill, dimmed, follow, competitorLim
       )}
       <Link {...compLinkProps(comp.id, undefined, lang)} className="rc-main">
         <div className="rc-title">
-          <Flag iso2={comp.country} spanClassName="rc-flag" imgClassName="rc-flag-img" />
-          <span className="rc-name">{name}</span>
+          {showCountryFlag && <Flag iso2={comp.country} spanClassName="rc-flag" imgClassName="rc-flag-img" />}
+          <span className="rc-name">{displayName}</span>
         </div>
-        <div className="rc-meta">
-          {pill && <RegPill pill={pill} />}
-          <span className="rc-date">{dateStr}</span>
+        <div className={compactDetails ? 'rc-details rc-details--compact' : 'rc-details'}>
+          <div className="rc-meta">
+            {pill && <RegPill pill={pill} />}
+            <span className="rc-date">{dateStr}</span>
+          </div>
+          {(city || !!competitorLimit) && <div className="rc-place">
+            {city && <span>{city}</span>}
+            {competitorLimit ? (
+              <span className="rc-limit" title={tr({ zh: `报名上限 ${competitorLimit} 人`, en: `Competitor limit ${competitorLimit}` })}>
+                <Users size={13} aria-hidden="true" />
+                {competitorLimit}
+              </span>
+            ) : null}
+          </div>}
         </div>
-        <div className="rc-place">
-          <span>{city ? `${city}${tr({ zh: '，', en: ', ' })}${country}` : country}</span>
-          {competitorLimit ? (
-            <span className="rc-limit" title={tr({ zh: `报名上限 ${competitorLimit} 人`, en: `Competitor limit ${competitorLimit}` })}>
-              <Users size={13} aria-hidden="true" />
-              {competitorLimit}
-            </span>
-          ) : null}
-        </div>
-        {events.length > 0 && (
+        {!compactDetails && events.length > 0 && (
           <div className="rc-events">
             {events.map((eid) => (
               eventRounds ? (

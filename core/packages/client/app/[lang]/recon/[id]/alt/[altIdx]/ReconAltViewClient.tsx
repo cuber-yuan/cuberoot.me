@@ -9,7 +9,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import Link from '@/components/AppLink';
 import { useParams } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
-import { TriangleAlert } from 'lucide-react';
+import { TriangleAlert } from '@app-foundation/icons/lucide';
 import type { ReconSolve } from '@cuberoot/shared';
 import { getReconScramble } from '@cuberoot/shared/recon-completion';
 import { getRecon } from '@/lib/recon-api';
@@ -25,6 +25,7 @@ import { parseReconId } from '@/lib/recon-seo';
 import '../../../recon.css';
 import '../../../submit/recon_submit.css';
 import '../../recon_detail.css';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 export default function ReconAltViewClient() {
   const params = useParams<{ id: string; altIdx: string }>();
@@ -60,7 +61,7 @@ export default function ReconAltViewClient() {
   );
 
   if (loading) {
-    return <div className="recon-page"><div className="recon-loading">{t('common.loading')}</div></div>;
+    return <div className="recon-page"><div className="recon-loading"><LoadingIndicator>{t('common.loading')}</LoadingIndicator></div></div>;
   }
   if (error || !parent) {
     return (

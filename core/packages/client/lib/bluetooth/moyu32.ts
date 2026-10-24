@@ -65,9 +65,8 @@ import { createDeviceStateReset } from '@cuberoot/shared/smart-cube/device-reset
  * 171) { // gyro`), so the layout comes from lukeburong's write-up.
  * UNVERIFIED against hardware — we own no smart cube.
  *
- * MAC: advertisement manufacturer data (CIC 0x0100..0xFF00, last six payload
- * bytes reversed) → the vendor default `CF:30:16:00:XX:YY` implied by a
- * `WCU_MY32_XXYY` device name → the hook's manual-prompt chain.
+ * MAC: use the native address, saved address, or manual input, then run the
+ * normal info/state/battery handshake without a separate address probe.
  */
 
 import {
@@ -86,7 +85,7 @@ import {
   type TimedMove,
 } from './driver';
 import { fromFaceletString } from '@cuberoot/shared/timer/reconstruct/state';
-import { MOYU32_MAC_ADV, macStringToBytes, normalizeMac } from './mac';
+import { MOYU32_MAC_ADV, macStringToBytes } from './mac';
 import type { CubeBrand } from './types';
 
 const MOYU32_SERVICE = '0783b03e-7735-b5a0-1760-a305d2795cb0';
@@ -332,17 +331,9 @@ export function decodeMoyu32Quaternion(frame: Uint8Array): {
   return { w, x, y, z: -negZ };
 }
 
-/**
- * Vendor default MAC for a `WCU_MY32_XXYY` device name. cstimer's `initMac`
- * builds exactly this string as the prompt's pre-filled default. It is a
- * documented constant prefix for the model, not an OUI guess — a name that
- * doesn't match the pattern returns null and falls through to the prompt.
- */
-export function moyu32DefaultMac(name: string | null | undefined): string | null {
-  const n = (name ?? '').trim();
-  if (!/^WCU_MY32_[0-9A-F]{4}$/i.test(n)) return null;
-  return normalizeMac(`CF:30:16:00:${n.slice(9, 11)}:${n.slice(11, 13)}`);
-}
+/** Prompt suggestion only; automatic use requires the shared encrypted probe. */
+export { moyu32DefaultMac } from '@cuberoot/shared/smart-cube/moyu32';
+import { moyu32DefaultMac } from '@cuberoot/shared/smart-cube/moyu32';
 
 /** Build a 20-byte command frame: `[0] = opcode`, rest zero. */
 function commandFrame(opcode: number, ...rest: number[]): Uint8Array {

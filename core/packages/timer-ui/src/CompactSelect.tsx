@@ -3,16 +3,15 @@
 import { ChevronDown } from 'lucide-react';
 import {
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
 
 import { usePopoverDismiss } from './usePopoverDismiss';
+import { POPOVER_GAP as PANEL_GAP, usePopoverPosition } from './usePopoverPosition';
 
 export interface CompactSelectItem<T extends string | number> {
   value: T;
@@ -34,9 +33,14 @@ export interface CompactSelectProps<T extends string | number> {
   title?: string;
   className?: string;
   triggerClassName?: string;
+  /** Keep menu behavior while the host supplies the trigger's complete appearance. */
+  unstyledTrigger?: boolean;
   popupClassName?: string;
   /** Align option content with an external row containing the trigger. */
   contentAnchorRef?: RefObject<HTMLElement | null>;
+  align?: 'start' | 'center';
+  /** Sidebars can reserve the trigger column by opening to its right. */
+  side?: 'vertical' | 'right';
   variant?: 'pill' | 'plain';
   /** Some icon-only triggers are self-explanatory and do not need a caret. */
   showArrow?: boolean;
@@ -54,16 +58,6 @@ export interface CompactSelectProps<T extends string | number> {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
-
-interface PanelGeometry {
-  left: number;
-  maxHeight: number;
-  maxWidth: number;
-  top: number;
-}
-
-const VIEWPORT_MARGIN = 8;
-const PANEL_GAP = 6;
 
 /**
  * Runtime-agnostic compact single-choice menu. The Web compatibility export
@@ -83,10 +77,13 @@ export function CompactSelect<T extends string | number>({
   title,
   className,
   triggerClassName,
+  unstyledTrigger = false,
   popupClassName,
   contentAnchorRef,
+  align = 'start',
+  side = 'vertical',
   variant = 'pill',
-  showArrow = true,
+  showArrow = false,
   footer,
   panelContent,
   dataNoTimer = false,
@@ -103,7 +100,6 @@ export function CompactSelect<T extends string | number>({
     if (controlledOpen === undefined) setInternalOpen(next);
     onOpenChange?.(value);
   };
-  const [geometry, setGeometry] = useState<PanelGeometry | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const previousOpenRef = useRef(open);
@@ -140,6 +136,9 @@ export function CompactSelect<T extends string | number>({
           && event.clientX <= Math.min(a.right, b.right)
           && event.clientY >= top && event.clientY <= bottom
           && bottom - top <= PANEL_GAP + 1) return;
+        if (side === 'right' && event.clientX >= a.right && event.clientX <= b.left
+          && event.clientY >= Math.max(a.top, b.top) && event.clientY <= Math.min(a.bottom, b.bottom)
+          && b.left - a.right <= PANEL_GAP + 1) return;
       }
       setOpen(false);
     };
@@ -155,87 +154,12 @@ export function CompactSelect<T extends string | number>({
       document.removeEventListener('pointerout', onWindowLeave);
       window.removeEventListener('blur', onBlur);
     };
-  }, [open, dismissOnMouseLeave]);
+  }, [open, dismissOnMouseLeave, side]);
 
-  useLayoutEffect(() => {
-    if (!open) {
-      setGeometry(null);
-      return;
-    }
-    // Dialog filters create a containing block and can clip fixed descendants.
-    // The top layer preserves viewport positioning while keeping modal focus.
-    const popup = panelRef.current;
-    if (popup?.hasAttribute('popover') && typeof popup.showPopover === 'function' && !popup.matches(':popover-open')) {
-      popup.showPopover();
-    }
-    const positionPanel = () => {
-      const trigger = triggerRef.current;
-      const panel = panelRef.current;
-      if (!trigger || !panel) return;
-
-      const viewport = window.visualViewport;
-      const viewportLeft = viewport?.offsetLeft ?? 0;
-      const viewportTop = viewport?.offsetTop ?? 0;
-      const viewportWidth = viewport?.width ?? document.documentElement.clientWidth;
-      const viewportHeight = viewport?.height ?? document.documentElement.clientHeight;
-      const safeLeft = viewportLeft + VIEWPORT_MARGIN;
-      const safeRight = viewportLeft + viewportWidth - VIEWPORT_MARGIN;
-      const safeTop = viewportTop + VIEWPORT_MARGIN;
-      const safeBottom = Math.max(
-        safeTop,
-        viewportTop + viewportHeight - VIEWPORT_MARGIN - Math.max(0, viewportBottomInset),
-      );
-      const anchor = (contentAnchorRef?.current ?? trigger).getBoundingClientRect();
-      const panelRect = panel.getBoundingClientRect();
-      const optionContent = panel.querySelector('.compact-select-option')?.firstElementChild;
-      const contentInset = contentAnchorRef?.current && optionContent
-        ? optionContent.getBoundingClientRect().left - panelRect.left
-        : 0;
-      const safeWidth = Math.max(0, safeRight - safeLeft);
-      const naturalWidth = panel.scrollWidth || panelRect.width || anchor.width;
-      const desiredWidth = Math.min(naturalWidth, safeWidth);
-      const left = Math.min(
-        Math.max(anchor.left - contentInset, safeLeft),
-        Math.max(safeLeft, safeRight - desiredWidth),
-      );
-      const belowTop = anchor.bottom + PANEL_GAP;
-      const belowSpace = Math.max(0, safeBottom - belowTop);
-      const aboveSpace = Math.max(0, anchor.top - PANEL_GAP - safeTop);
-      const panelCss = getComputedStyle(panel);
-      const borderHeight = (parseFloat(panelCss.borderTopWidth) || 0) + (parseFloat(panelCss.borderBottomWidth) || 0);
-      // scrollHeight includes padding, but the border-box height also needs both borders.
-      const desiredHeight = panel.scrollHeight ? panel.scrollHeight + borderHeight : panelRect.height;
-      const placeBelow = belowSpace >= Math.min(desiredHeight, aboveSpace);
-      const availableHeight = placeBelow ? belowSpace : aboveSpace;
-      const maxHeight = Math.min(Math.max(0, desiredHeight), availableHeight);
-      const top = placeBelow
-        ? Math.max(safeTop, belowTop)
-        : Math.max(safeTop, anchor.top - PANEL_GAP - maxHeight);
-      setGeometry({ left, maxHeight, maxWidth: safeWidth, top });
-    };
-
-    positionPanel();
-    const frame = requestAnimationFrame(positionPanel);
-    window.addEventListener('resize', positionPanel);
-    window.addEventListener('scroll', positionPanel, true);
-    window.visualViewport?.addEventListener('resize', positionPanel);
-    window.visualViewport?.addEventListener('scroll', positionPanel);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener('resize', positionPanel);
-      window.removeEventListener('scroll', positionPanel, true);
-      window.visualViewport?.removeEventListener('resize', positionPanel);
-      window.visualViewport?.removeEventListener('scroll', positionPanel);
-    };
-  }, [contentAnchorRef, items.length, open, viewportBottomInset, hasPanelContent]);
-
-  const panelStyle = geometry ? {
-    left: geometry.left,
-    maxHeight: geometry.maxHeight,
-    maxWidth: geometry.maxWidth,
-    top: geometry.top,
-    visibility: 'visible',
-  } satisfies CSSProperties : undefined;
+  const panelStyle = usePopoverPosition({
+    open, triggerRef, panelRef, contentAnchorRef, align, side, viewportBottomInset,
+    contentKey: String(items.length) + ':' + hasPanelContent,
+  });
 
   return (
     <div
@@ -258,7 +182,7 @@ export function CompactSelect<T extends string | number>({
         id={id}
         disabled={disabled}
         type="button"
-        className={['compact-select-trigger', triggerClassName].filter(Boolean).join(' ')}
+        className={['compact-select-trigger', unstyledTrigger && 'compact-select-trigger--unstyled', triggerClassName].filter(Boolean).join(' ')}
         onClick={() => { if (!disabled) setOpen(current => !current); }}
         onPointerEnter={event => {
           if (!disabled && openOnHover && event.pointerType === 'mouse') setOpen(true);

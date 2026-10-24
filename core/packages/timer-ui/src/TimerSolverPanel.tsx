@@ -2,7 +2,7 @@
 
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronRight, Maximize2, Minimize2, X } from 'lucide-react';
+import { ChevronRight, Lightbulb, Maximize2, X } from 'lucide-react';
 import { Spinner } from './Spinner';
 import { useTimerWideLayout } from './TimerWorkspace';
 import { useModalDismiss } from './useModalDismiss';
@@ -24,9 +24,22 @@ const LS_FULL = 'timer.solverHints.full';
 
 /** 一个词就够 —— pill 挤在顶栏那排控件里,「解法提示」四个字白占宽度。 */
 const PANEL_TITLE = { zh: '解法', en: 'Solve' };
+const STEP_TITLE = { zh: '分步解法', en: 'Step-by-step' };
+type SolverView = 'solutions' | 'steps';
+interface ViewProps { view: SolverView; onViewChange(view: SolverView): void }
+
+function SolverViewSelect({ view, onViewChange, language }: ViewProps & { language: 'en' | 'zh' }) {
+  return <select className="solver-view-select" value={view}
+    aria-label={{ zh: '解法视图', en: 'Solution view' }[language]}
+    onChange={event => onViewChange(event.target.value as SolverView)}>
+    <option value="solutions">{PANEL_TITLE[language]}</option>
+    <option value="steps">{STEP_TITLE[language]}</option>
+  </select>;
+}
 
 export interface TimerSolverPanelProps {
   scramble: string;
+  onScrambleChange?(scramble: string): void;
   language: 'en' | 'zh';
   sheetOpen: boolean;
   onSheetOpenChange(open: boolean, replace?: boolean): void;
@@ -96,16 +109,15 @@ function useScrambleSwipe({ onPrevScramble, onNextScramble }: ScrambleNav) {
   return { onPointerDown, onPointerMove, onPointerUp: onPointerEnd, onPointerCancel: onPointerEnd, onClickCapture };
 }
 
-function SolverBody({ scramble, language, compact, settingsSlot, onPrevScramble, onNextScramble, onDismissChange, onBlockingChange }: Pick<TimerSolverPanelProps, 'scramble' | 'language' | 'onDismissChange' | 'onBlockingChange'> & ScrambleNav & { compact: boolean; settingsSlot?: HTMLElement | null }) {
+function SolverBody({ view, scramble, onScrambleChange, language, compact, settingsSlot, onPrevScramble, onNextScramble, onDismissChange, onBlockingChange }: Pick<TimerSolverPanelProps, 'scramble' | 'onScrambleChange' | 'language' | 'onDismissChange' | 'onBlockingChange'> & ScrambleNav & { view: SolverView; compact: boolean; settingsSlot?: HTMLElement | null }) {
   return <Suspense fallback={<div className="solver-panel-loading"><Spinner size={16} label={{ zh: '加载中', en: 'Loading' }[language]} /></div>}>
-    <TimerSolverBody scramble={scramble} language={language} compact={compact}
+    <TimerSolverBody view={view} scramble={scramble} onScrambleChange={onScrambleChange} language={language} compact={compact}
       settingsSlot={settingsSlot} onPrevScramble={onPrevScramble} onNextScramble={onNextScramble} onDismissChange={onDismissChange} onBlockingChange={onBlockingChange} />
   </Suspense>;
 }
 
-/** Full-screen sheet. Own component so useModalDismiss's Escape + body-scroll-lock
- *  mount and unmount with the sheet itself. `onDock` 只有桌面传(手机没有左栏可回)。 */
-function SolverSheet({ scramble, language, compact, onClose, onDock, onPrevScramble, onNextScramble, onDismissChange, onBlockingChange }: Pick<TimerSolverPanelProps, 'scramble' | 'language' | 'onDismissChange' | 'onBlockingChange'> & ScrambleNav & { compact: boolean; onClose: () => void; onDock?: () => void }) {
+/** Full-screen sheet. Escape and body-scroll-lock follow its mount lifecycle. */
+function SolverSheet({ view, onViewChange, scramble, onScrambleChange, language, compact, onClose, onPrevScramble, onNextScramble, onDismissChange, onBlockingChange }: Pick<TimerSolverPanelProps, 'scramble' | 'onScrambleChange' | 'language' | 'onDismissChange' | 'onBlockingChange'> & ScrambleNav & ViewProps & { compact: boolean; onClose: () => void }) {
   const [settingsSlot, setSettingsSlot] = useState<HTMLSpanElement | null>(null);
   const tr = (text: { en: string; zh: string }) => text[language];
   const dialog = useRef<HTMLDivElement>(null);
@@ -125,11 +137,12 @@ function SolverSheet({ scramble, language, compact, onClose, onDock, onPrevScram
   }, [dismiss, onDismissChange]);
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const focusFirst = () => { if (dialog.current) (modalFocusableElements(dialog.current)[0] ?? dialog.current).focus(); };
-    focusFirst();
+    // Focusing the native select during a tap opens its picker on iOS.
+    const focusDialog = () => dialog.current?.focus({ preventScroll: true });
+    focusDialog();
     const onFocus = (event: FocusEvent) => {
       if (event.target instanceof Element && event.target.closest('[aria-modal="true"]') !== dialog.current && event.target.closest('[aria-modal="true"]')) return;
-      if (dialog.current && event.target instanceof Node && !dialog.current.contains(event.target)) focusFirst();
+      if (dialog.current && event.target instanceof Node && !dialog.current.contains(event.target)) focusDialog();
     };
     document.addEventListener('focusin', onFocus);
     return () => { document.removeEventListener('focusin', onFocus); if (previous?.isConnected) previous.focus(); };
@@ -143,23 +156,12 @@ function SolverSheet({ scramble, language, compact, onClose, onDock, onPrevScram
         if (event.key !== 'Tab' || !dialog.current) return;
         const elements = modalFocusableElements(dialog.current); const first = elements[0]; const last = elements[elements.length - 1];
         if (!first) { event.preventDefault(); dialog.current.focus(); }
-        else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog.current)) { event.preventDefault(); last.focus(); }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
       }}>
       <div className="solver-sheet-head">
-        <span className="solver-sheet-title">{title}</span>
+        <SolverViewSelect view={view} onViewChange={onViewChange} language={language} />
         <span className="solver-settings-slot" ref={setSettingsSlot} />
-        {onDock && (
-          <button
-            type="button"
-            className="solver-layout-action"
-            onClick={onDock}
-            title={tr({ zh: '还原到左侧面板', en: 'Restore to side panel' })}
-            aria-label={tr({ zh: '还原到左侧面板', en: 'Restore to side panel' })}
-          >
-            <Minimize2 size={16} aria-hidden="true" />
-          </button>
-        )}
         <button
           type="button"
           className="solver-sheet-close"
@@ -170,7 +172,7 @@ function SolverSheet({ scramble, language, compact, onClose, onDock, onPrevScram
         </button>
       </div>
       <div className="solver-sheet-body">
-        <SolverBody onDismissChange={registerDismiss} onBlockingChange={reportBlocking} scramble={scramble} language={language} compact={compact} settingsSlot={settingsSlot} onPrevScramble={onPrevScramble} onNextScramble={onNextScramble} />
+        <SolverBody view={view} onDismissChange={registerDismiss} onBlockingChange={reportBlocking} scramble={scramble} onScrambleChange={onScrambleChange} language={language} compact={compact} settingsSlot={settingsSlot} onPrevScramble={onPrevScramble} onNextScramble={onNextScramble} />
       </div>
     </div>
   );
@@ -178,6 +180,7 @@ function SolverSheet({ scramble, language, compact, onClose, onDock, onPrevScram
 
 export default function TimerSolverPanel({
   scramble,
+  onScrambleChange,
   language,
   sheetOpen,
   onSheetOpenChange,
@@ -190,6 +193,7 @@ export default function TimerSolverPanel({
   onPrevScramble,
   onNextScramble,
 }: TimerSolverPanelProps & ScrambleNav) {
+  const [view, setView] = useState<SolverView>('solutions');
   const [settingsSlot, setSettingsSlot] = useState<HTMLSpanElement | null>(null);
   const tr = (text: { en: string; zh: string }) => text[language];
   const isPhone = useSyncExternalStore(phoneSubscribe, () => !!window.matchMedia?.('(max-width: 560px)').matches, () => false);
@@ -295,16 +299,20 @@ export default function TimerSolverPanel({
         {/* display:contents 兜底(见 shell.css):除「桌面左栏已展开」外,头部仍是
             单独一颗 pill,加这层不改任何现有形态。 */}
         <div className="solver-panel-headrow">
-          <button
+          {railBodyOpen ? <SolverViewSelect view={view} onViewChange={setView} language={language} /> : <button
             type="button"
             className="solver-panel-head"
             onClick={toggle}
             aria-expanded={open}
+            aria-label={view === 'steps' ? tr(STEP_TITLE) : title}
+            title={view === 'steps' ? tr(STEP_TITLE) : title}
           >
-            <span className="solver-panel-title">{title}</span>
+            {isDesktopRail
+              ? <span className="solver-panel-title">{view === 'steps' ? tr(STEP_TITLE) : title}</span>
+              : <Lightbulb size={18} aria-hidden="true" />}
             {/* 收起时箭头留在入口内；展开时移到全屏按钮右侧。 */}
             {isDesktopRail && !railOpen && <ChevronRight size={14} className="solver-panel-chevron" />}
-          </button>
+          </button>}
           {railBodyOpen && <span className="solver-settings-slot" ref={setSettingsSlot} />}
           {isDesktopRail && railOpen && (
             <button
@@ -327,27 +335,29 @@ export default function TimerSolverPanel({
               aria-label={tr({ zh: '收起解法面板', en: 'Collapse solutions panel' })}
               title={tr({ zh: '收起解法面板', en: 'Collapse solutions panel' })}
             >
-              <ChevronRight size={14} className="solver-panel-chevron" aria-hidden="true" />
+              <ChevronRight size={16} className="solver-panel-chevron" aria-hidden="true" />
             </button>
           )}
         </div>
         {railBodyOpen && (
           <div className="solver-panel-body">
-            <SolverBody onDismissChange={onDismissChange} onBlockingChange={onBlockingChange} scramble={scramble} language={language} compact settingsSlot={settingsSlot} onPrevScramble={onPrevScramble} onNextScramble={onNextScramble} />
+            <SolverBody view={view} onDismissChange={onDismissChange} onBlockingChange={onBlockingChange} scramble={scramble} onScrambleChange={onScrambleChange} language={language} compact settingsSlot={settingsSlot} onPrevScramble={onPrevScramble} onNextScramble={onNextScramble} />
           </div>
         )}
       </aside>
       {sheetOpen && !resultsPanelOpen && mounted && createPortal(
         // 紧凑排版只给真手机;平板 / 桌面全屏都够宽,摊开排。
-        // 桌面提供还原按钮(切回左栏 = 关浮层并记住);手机没有左栏,只留 ✕。
+        // 关闭是唯一退出入口，桌面回到左栏，手机回到计时器。
         <SolverSheet
+          view={view}
+          onViewChange={setView}
           scramble={scramble}
+          onScrambleChange={onScrambleChange}
           language={language}
           compact={isPhone}
           onDismissChange={onDismissChange} onBlockingChange={onBlockingChange}
           // 桌面关掉全屏 = 选回左栏(否则记着的形态与眼前看到的不一致,一刷新又弹回全屏)。
           onClose={isDesktopRail ? () => pickFull(false) : closeSheet}
-          onDock={isDesktopRail ? () => pickFull(false) : undefined}
           onPrevScramble={onPrevScramble}
           onNextScramble={onNextScramble}
         />,

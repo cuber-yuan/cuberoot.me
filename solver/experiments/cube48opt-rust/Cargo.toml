@@ -2,6 +2,7 @@
 name = "cube48opt-research"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.89"
 publish = false
 license = "GPL-3.0-or-later"
 description = "Native Rust optimal cube search with cube48opt and nissy-core H0–H11 table backends"
@@ -13,6 +14,8 @@ default = ["neon-moves", "h10-fast-coord", "h10-prefetch"]
 neon-moves = []
 h10-fast-coord = []
 h10-prefetch = []
+# Standalone mathematical research; no production search or table is replaced.
+corner-research = []
 # Only the dedicated target/opt10 build opts in; local execution requires the
 # Opt10 guard budget and a matching complete small-table generator proof.
 opt10-runtime = []
@@ -28,6 +31,8 @@ opt10-native-search = [
 ]
 # Isolated immutable-table read hint and decoder inlining; no coordinate changes.
 opt10-native-hotpath = ["opt10-native-search"]
+# Unmeasured x86 read hint; existing hotpath/ARM builds retain their behavior.
+opt10-native-prefetch-x86 = ["opt10-native-hotpath"]
 # Issue immutable probe loads as a group before decoding their bounds.
 opt10-native-batch = ["opt10-native-hotpath"]
 # Probe the other side only when a weak rejection can still save owned siblings.
@@ -52,8 +57,22 @@ opt9-native-dynamic = []
 opt9-native-ranked = ["opt9-native-dynamic"]
 # Native-only read-ahead hint; does not alter coordinates, bounds or scheduling.
 opt9-native-prefetch = []
+# Unmeasured x86 read hint for the generic Opt1–7 oracle only.
+opt1-7-native-prefetch = []
 # Opposite quarter-turn children share the inverse subgroup lower bound.
 opt9-native-quarter = []
+opt8-native-quarter = ["opt9-native-quarter"]
+# Lookup-only candidate; benchmark regression remains isolated from defaults.
+opt8-native-specialized = []
+# Opt8 policy gate; use the frozen experiment's explicit native search flags.
+opt8-native-search = ["opt8-native-specialized"]
+# Isolated grouped Opt8 reads; the shared pipeline feature applies to the
+# candidate binary, while default builds keep the original lookup ordering.
+opt8-native-batch = ["opt8-native-search", "wasm-batch-probes"]
+# Isolated x86 read-ahead hint; keep the existing Opt8 search policy explicit.
+opt8-native-prefetch = ["opt8-native-specialized"]
+# Linux-only allocation advice candidate; no global THP policy or table changes.
+opt8-native-hugepages = []
 opt9-native-quarter-cache = ["opt9-native-quarter"]
 # Prove the starting depth before dispatching workers; preserve IDA optimality.
 opt9-native-root-bound = []
@@ -65,14 +84,30 @@ opt9-native-niss = []
 opt9-native-ternary = []
 # Opposite faces commute: reuse proven rejections across same-axis branches.
 opt9-native-axis = []
-# Shared-WASM experiment only; native/default and the single-thread adapter
-# retain the original interleaved lookup/decode pipeline.
+# Shared-WASM pipeline, also used by the opt-in native Opt8 batch candidate.
+# Enabling this changes lookup phases for all oracles in that binary.
 wasm-batch-probes = []
+# Opt-in shared-WASM candidate; default builds remain unchanged.
+wasm-quarter-fixed = []
+# The shared WASM adapter opts into the existing direct backward coset proof.
+# Native production searches remain unchanged; unit builds exercise its proof.
+wasm-coset-prune = ["wasm-quarter-fixed"]
+# Skip depths ruled out by the immutable root lower bound before worker dispatch.
+wasm-root-bound = []
+# Materialize the normal state only after its inverse lower bound survives.
+wasm-lazy-normal = []
+# Search-frame-only 24-byte states; Cube's external/native layout stays 20.
+wasm-padded-state = []
 
 [[example]]
 name = "bpmx-check"
 path = "examples/bpmx-check.rs"
 required-features = ["bpmx-check"]
+
+[[bin]]
+name = "corner-research"
+path = "src/bin/corner-research.rs"
+required-features = ["corner-research"]
 
 [profile.release]
 opt-level = 3

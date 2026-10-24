@@ -152,6 +152,7 @@ html[data-theme='dark'] .stsv {
   flex-wrap: wrap;
   margin: 4px 0 12px;
 }
+.stsv-method-controls { display: flex; align-items: center; gap: 2px; }
 .stsv-control { display: flex; flex-direction: column; gap: 4px; }
 .stsv-control > span { font-size: 12px; color: var(--sv-text-sub); }
 /* 直接子 select 才套工具栏外观;嵌套的「底色」picker(孙级 .subset-picker-mode)保留自带样式。 */
@@ -445,7 +446,8 @@ html[data-theme='dark'] .stsv {
 .stsv-angle[data-empty='true'] { opacity: 0.38; }
 .stsv-angle:hover { filter: brightness(1.07); }
 /* 选中:用 accent 描边而非改背景,保留底面色可辨 */
-.stsv-angle.is-sel { outline: 3px solid var(--sv-accent); outline-offset: 2px; }
+.stsv-angle.is-sel { outline: 1px solid var(--sv-accent); outline-offset: 1px; }
+.stsv-angle:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .stsv-angle-n { font-size: 14px; font-weight: 700; line-height: 1; color: var(--face-fg, var(--sv-text)); }
 .stsv-angle-dot { color: var(--face-fg, var(--sv-text-mute)); font-size: 12px; line-height: 1; }
 .stsv-angle-best {
@@ -474,14 +476,18 @@ html[data-theme='dark'] .stsv {
 .stsv-sols { width: 100%; min-width: 0; }
 .stsv-sols-count { color: var(--sv-text-mute); font-size: 12px; margin-bottom: 6px; }
 .stsv-empty { color: var(--sv-text-mute); font-size: 13px; padding: 6px 0; }
-.stsv-solution-controls { display: flex; align-items: center; gap: 8px; }
+.stsv-solution-controls { position: relative; display: flex; align-items: center; gap: 8px; }
+.stsv-sol-rotation, .stsv-sol-prefix { color: var(--accent); }
 .stsv-sol-prefix,
 .stsv-solution-controls > .stsv-sol-yrot {
   flex-shrink: 0;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 13px;
   white-space: nowrap;
+  line-height: 20px;
 }
+.stsv-solution-controls > .stsv-sol-yrot { height: 32px; width: auto; min-width: 2ch; }
+.stsv-solution-select .compact-select-trigger { min-height: 32px; line-height: 20px; }
 .stsv-solution-select.compact-select { flex: 1; min-width: 0; align-self: center; }
 .stsv-solution-select.compact-select--plain .compact-select-trigger:hover:not(:disabled) {
   text-decoration: none;
@@ -516,7 +522,11 @@ html[data-theme='dark'] .stsv {
 }
 .stsv-solution-menu .stsv-sol-option {
   display: grid;
-  grid-template-columns: minmax(max-content, 1fr) 3ch;
+  grid-template-columns: minmax(max-content, 1fr) 3ch max-content;
+}
+/* 带槽位色块时有三项内容，不能把公式挤进步数列并让步数换行。 */
+.stsv-solution-menu .stsv-sol-option:has(> .stsv-sol-len:nth-child(3)) {
+  grid-template-columns: max-content minmax(max-content, 1fr) 3ch max-content;
 }
 .stsv-solution-menu .stsv-sol-option code {
   white-space: nowrap;
@@ -553,8 +563,7 @@ html[data-theme='dark'] .stsv {
    display 显式 inline-block 覆盖 Tailwind preflight 的 `svg { display: block }`(否则对勾会掉到下一行)。 */
 .stsv-sol-copied { display: inline-block; color: var(--signal-success); margin-left: 6px; vertical-align: middle; flex: 0 0 auto; }
 
-/* y 预转体:alg 里内联的橙色方框按钮,常驻(不再另设左侧徽标)。
-   rot≠0 框里显示 y / y2 / y′;rot=0 是个空橙框,点它开始加预转体。 */
+/* Pre-rotation remains inline, emphasized by colour without a container. */
 .stsv-sol-yrot {
   appearance: none;
   display: inline-flex;
@@ -568,11 +577,11 @@ html[data-theme='dark'] .stsv {
   margin: 0;
   cursor: pointer;
   font: inherit;                 /* 继承 <code> 等宽字,融进 alg */
-  font-weight: 600;
+  font-weight: inherit;
   line-height: 1;
-  border: 1px solid var(--sv-accent);
-  border-radius: 4px;
-  background: var(--sv-accent-soft);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--sv-accent);
 }
 .stsv-sol-yrot:hover { background: color-mix(in srgb, var(--sv-accent) 20%, transparent); }
@@ -626,6 +635,46 @@ html[data-theme='dark'] .stsv {
   border-radius: 8px;
   background: var(--card);
 }
-.stsv-settings-limits { display: flex; flex-wrap: wrap; gap: 16px; }
+.stsv-settings-limits { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.stsv-settings-limits .stsv-control { flex-direction: row; align-items: center; gap: 8px; }
+.stsv-settings-limits .stsv-control > span { white-space: nowrap; }
 .stsv-settings .stsv-moverestrict { margin: 0; }
 .stsv-settings .stsv-mr-grid { flex-wrap: wrap; }
+
+/* Expanded timer: one shared player on the left, persistent solutions on the right. */
+.stsv-result.stsv-result-expanded {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 24px;
+}
+.stsv-result-expanded > .stsv-player { grid-column: 1; grid-row: 1; width: 100%; }
+.stsv-result-expanded > .stsv-sols { grid-column: 2; grid-row: 1; }
+.stsv-solution-list { display: flex; flex-direction: column; gap: 4px; }
+.stsv-solution-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; }
+.stsv-solution-row.is-selected { background: var(--accent-soft); }
+.stsv-solution-choice {
+  appearance: none; border: 0; background: transparent; color: inherit; font: inherit;
+  padding: 6px 0; flex: 1; min-width: 0; text-align: left; cursor: pointer;
+}
+.stsv-solution-choice:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.stsv-solution-choice .stsv-sol-option code { white-space: normal; overflow-wrap: anywhere; }
+.stsv-solution-choice .stsv-sol-len { margin-left: auto; }
+@media (max-width: 720px) {
+  .stsv-result.stsv-result-expanded { grid-template-columns: minmax(0, 1fr); }
+  .stsv-result-expanded > .stsv-sols { grid-column: 1; grid-row: 2; }
+}
+.stsv-sol-orientation {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+.stsv-sol-orientation:hover { background: var(--accent-soft); }
+.stsv-sol-orientation:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

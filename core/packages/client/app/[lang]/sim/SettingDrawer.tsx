@@ -6,7 +6,7 @@
 
 import BoolToggle from '@/components/BoolToggle';
 import '@cuberoot/timer-ui/compact-select.css';
-import { X } from 'lucide-react';
+import { X } from '@app-foundation/icons/lucide';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CUBE_FILL } from '@/lib/cube-colors';
 import GhostCube from '@cuberoot/puzzle-render-core/engine/ghost/GhostCube';
@@ -992,7 +992,7 @@ export function KeymapModal({ open, onClose, keymap, onKeymapChange, onResetKeym
           </div>
 
           <button type="button" className="sim-keymap-reset" onClick={onResetKeymap}>
-            {t('恢复默认快捷键', 'Reset shortcuts to defaults')}
+            {t('恢复默认', 'Reset defaults')}
           </button>
         </div>
       </div>

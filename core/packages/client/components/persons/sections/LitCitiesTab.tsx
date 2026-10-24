@@ -4,13 +4,14 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from '@/components/AppLink';
-import { Globe2 } from 'lucide-react';
+import { Globe2 } from '@app-foundation/icons/lucide';
 import { Flag } from '@/components/Flag';
 import { countryName } from '@/lib/country-name';
 import { localizeCityName } from '@/lib/cn-city-name';
 import { getCanonicalCompCityLabels } from '@/lib/comp-city';
 import { buildLitFromComps } from '../logic/lit_cities';
 import type { WcaCompetition, WcaPersonProfile } from '@/lib/wca-person-api';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 interface Props {
   profile: WcaPersonProfile;
@@ -45,7 +46,7 @@ export default function LitCitiesTab({ profile, comps, isZh }: Props) {
   );
 
   if (!comps || canonicalCities?.comps !== comps) {
-    return <div className="wp-loading-inline">{t('加载中…', 'Loading…')}</div>;
+    return <div className="wp-loading-inline"><LoadingIndicator>{t('加载中…', 'Loading…')}</LoadingIndicator></div>;
   }
   if (lit && lit.cities.length === 0) {
     return <div className="wp-empty">{t('暂无比赛足迹', 'No competition footprint')}</div>;

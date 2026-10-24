@@ -6,6 +6,12 @@ import {
 } from '../src/lib/navigation';
 
 describe('mini program website navigation', () => {
+  it.each(['privacy', 'contact'])('opens bundled %s without a website session or network page', key => {
+    const navigateTo = vi.fn();
+    vi.stubGlobal('wx', { navigateTo });
+    expect(openWebsitePageOnce({}, key, { failureMessage: '打开失败' })).toBe(true);
+    expect(navigateTo).toHaveBeenCalledWith(expect.objectContaining({ url: `/pages/${key}/index` }));
+  });
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();

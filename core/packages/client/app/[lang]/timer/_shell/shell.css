@@ -67,11 +67,58 @@
   overflow: visible;
 }
 
-/* Sidebars must not contribute their content height to the timer's grid.
-   Only the main content may grow the document on short screens. */
+/* User spacing stays in normal flow: enlarged content pushes the following
+   regions down instead of covering them. Horizontal placement stays centered. */
+.timer-shell .timing-surface.timing-surface--solo {
+  padding-top: var(--solo-scramble-gap, 16px);
+  row-gap: var(--solo-timer-gap, 20px);
+}
+.timer-shell .timing-surface--solo .scramble-strip .scramble-src-row {
+  /* Cancel the strip's 8px flex gap before applying the requested spacing. */
+  margin-top: calc(var(--solo-source-gap, 16px) - 8px);
+  --timer-scramble-src-fs: calc(12px * var(--solo-source-scale, 1));
+}
+.timer-shell .timing-surface--solo .timing-surface-core {
+  gap: var(--solo-cube-gap, 8px);
+}
+.timer-shell .timing-surface--solo .timing-surface-cube-frame {
+  --cube-h: calc(var(--timer-cube-h) * var(--solo-cube-scale, 1));
+}
+
+/* Keep the desktop workspace within the viewport; previews use the remaining
+   height after the scramble, readout and fixed footer have been laid out. */
 @media (min-width: 1024px) {
   .timer-shell.timer-workspace.timer-workspace {
-    grid-template-rows: auto minmax(min-content, 1fr);
+    height: calc(100dvh - var(--page-notice-h, 0px));
+    min-height: 0;
+    overflow: hidden;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .timer-shell .timer-solo-main { container-type: inline-size; }
+  .timer-shell .timing-surface.timing-surface--solo {
+    min-height: 0;
+    flex: 1 1 0;
+    grid-template-rows: auto minmax(0, 1fr);
+    row-gap: min(var(--solo-timer-gap, 20px), 2dvh);
+    --timer-scramble-fs: min(36px, 6cqw);
+  }
+  .timer-shell .timing-surface--solo .timing-surface-core {
+    min-height: 0;
+    height: 100%;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    justify-items: center;
+    --timer-readout-max-size: min(15dvh, 22cqw);
+  }
+  .timer-shell .timing-surface--solo .timing-surface-sub,
+  .timer-shell .timing-surface--solo .timing-surface-cube {
+    min-height: 0;
+    height: 100%;
+  }
+  .timer-shell .timing-surface--solo .timing-surface-cube-frame {
+    height: min(100%, calc(var(--timer-cube-h) * var(--solo-cube-scale, 1)));
+    width: auto;
+    aspect-ratio: var(--timer-cube-aspect, 1.5);
   }
   .timer-shell .timer-workspace-panel {
     contain: size;
@@ -121,14 +168,25 @@
 .shell-topbar-left {
   --timer-topbar-control-size: 32px;
 }
-.shell-topbar-left .settings-popover-trigger {
+.shell-topbar-left .settings-popover-trigger,
+.shell-topbar-left .solo-layout-toggle {
   width: var(--timer-topbar-control-size);
   height: var(--timer-topbar-control-size);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  flex-shrink: 0;
 }
 .shell-topbar-left .timer-difficulty-trigger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  height: var(--timer-topbar-control-size);
+  min-height: var(--timer-topbar-control-size);
+  padding: 0 6px;
+  margin: 0;
 }
 .shell-topbar-left .shell-players-select,
 .shell-topbar-left .timer-difficulty-trigger {
@@ -139,42 +197,6 @@
   line-height: 20px;
 }
 
-/* The solo device chooser leads the toolbar, before the players control. */
-.timer-shell .shell-device-center.shell-topbar-device-center {
-  position: relative;
-  inset: auto;
-  transform: none;
-  translate: none;
-  width: var(--timer-topbar-control-size);
-  height: var(--timer-topbar-control-size);
-  min-height: var(--timer-topbar-control-size);
-  flex-basis: var(--timer-topbar-control-size);
-  border: 0;
-  border-radius: 6px;
-  background: none;
-  color: var(--foreground);
-}
-
-.shell-topbar-device-center .shell-device-center-trigger {
-  width: var(--timer-topbar-control-size);
-  height: var(--timer-topbar-control-size);
-  min-height: var(--timer-topbar-control-size);
-}
-
-.shell-topbar-device-center .shell-device-center-menu,
-.shell-topbar-device-center .devcube {
-  /* anchored-panel: clamped (both device panels retain usePanelClamp) */
-  top: calc(100% + 6px);
-  bottom: auto;
-  left: 0;
-  right: auto;
-}
-
-.shell-topbar-device-center .shell-device-center-menu {
-  width: max-content;
-  min-width: 0;
-  max-width: calc(100vw - 16px);
-}
 /* ── Main column ────────────────────────────────────────── */
 
 /* Default surfaces outside the shared solo/net/local layouts. */

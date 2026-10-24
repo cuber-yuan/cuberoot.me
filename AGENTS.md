@@ -9,7 +9,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 | 路径 | 责任与边界 |
 | --- | --- |
 | `core/packages/client` | 唯一 Web 前端，包含 `/platform/*` 产品入口及其复用的 `/org/*`、`/learn/*` 深链 |
-| `core/apps/api` | Hono API + PostgreSQL，独立运行和部署；对 Web 源码与 `client/public` 的旧耦合是待治理债务，不得扩大 |
+| `core/apps/api` | Hono API + PostgreSQL，独立运行和部署；源码与运行时资产不依赖 Web 私有目录；既有解耦验收见架构跟踪表，禁止重新引入 |
 | `core/packages/app-ui` | Android、iOS、HarmonyOS NEXT、Windows 和 macOS 唯一共享的 React 产品层；不调用原生 API，只通过宿主 capability adapter 使用系统能力 |
 | `core/apps/mobile` | Android/iOS 共用的 Capacitor 薄宿主；业务 UI 从 `@cuberoot/app-ui` 消费 |
 | `core/apps/desktop` | Windows/macOS 共用的单一 Tauri 薄宿主；构建、安装、BLE、签名与公证证据分平台记账 |
@@ -22,10 +22,10 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 | `core/packages/platform` | workspace 外的退役历史归档，不测试、不构建、不部署、不引入新功能 |
 | `solver/` | workspace 外 Rust 求解引擎，产 native 分析器和 WASM；`target/`、`tables/`、`pkg-*` 仅本机有 |
 | `research/reconer/` | workspace 外速拧视频自动复盘研发；进入前读 `research/reconer/AGENTS.md`、`roadmap.md`、`plan.md` 和 `human.md` |
-| `tools/` / `stats/` | `static.cuberoot.me` 服务的混合 upstream/static 树与已提交数据生成物，本轮不迁仓 |
+| `tools/` / `stats/` | `static.cuberoot.me` 的 upstream/教学资源与本地生成数据；统计快照由 `wca-data-latest` Release 管理，不再提交 Git |
 | `ops/` / `docs/` / `.github/workflows` | 运维、状态/设计记录和 CI/部署契约 |
 
-事实源按优先级核对：`core/pnpm-workspace.yaml` 与各 `package.json` 定义 pnpm workspace/命令，Cargo app 由自身 `Cargo.toml` 定义；源码路由、shared schema 和 migration 定义运行契约；`.github/workflows` 与 `ops/` 定义发布边界；`docs/generated-artifacts.json` 定义生成物，`docs/generated-artifacts.md` 解释维护方式；`docs/architecture-modernization-tracker.md` 是架构执行入口。
+事实源按优先级核对：`core/pnpm-workspace.yaml` 与各 `package.json` 定义 pnpm workspace/命令，Cargo app 由自身 `Cargo.toml` 定义；源码路由、shared schema 和 migration 定义运行契约；`.github/workflows` 与 `ops/` 定义发布边界；`docs/generated-artifacts.json` 定义生成物，`docs/generated-artifacts.md` 解释维护方式；`docs/architecture-modernization-tracker.md` 是当前架构执行入口，历史验收单独保存在 `docs/architecture-modernization-history.md`。架构建议须注明检查提交与具体源码/配置证据；路径和 package 身份复用现有 workspace resolver，部署路径合同从 manifest 依赖推导，文档不重复维护完整清单。
 
 新代码归属：页面和平台适配留在所属 app；稳定、运行时中性且有真实多端消费者的契约/纯逻辑才进共享 package；只因两份文件相似不拆 package。
 
@@ -33,7 +33,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 仓库自有 PowerShell 脚本已迁为 TypeScript 或退役，清单和验证边界见 `docs/powershell-to-typescript-tracker.md`。新增自动化入口使用 TypeScript；调用方、CI、hook 配置和文档不得重新引入 `.ps1` 或把 `pwsh` 当作 TS 入口的依赖。
 
-打乱统计的日常一键入口在 `core/` 运行 `pnpm stats:scramble`：默认增量运行全部作业，成功后自动灌线上 PG、上传 static，并提交推送统计文件，与旧 `update_cross_stats.ps1` 的默认发布语义一致。明确只想本地计算时用 `pnpm stats:scramble:local`；仅跑指定作业用 `--jobs stages|333opt|puzzles`，只读查看路径与计划用 `pnpm stats:scramble:local --plan`。运行日常一键命令即明确授权本轮统计发布；其他代码 push 仍遵守部署章节。
+打乱统计的日常一键入口在 `core/` 运行 `pnpm stats:scramble`：默认增量运行全部作业，成功后自动灌线上 PG、通过同一个 `wca-data-latest` Release 发布最新统计，并增量上传独立在线分片；统计产物不再提交 Git。明确只想本地计算时用 `pnpm stats:scramble:local`；仅跑指定作业用 `--jobs stages|333opt|puzzles`，只读查看路径与计划用 `pnpm stats:scramble:local --plan`。新 checkout 先运行 `pnpm stats:hydrate` 恢复校验后的数据及发布基线。运行日常一键命令即明确授权本轮统计发布；其他代码 push 仍遵守部署章节。
 
 创建或修改 Mac 快捷指令用 [mac-shortcuts skill](.agents/skills/mac-shortcuts/SKILL.md)；本机「跑打乱统计」实例见 [docs/mac-stats-shortcut.md](docs/mac-stats-shortcut.md)。
 
@@ -42,7 +42,7 @@ WXML 表达式直接写 `&&` / `||`，禁 HTML 实体；改 WXML 后必须通过
 
 新增生产依赖禁止 `package -> app`、`app A -> app B 源码`、`server -> client/client public`、`miniprogram -> React DOM/Next`、跨包 deep import 和任何现役包对 `packages/platform` 的引用；已有违规在架构跟踪表里递减，不得扩大。
 
-所有 core pnpm 命令先进入 `core/`；Cargo app 进入自身目录运行 `cargo`；验证使用目标单元的 `typecheck`/`test`/`build`；当前 API 部署仍对广泛 `core/**` 变更敏感，push 前必须按 workflow path filter 核对实际触发和运行产物。
+所有 core pnpm 命令先进入 `core/`；Cargo app 进入自身目录运行 `cargo`；验证使用目标单元的 `typecheck`/`test`/`build`；API 部署按真实输入路径触发；push 前以当前 workflow path filter 与产物步骤核对范围，不从历史文档推断。
 
 ## 模块归属(fork 不能改)
 
@@ -74,6 +74,7 @@ WXML 表达式直接写 `&&` / `||`，禁 HTML 实体；改 WXML 后必须通过
 
 > **团队提交政策（2026-10-11）**：默认只改本地，不自动提交或推送。用户要求发布时，所有已有仓库写入权限的成员及使用其已授权账号的 AI 均可直接 commit → push main，无需 PR、他人审批或个人豁免。PR 可按需使用。推送前同步最新 main、解决冲突并完成必要验证，推送后确认适用的 CI 和部署结果；GitHub 不再以 PR 或检查通过作为普通推送的前置门槛。保留禁止强推、禁止删除主分支的保护，不夹带他人改动。当次指令优先。
 
+- 小改动不单独提交；同一功能积累较多代码改动后再集中提交，明确要求立即提交时除外。
 - 当次明确指令优先：用户说“仅本地/不 push”“只建 PR/先别合并”“不要部署”等时按当次范围执行；仅要求分析或评审的任务不自动变成修改与发布任务。
 - 发布授权以本节和当次任务为准；Skill 中的常规 push/上传/workflow 提示不另设重复确认关卡。沿用平台和工具实际提供的权限与交互要求；本授权不授予新账号访问权，也不替代必须由用户完成的安全交接。
 - 充分使用用户已经授予且实际可用的仓库写入权限，不擅自扩大账号权限。没有写入权限的贡献者仍通过 PR 交付。需要用户亲自操作或缺少必要信息时，说明具体原因和所需的一步。
@@ -106,6 +107,8 @@ WXML 表达式直接写 `&&` / `||`，禁 HTML 实体；改 WXML 后必须通过
 
 ## 开发命令
 
+- **代码量统计（维护者要求，2026-10-22）**：用户说“统计代码量”“看看代码统计”等时，AI 直接运行 `cloc` 并汇总结果，不只提供命令让用户自行执行。默认在仓库根目录用 `cloc --vcs=git` 统计 Git 跟踪文件的当前本地内容，按需补充语言和主要模块统计；明确区分代码、注释、空行，以及数据、资源、第三方和生成内容，不把总行数称为自研代码量。维护者 Mac 已通过 Homebrew 安装 cloc；换环境先检查可用性。
+
 流量异常排查先读 [`docs/traffic-monitor.md`](docs/traffic-monitor.md) 与 [`docs/traffic-defense.md`](docs/traffic-defense.md)（当前防护、费用保护、暂停及恢复步骤），2026-09-22 `/zh/calc` 峰值的证据见 [`docs/traffic-incident-2026-09-22.md`](docs/traffic-incident-2026-09-22.md)。先核对报表的 `coverage`：自动来源分析目前只覆盖自有服务器 nginx；Vercel 请求在现有 Firewall 和 Logs 中按时间与路径核查。Analytics 是浏览器事件，自有线路也可能上报，不能等同于 Vercel 页面线路；停用时不得为了监控自行重新开启。User-Agent 和浏览器名称不能证明是真人；不要把 nginx 请求数当作全站访客数，也不要为监控启用额外收费项。
 
 使用 pnpm 12.6.0；运行 core 命令前核实 CWD，在仓库根时先进入 `core/`；`ERR_PNPM_NO_PKG_MANIFEST` 时先检查执行目录。
@@ -134,6 +137,8 @@ pnpm --filter @cuberoot/client lint
 
 ### 本地计算内存与交换保护（维护者更新，2026-10-13）
 
+- **长期求解任务生命周期（维护者要求，2026-10-14）**：所有长期计算必须持续保存可验证的结果和断点；用户中断或异常退出后，从已保存结果续算，不从头重跑。一次完整任务中，求解进程及只读大表必须常驻，逻辑批次只负责调度、验解和保存，不得每批退出进程、重载/重新全表校验，也不得用定时重启代替常驻。仅任务完成、用户停止、程序错误、授权到期或实际资源保护触发时退出。换出、压力、RSS、余量保护及独占锁继续有效；失败不得自动重启或重设保护基线。新 AI 修改此类任务时必须核查这两项，并用跨批次同一 PID 的运行证据确认常驻。
+
 - **H10 求解规则已修改（2026-10-12）**：维护者明确允许启动 H48 h10 求解及其算法优化对照，运行时监控即为此类任务的启动条件，不再要求先具备系统级防换出机制，也不再按单次任务、命令或源码 hash 申请例外。此规则覆盖原版和实验版 H10 求解器，以及对照所需的小型辅助剪枝表；不授权重建 H10/H11 大表。启动前检查已有计算、内存压力和预算，运行中持续记录同一系统启动标识及 Swapouts；新增换出、压力异常、任务 RSS 超限或保守余量低于 2 GiB 时停止并保留结果，不得重设基线自动重启。不得据此宣称操作系统已禁用 swap。下列系统级防换出启动限制不再适用于 H10 求解，其他大内存计算仍按原规则执行。
 
 - **cube48opt Rust 研究授权（2026-10-12）**：维护者明确继续 Opt1–9 原生移植与原版对照，允许该独立研究的建表、查表、求解和基准，但必须由 `solver/experiments/cube48opt-rust/guard.mts` 启动。用 `CUBEOPT_VARIANT=1..9` 选择档位，由入口按模式预估内存、排除并行计算并持续监控整个进程树 RSS、内存压力、同次启动的 Swapouts 和至少 2 GiB 余量；触线停止、保留结果，不得重设基线自动重启。禁止直接运行研究原生求解器的 `solve`、`oracle.mjs generate|query|solve`、`validate.mjs` 或 `benchmark.mjs`；`inspect`、`small`、`verify-small` 和小表坐标校验可直接执行。授权仅限这个研究入口，不解除 H10/H11 大表重建限制，也不改变日常统计仍使用 H10 的约定；监控不代表操作系统禁止换出。
@@ -160,6 +165,12 @@ H11 在本机仅允许源码实现、静态检查和不接触 H11 表文件的�
 
 ## 测试
 
+- 求解器性能对比默认每版单轮、不预热，未经用户明确要求不重复测试。
+
+- 智能魔方复盘收录、步骤批注、待办队列与 AI 处理遵循 `docs/recon-intake-workflow.md`。管理员在页面点击确认即为该版本的明确收录授权；AI 通过 `core/` 的 `pnpm recon:intake` 领取、续期、测试和回写。不得修改人工预期来通过检查，不得把待验收样本自行升级为已确认，默认仅本地修改。收录后的正式回归快照由 `pnpm recon:intake export` 生成。
+
+- **智能魔方默认真机（维护者要求，2026-10-15）**：维护者有多款智能魔方，日常开发和真机验证默认使用 **GAN 16 UI**，适用于 iOS、Android、Apple Watch 等客户端；以后不要重复询问默认品牌/型号。只有任务明确针对其他型号时再按该型号验证。Apple Watch 当前需求是直接连接魔方、离开 iPhone 也可使用；连接、协议及自动计时证据按平台独立记录，不把其他端的通过当作手表通过。
+
 - 非必要不新增、不运行测试。简单、可逆的改动优先直接实现并审阅差异，不写只复述实现的测试，不为凑验证数量扩展测试范围。只有涉及明确的回归风险、关键计算或安全边界，且已有证据不足时，才做能验证具体风险的最小检查；用户本次要求不测试时优先遵从。必要构建与发布后的部署状态确认不属于额外测试。
 - 提交前完成适用验证;push 后不重复已通过的检查,只观察对应提交的 CI;新增改动、失败或遗漏的必要验收仅跑对应最小检查;本地 commit 不视为触发 CI;用户本次“不用检查”限制仍优先。
 - `pnpm --filter @cuberoot/client test` 全集;单文件 `pnpm --filter @cuberoot/client exec vitest run <path>`(**禁** `test -- <path>`,pnpm 透传会被 vitest 吞、跑全集)。
@@ -171,14 +182,23 @@ H11 在本机仅允许源码实现、静态检查和不接触 H11 表文件的�
 
 ## 代码风格
 
+- **界面与文案精简（维护者要求，2026-10-19）**：不要重复内容、常驻提示和阅读套话。同一信息只展示一次，不重复标题、名称或说明；不添加“点击即可…”等常驻操作提示，以及“请阅读以下内容”“温馨提示”等无实际信息的引导套话。必要说明放到设置、按需帮助或交互时的短暂反馈中，正文只保留用户完成任务所需的信息。
+
+- 页面层级优先用留白、间距和排版区分；分隔线仅在确实帮助辨识内容边界时使用。导航、标题和工具栏已有清晰布局时保持简洁，去掉多余的装饰性横线。
+- 布局保持均衡，根据内容量和屏幕宽度合理安排列数、容器宽度与间距，避免大面积无意义留白；通过调整布局保持紧凑与可读性。
+
 - 弹窗必须支持点击/触摸外部遮罩关闭,内部操作和从内部拖到外部不得误关;新改弹窗遮罩复用 `useModalDismiss` 返回的 props(已有生命周期用 `useModalBackdrop`),关闭等同取消且不得隐式保存/提交,仅提交中的临时禁用可阻止关闭;hook + CI 检查漏接关闭事件。
 - 新增或复刻任何功能前先全仓搜索现有组件、数据源、工具、交互契约与资源，存在同职责实现时直接复用或先提取单一事实源，禁止复制后改名、各端维护副本或擅自增加源实现没有的内容，跨运行时只保留必要的平台适配层。
+- 复用内嵌逻辑时，能抽取就优先抽取：若逻辑仍属于某个页面、组件或业务入口，先将可共用部分移到职责合适的公共模块，再让原调用方和新调用方共同引用，避免新调用方直接依赖原业务入口或复制实现。抽取保持原调用方行为不变；已经独立的公共实现直接复用，不为抽取而新增无必要的层级或 package。
 - 优先编辑已有文件；typecheck 范围遵循全局验证规则。
 - 改动先定位根因,禁止在症状点打补丁;根因定位后落地用最小实现,不臆造抽象层/翻译层。
 - 展示格式化、隐藏步骤和本地化后的值只用于渲染或复制;播放器、计算、校验、保存、API 和派生状态必须使用无损原值,登录/管理员态只能增加操作能力,不得改变公开内容语义。
 - SSR 首次 render / useState 初始化禁读随机数、当前时间或浏览器存储;固定首屏后再用 effect 更新,外部存储走 useSyncExternalStore 的 server snapshot。
+- 浏览器标题统一使用 metadata 或 `useDocumentTitle`；弹窗/嵌入内容不得抢外层页面标题，复用 `AlgCaseView` 时传 `embedded`。动态标题 hook 由单一监听器协调多个使用者，禁止恢复为每实例各建标题 MutationObserver；关闭时恢复仍挂载的标题拥有者。回归见 `tests/recon-case-dialog-title.test.ts`。
+- 新增或修改 MutationObserver/ResizeObserver/effect 同步时，核对回调写入是否会再次触发自身或其他监听器；相同值不重复写，共享 DOM 状态只保留一个写入入口，卸载时清理订阅。涉及页面嵌套/弹窗时用有硬性次数上限的隔离回归验证挂载、关闭与重新挂载，不能只验证单组件或用延时掩盖循环。
 - 浏览器端源码禁用正则后行断言,改用捕获边界或显式前字符判断;Hook + CI 守卫。
 - UI 可用 lucide-react;不放页面级"返回"按钮(wizard 步骤间不算)。
+- **返回导航（维护者要求，2026-10-20）**：全站已有或确需保留的返回导航只显示箭头，不显示“返回”“首页”“Back”等文字；通过 `aria-label` 或 `sr-only` 保留明确的无障碍名称。返回首页复用 `BackHome`，其他返回导航优先复用已有组件，不另造带可见文字的版本。本规则不要求新增返回入口，也不适用于“返回公式”等恢复内容的功能操作。暂不增加 hook。
 - `BackHome` 必须放进与正文同宽的 header/topbar/wrap，禁直接挂在 full-bleed page root 下。
 - 按钮式交互必须真 `<button>`(剥 UA 样式)或 `AppLink`,禁 `<div/span onClick>`(iOS Safari tap 不可靠);例外 div 加 `role="button"`+`tabIndex`+`onKeyDown`;豁免注释 `allow-static-onclick`。守卫:hook + CI ratchet。
 - 选择/搜索输入框非空时显示清除按钮,统一 `components/ClearButton`。
@@ -195,6 +215,7 @@ H11 在本机仅允许源码实现、静态检查和不接触 H11 表文件的�
 - 浏览器基线跟随当前 Next 官方支持范围，禁为旧 WebView/开发者工具下调 `browserslist`；旧内核走全站启动失败提示，顶层 `ssr:false` 加载态用 `ClientLoadStatus`。CI:`browser-support-policy.test.ts` + `timer-bootstrap.test.ts`。
 - 项目菜单统一用 `components/PuzzlePicker`;WCA 筛选用默认菜单式 `WcaEventSelector`/`WcaEventMultiSelector`，师生编辑和双人计时浮层显式 `presentation="inline"`；比赛列表保留项目表头；禁页面自写项目菜单。hook + CI 守卫:`component-reuse-guard`。
 - `/alg` case 详情统一走 `AlgCaseView`:静态主图用 `CaseThumb`,动画用 `AlgPlayer`;多朝向不得省略主图或另造结构,桌面一行一朝向且动画左公式右。
+- **魔方静态图的本地绘制（2026-10-16）**：`/alg`、`/recon`、`/timer` 的应用内状态图优先复用现有 `CaseThumb` / `VisualCube` / 计时器共享绘图器，不依赖 `/v1/visualcube.svg` 的网络往返。当前题、上一个、弹窗等少量图使用 `local`；长列表、选择网格和旧成绩必须使用 `local` + `loading="lazy"`，由 `VisualCube` 复用 `LazyVisible`，在接近视口后才生成 SVG，并预留准确宽高。禁止为了本地化一次同步生成全库，也禁止把旧记录悄悄切回网络图；新增同类页面沿用此契约。动画继续用既有播放器，视频封面、静态资源与对外可分享的 SVG URL 不属本地绘图替换范围。回归见 `tests/visualcube-lazy-local.test.ts`；相关技能见 `.agents/skills/visualcube/SKILL.md`。
 - 全局固定按钮对齐内容右沿:`right: max(16px, calc((100vw - <content-max-width>) / 2))`。
 - chip/tab/下拉项不显示数量计数。
 - WCA 时间锚点:时间序列默认视图从 2003-08-22 起步(第 0 帧 = 1982 快照),统计聚合必含 1982 场。
@@ -226,6 +247,7 @@ H11 在本机仅允许源码实现、静态检查和不接触 H11 表文件的�
 
 - 页内状态进 URL 一律 `useQueryState`,禁裸 `history.pushState/replaceState` + 手写 `popstate`(maplibre/canvas/video 重组件例外加注释豁免)。CI `tests/url-state-no-raw-history.test.ts`(豁免加 ALLOWLIST + eslint-disable + 理由)。
 - 大视图/大 tab/全屏浮层 → `.withOptions({ history: 'push' })`;筛选/排序/搜索 → 默认 replace;默认值 `.withDefault(x)`;枚举 `parseAsStringEnum`。
+- 分页、列表/卡片布局、日历日周月显示、项目/轮次筛选、训练范围与练习内换题同样用 replace；URL 仍保留可分享状态，返回不应逐次撤销这些操作。真实内容导航（详情、课程章节、聊天会话、全屏浮层）才用 push。CI `tests/url-state-no-raw-history.test.ts` 用 AST 核对显式 `history: 'push'`（含条件分支及 setter 覆盖）；新增导航须在 `core/packages/client/scripts/navigation-history-allowlist.json` 按具体文件、调用和理由登记，禁止整页放行或为通过检查把筛选冒充导航。此守卫不替代对 router/AppLink 和间接动态配置的审阅。
 - 沉浸浮层返回用 `history.back()`,`history.length<=1` fallback 硬导航父路由。
 - `useQueryState` 只在页级 client 组件用,禁进全局 chrome;重排 query key 顺序走 `AppNuqsAdapter` 的 `processUrlSearchParams`。
 - 范本:`app/[lang]/wca/comp/page.tsx` 的 `viewMode`。
@@ -248,6 +270,7 @@ H11 在本机仅允许源码实现、静态检查和不接触 H11 表文件的�
 - 文案走 `tr({en,zh})` / `<T en zh/>` / `useT()`;长文/复用走 `t()` + `en.json`/`zh.json`;HTML lang `en`/`zh-Hans`。
 - 禁内联 `isZh`/`i18n.language` 文案三元(`isZh ? '中' : 'EN'`);`isZh` 仅可作 util 参数。守卫:hook + CI ratchet。细则调 skill `i18n`。
 - 魔方术语 zh 以 `client/app/[lang]/wiki/glossary.json` 为准,禁直译;陷阱表+黑名单守卫见 skill `i18n`。
+- 翻译 WCA 规则、公告或意外事件记录前，先读 [WCA 英中翻译参考](core/packages/client/public/regulation/wca-translation-reference.md)，再按条款号查同目录 `wca-regulations-bilingual.md`；网页入口 `/regulation/translation`。保留版本、主体、义务强弱和处罚范围，原译疑点单列，不把对齐语料视为已逐句审核。一般社区术语仍查词典。
 - 教程项目选择器的 ivy 中文短名固定为「枫叶」,禁加通用品类后缀。
 - 站内违禁词表 `.codex/banned-words.json`(hook `block-banned-words` 写入即拦,`.codex/` 自身豁免);用户说「添加违禁词:x」= 往该表加 `{word,use,why}` 一条。行内豁免注释 `allow-banned-word`。
 
@@ -291,6 +314,30 @@ H48 **建表**不得把正在写的表文件映射为计算缓冲区（禁止 fi
 
 ## 项目菜单短名
 
+### 项目图标先进入图标库（维护者要求，2026-10-20）
+
+新增或修复具体拼图的图标时，先按 [wca-event skill](.agents/skills/wca-event/SKILL.md) 在 `core/packages/event-icon/svg/` 制作或复用真实 SVG，生成共享映射并确认 `/zh/icon`（英文 `/icon`）可查看、搜索和下载，再让模拟器、打乱器、计时器与 App 消费同一键。原创图放 `svg/puzzle/`，保留上游原稿；按实际外形、切割、阶数和联体重叠绘制，不借相似图冒充，不用文字缩写长期替代具体拼图的图标。训练阶段、自定义模式可保留语义文字徽标。同步中英文名称与事件别名，运行现有 `puzzle-icon-catalog.test.ts` 覆盖检查，并在图标库及实际菜单小尺寸、深浅主题下目检；新增模拟器必须同一任务交付图标，不留给下一轮 AI 补。
+
 网站所有项目选择菜单（含分组、选中项、提示名称）不得出现「魔方」二字，例如「二重奏」「枫叶」「齿轮」。使用统一 PuzzlePicker 的展示规则，并在项目目录数据中直接写短名；不得改项目 ID、计算或保存值。此规则只约束项目菜单，不禁止文章正文等正常用词。写入守卫 `block-puzzle-menu-label.mts` 与 CI `puzzle-menu-label-guard.test.ts` 共同维护；新增菜单数据源时同步纳入检查。
 
 项目菜单的三维尺寸省略乘号，写作 `233`、`334`、`335`，不写 `2×3×3`、`3x3x4`；中英文名称、左侧文字标签、选中提示保持一致。仅格式化展示，不改项目 ID。
+
+## 2026-10-17 日常统计切换正式 Opt10
+
+维护者明确要求将日常 333 整解统计切到正式 CubeRoot Opt10（32G 档）。此条取代上文日常必须使用 Nissy H10 的约定；不授权重建大表。`solve_h10.mts` 保留兼容文件名，默认 `H10_ENGINE=opt10`，使用 `opt10-release.mts verify` 核验的正式制品及 `.tmp/cubeopt-reverse/opt10-generated-v2/cuberoot-opt10.dat`（31,130,911,744 字节），不能与旧 H10 表互换。`H10_ENGINE=c|rust` 保留显式旧后端，须自行具备旧表。
+
+统计专用 `scramble-stats-opt10-session` 经过原 guard，共享正式制品历史资源审查、独占锁、换出/压力/RSS/2 GiB 余量保护；不使用 ZBLL 的基线重审或到期例外，不重设已有基线。单进程、单批次 worker、默认最多16个搜索线程，全语料期间只加载一次表，已有 `out.0.csv` 按 ID 续算，逐行落盘。这里只修改入口，不启动整轮统计、不发布。下一次运行快捷指令仍按其原有完整计算后发布语义执行。
+
+### 2026-10-17 日常 Opt10 统计启动规则更新（维护者明确授权）
+
+维护者同意取消历史换出计数锁定、保留运行保护，并要求开始续跑。仅 `scramble-stats-opt10-session`：每次用户主动启动时核验正式制品、当前压力、可用内存和独占锁，以当前 boot/Swapouts 建立本轮固定基线；历史非零计数或旧停止记录不再永久阻止新任务。运行中不得更新基线，新增换出、异常压力、RSS 超限或余量不足仍立即停止，不自动重启。每轮基线、资源采样及停止证据单独保存在 `.tmp/scramble-stats-opt10/runs/<timestamp>-<pid>/`，保留全部旧记录及求解结果。此条取代此前日常统计对48/80的逐次批准要求，不扩大到其他研究或建表任务。
+
+## 圆角
+
+统一复用 `@2017yanr02/continuous-corners`：全站入口 `core/packages/client/app/layout.tsx` 的 `SiteCorners`；自定义／反向圆角用包内 `continuousCornerRadii` 生成。禁止用渐变、手绘曲线或 CSS squircle 替代；真圆保持圆形。
+
+## 导航
+
+新增或修改导航相关 UI 前，先查 `@app-foundation/navigation-ui` 的 README 与导出，优先复用；通用能力补进共享包，避免本站重复实现。
+
+内部工作台与联系页侧栏复用 `@app-foundation/navigation-ui`，接入见 `core/packages/client/app/[lang]/{workspace,contact}/page.tsx`；布局、动画和圆角在共享包修改，业务菜单与权限留在本站。

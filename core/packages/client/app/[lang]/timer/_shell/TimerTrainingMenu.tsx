@@ -1,13 +1,14 @@
 'use client';
+import { useDouyinToolSurface } from '@/lib/douyin-content';
+import { DOUYIN_BASIC_TIMER_EVENTS } from '@cuberoot/shared/douyin-content';
 
-import { useMemo, useState, type ReactNode } from 'react';
-import { Settings } from 'lucide-react';
+import { useMemo, type ReactNode } from 'react';
+import { Settings } from '@app-foundation/icons/lucide';
 import { TimerPuzzlePicker } from '@cuberoot/timer-ui';
 import { TIMER_EVENT_PICKER_GROUPS, timerEventIdFromSelector, type EventId } from '@cuberoot/shared/timer';
-import { useSearchParams } from 'next/navigation';
+import { useTimerSearchParams as useSearchParams } from '@/lib/timer-practice-url-adapter';
 import { parseAsString, useQueryState, useQueryStates } from 'nuqs';
 import { CompactSelect } from '@/components/CompactSelect';
-import { SettingsPopover } from '@/components/TrainingSettings';
 import { useTrainerSplitScreen } from '@/hooks/useTrainerSplitScreen';
 import { tr } from '@/i18n/tr';
 import { TRAINING_DIRECTORY, resolveTrainingTarget, trainingEventForTarget, trainingPuzzleForEvent } from '@/lib/timer-training-catalog';
@@ -22,21 +23,16 @@ import { selectSessionForEvent } from '../_lib/storage/db';
 type PracticeMethod = 'train' | 'memo' | 'recognize';
 
 /** One content identity, with existing timer/trainer engines as its practice methods. */
-export default function TimerTrainingMenu({ currentEvent, disabled = false, showProject = false, onTimerEventChange, sourceControl, settingsOnly = false, onAdvancedSettings, onSettingsOpenChange }: {
+export default function TimerTrainingMenu({ currentEvent, disabled = false, showProject = false, onTimerEventChange, sourceControl, onAdvancedSettings, beforeSettings }: {
   currentEvent?: string;
   disabled?: boolean;
   showProject?: boolean;
   onTimerEventChange?: (event: EventId) => void;
   sourceControl?: (onSelectCases?: () => void) => ReactNode;
-  settingsOnly?: boolean;
   onAdvancedSettings?: () => void;
-  onSettingsOpenChange?: (open: boolean) => void;
+  beforeSettings?: ReactNode;
 }) {
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const changeSettingsOpen = (open: boolean) => {
-    setSettingsOpen(open);
-    onSettingsOpenChange?.(open);
-  };
+  const douyin = useDouyinToolSurface();
   const [training] = useQueryState('training');
   const search = useSearchParams().toString();
   const params = new URLSearchParams(search);
@@ -47,7 +43,8 @@ export default function TimerTrainingMenu({ currentEvent, disabled = false, show
   const event = trainingEvent && trainingEvent !== trainingPuzzleForEvent(selectedEvent)
     ? timerEventIdFromSelector(trainingEvent) ?? selectedEvent : selectedEvent;
   const contents = useMemo(() => timerPracticeContents(event), [event]);
-  const [type222, setType222] = use222Type();
+  const [savedType222, setType222] = use222Type();
+  const type222 = params.get('scramble222') ?? savedType222;
   const content = training === 'home' ? undefined : selectedTimerPracticeContent(contents, event, type222, target);
   const settings = useSettings();
   const storePuzzle = useTrainerStore(s => s.puzzle);
@@ -82,7 +79,7 @@ export default function TimerTrainingMenu({ currentEvent, disabled = false, show
     : training && actualMode === 'memo' ? 'memo' : 'train';
 
   const queryParsers = useMemo(() => {
-    const keys = new Set(['training', 'event', 'train.mode', 'train.draw', 'train.timing', 'train.split', 'train.room', 'train.multi']);
+    const keys = new Set(['training', 'event', 'source', 'scramble222', 'train.mode', 'train.draw', 'train.split', 'train.room', 'train.multi']);
     for (const key of new URLSearchParams(search).keys()) if (key.startsWith('train.')) keys.add(key);
     for (const group of TRAINING_DIRECTORY) for (const item of group.items) {
       for (const key of new URLSearchParams(item.path.split('?')[1]).keys()) keys.add(`train.${key}`);
@@ -97,6 +94,8 @@ export default function TimerTrainingMenu({ currentEvent, disabled = false, show
     );
     next.event = nextEvent;
     next.training = href?.split('?')[0] ?? null;
+    next.source = null;
+    next.scramble222 = null;
     if (href) for (const [key, value] of new URLSearchParams(href.split('?')[1])) next[`train.${key}`] = value;
     Object.assign(next, options);
     if (!href) {
@@ -106,11 +105,30 @@ export default function TimerTrainingMenu({ currentEvent, disabled = false, show
     void setNavigation(next);
   };
 
+  if (douyin) return <>
+    <TimerPuzzlePicker showArrow={false} disabled={disabled} dataNoTimer
+      puzzleLabel={tr({ zh: '项目', en: 'Puzzle' })} selectedEvent={event}
+      groups={TIMER_EVENT_PICKER_GROUPS.map(group => ({
+        id: group.id, label: tr({ zh: group.nameZh, en: group.nameEn }),
+        items: group.items.filter(item => DOUYIN_BASIC_TIMER_EVENTS.includes(item.id)).map(item => ({
+          id: item.id, label: tr({ zh: item.nameZh, en: item.nameEn }), iconClass: item.iconClass,
+        })),
+      })).filter(group => group.items.length > 0)}
+      onSelect={id => { const next = timerEventIdFromSelector(id); if (next && DOUYIN_BASIC_TIMER_EVENTS.includes(next)) onTimerEventChange?.(next); }}
+    />
+    {beforeSettings}
+    {onAdvancedSettings && <button type="button" className="settings-popover-trigger" data-no-timer
+      aria-label={tr({ zh: '设置', en: 'Settings' })} onClick={onAdvancedSettings}><Settings size={18} /></button>}
+  </>;
+
   const startTimer = (entry: TimerPracticeContent, sameContent = true, source?: 'random' | 'manual') => {
     if (!entry.timer) return;
     if (entry.timer.type222) setType222(entry.timer.type222);
     updateSettings({ ...(source ? { scrambleSource: source } : entry.id !== 'solve' ? { scrambleSource: 'random' as const } : {}) });
-    navigate(null, entry.timer.event, sameContent);
+    navigate(null, entry.timer.event, sameContent, {
+      source: source === 'manual' ? 'manual' : null,
+      scramble222: entry.timer.type222 ?? null,
+    });
   };
 
   const startTraining = (entry: TimerPracticeContent, nextMethod: PracticeMethod, sameContent: boolean, select = false) => {
@@ -120,9 +138,11 @@ export default function TimerTrainingMenu({ currentEvent, disabled = false, show
     // Coverage and random draws are trainer preferences, separate from timing.
     const drawMode = sameContent && (actualMode === 'train' || (actualMode === 'memo' && params.get('train.draw') === 'train')) ? 'train' : 'recap';
     const nextMode = nextMethod === 'memo' ? 'memo' : drawMode;
-    navigate(href, entry.timer?.event ?? event, sameContent, {
+    // The selected project (for example OH) belongs to the URL. The formula
+    // set already identifies its engine; a scramble subtype is not a project.
+    navigate(href, event, sameContent, {
       // These belong to the run surface, not its selector, guide or recognition task.
-      'train.split': null, 'train.room': null, 'train.multi': null, 'train.timing': null,
+      'train.split': null, 'train.room': null, 'train.multi': null,
       ...(nextMethod === 'recognize' ? {} : {
         'train.mode': nextMode,
         // Recall has its own queue; remember the action drill's draw preference.
@@ -166,15 +186,14 @@ export default function TimerTrainingMenu({ currentEvent, disabled = false, show
     ...(content?.timer ? [{ value: 'manual', label: tr({ zh: '手动输入', en: 'Manual input' }) }] : []),
   ];
 
-  const practiceSettings = hasPractice && method !== 'recognize' && <div className="timer-practice-settings">
+  const practiceSource = hasPractice && method !== 'recognize' && <span className="timer-practice-control">
     {method === 'memo' && content?.selectPath ? <button type="button" className="timer-practice-settings__action"
       disabled={sourceLocked} onClick={() => startTraining(content, method, true, true)}>
       {tr({ zh: '选择情况', en: 'Choose cases' })}
-    </button> : <div className="timer-practice-settings__row">
-      <span>{tr({ zh: '出题', en: 'Source' })}</span>
+    </button> : <>
       {!training && sourceControl ? sourceControl(content?.selectPath
         ? () => startTraining(content, method, true, true) : undefined)
-        : <CompactSelect variant="plain" showArrow={false} dataNoTimer
+        : <CompactSelect align="center" variant="plain" showArrow={false} dataNoTimer
           disabled={sourceLocked || sourceItems.length === 0}
           ariaLabel={tr({ zh: '出题来源', en: 'Question source' })}
           label={training ? casesLabel : settings.scrambleSource === 'manual'
@@ -186,10 +205,8 @@ export default function TimerTrainingMenu({ currentEvent, disabled = false, show
             if (source === 'cases') startTraining(content, method, true, true);
             else startTimer(content, true, source === 'manual' ? 'manual' : 'random');
           }} />}
-    </div>}
-  </div>;
-
-  if (settingsOnly) return practiceSettings;
+    </>}
+  </span>;
 
   return <>
     {(showProject || training) && <span className="timer-practice-control">
@@ -225,6 +242,7 @@ export default function TimerTrainingMenu({ currentEvent, disabled = false, show
     </span>
     {hasPractice && (content?.runPath || content?.recognizePath) && <span className="timer-practice-control">
       <CompactSelect<'train' | 'recognize' | 'memo'>
+        align="center"
         variant="plain" showArrow={false} disabled={methodLocked || restrictMethod} dataNoTimer
         ariaLabel={tr({ zh: '练习方式', en: 'Practice method' })}
         label={method === 'recognize' ? tr({ zh: '识别', en: 'Recognition' })
@@ -239,17 +257,14 @@ export default function TimerTrainingMenu({ currentEvent, disabled = false, show
         }}
       />
     </span>}
-    {practiceSettings && !isRun && (onAdvancedSettings ? <>
-      {!training && sourceControl?.(content?.selectPath
-        ? () => startTraining(content, method, true, true) : undefined)}
+    {practiceSource}
+    {beforeSettings}
+    {practiceSource && !isRun && onAdvancedSettings && <>
       <button type="button" className="settings-popover-trigger" data-no-timer
         aria-label={tr({ zh: '设置', en: 'Settings' })} aria-haspopup="dialog"
         onClick={onAdvancedSettings}>
         <Settings size={18} aria-hidden="true" />
       </button>
-    </> : <SettingsPopover label={tr({ zh: '训练设置', en: 'Training settings' })}
-      open={settingsOpen} onOpenChange={changeSettingsOpen} ignoreTimer>
-      {practiceSettings}
-    </SettingsPopover>)}
+    </>}
   </>;
 }

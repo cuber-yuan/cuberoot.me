@@ -5,7 +5,7 @@
 import {
   Type, Crown, Smartphone, Mic, Radio, Timer, Disc, Languages, Shuffle, Flag, MapPin, User,
   ListChecks, CalendarDays, Trophy, Palette, Box, Link2, Webhook, Wrench, type LucideIcon,
-} from 'lucide-react';
+} from '@app-foundation/icons/lucide';
 
 export type UtilCat = 'hook' | 'i18n' | 'api' | 'format' | 'wca' | 'cube' | 'util';
 
@@ -73,6 +73,29 @@ export const UCATS: { id: UtilCat; zh: string; en: string }[] = [
 
 export const CATALOG: UtilEntry[] = [
   {
+    name: 'useAssistantThinkingMode',
+    sig: 'useAssistantThinkingMode(): readonly [AssistantThinkingMode, (value: AssistantThinkingMode) => void]',
+    imp: "import { useAssistantThinkingMode } from '@/hooks/useAssistantThinkingMode';",
+    category: 'hook',
+    zh: '同步助手思考模式；服务端首屏使用自动模式，浏览器通过安全存储保存选择并同步标签页。',
+    en: 'Synchronize assistant thinking mode with an automatic server snapshot, safe browser storage and cross-tab updates.',
+  },
+  {
+    name: 'useIvyMode',
+    sig: 'useIvyMode(): [IvyScrambleMode, typeof setIvyMode]',
+    imp: "import { useIvyMode } from '@/hooks/useIvyMode';\nimport { ivyScrambleForMode } from '@/lib/scramble-ivy-mode';",
+    category: 'hook',
+    zh: '同步枫叶 R L D B / R L U B 打乱类型；转换在生成结果入库前完成，图示和播放读取原文。',
+    en: 'Synchronize Ivy RLDB/RLUB scramble types; convert before saving generated results so previews and playback consume the saved notation.',
+  },
+  {
+    name: 'useDouyinToolSurface', sig: 'useDouyinToolSurface(): boolean',
+    imp: "import { useDouyinToolSurface } from '@/lib/douyin-content';",
+    category: 'hook',
+    zh: '识别抖音工具版，配合共享 douyinContentAvailable 限制所有用户的页面入口；不改变微信和独立网站功能。',
+    en: 'Identify the Douyin tool surface and apply the shared douyinContentAvailable route policy for all users, preserving WeChat and standalone web features.',
+  },
+  {
     name: 'useWcaInstitutions',
     sig: 'useWcaInstitutions(studentKeys: string[])',
     imp: "import { useWcaInstitutions } from '@/hooks/useWcaInstitutions';",
@@ -105,6 +128,14 @@ export const CATALOG: UtilEntry[] = [
     en: 'Map trainer links and query keys while preserving the timer event, room and solve share when leaving training.',
   },
   {
+    name: 'Timer practice URLs',
+    sig: 'canonicalTimerPracticeSearch(search: string | URLSearchParams): URLSearchParams',
+    imp: "import { canonicalTimerPracticeSearch, decodeTimerPracticeSearch, encodeTimerPracticeSearch } from '@/lib/timer-practice-url';\nimport { TimerPracticeUrlProvider, useTimerSearchParams } from '@/lib/timer-practice-url-adapter';",
+    category: 'util',
+    zh: '计时器统一练习地址：项目、内容、来源、练习方式、选题界面、出题方式和范围分别表达；兼容旧链接，保留引擎会话与成绩标识。',
+    en: 'Canonical timer practice URLs separate event, content, source, method, selection view, draw and scope while accepting old links and preserving engine sessions and result IDs.',
+  },
+  {
     name: 'Timer practice content',
     sig: 'timerPracticeContents(event: string): readonly TimerPracticeContent[]',
     imp: "import { timerPracticeContents, selectedTimerPracticeContent } from '@/lib/timer-practice-navigation';\nimport { virtualTrainingSessionId } from '@/lib/training-set-metadata';",
@@ -119,6 +150,14 @@ export const CATALOG: UtilEntry[] = [
     category: 'cube',
     zh: '双底离线题库的固定记录格式与最优 HTM 打乱解码，生成任务与浏览器共用。',
     en: 'Fixed-record corpus format and optimal HTM scramble decoding shared by the offline builder and browser.',
+  },
+  {
+    name: 'useRetainedState',
+    sig: 'useRetainedState<T>(key: string, initial: T)',
+    imp: "import { useRetainedState } from '@/hooks/useRetainedState';",
+    category: 'hook',
+    zh: '在当前浏览会话中保留已加载的数据，页面返回时立即恢复；SSR 使用固定初始快照，身份变化时清空，调用方继续后台刷新。',
+    en: 'Retain loaded data across route mounts with a fixed SSR snapshot and identity-change reset; callers keep their background refresh effects.',
   },
   {
     name: 'useContentRefreshKey',

@@ -10,7 +10,7 @@ import {
   ChevronLeft, MessageSquare, Reply, GitBranch, LogIn, Check, MessagesSquare, Flag,
   Hourglass, CircleCheck, CircleX, Plane, BellRing, CalendarPlus, CalendarCheck,
   FilePenLine, UserPlus, UserCheck,
-} from 'lucide-react';
+} from '@app-foundation/icons/lucide';
 import HomeLink from '@/components/HomeLink';
 import AppLink from '@/components/AppLink';
 import BoolToggle from '@/components/BoolToggle';
@@ -23,6 +23,7 @@ import {
 import { refreshNotificationsUnread } from '@/lib/notifications-unread';
 import './notifications.css';
 import RecordPreferences from './_RecordPreferences';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 const KIND_ICON: Record<NotificationKind, typeof MessageSquare> = {
   assistant_alert: BellRing,
@@ -129,7 +130,7 @@ export default function NotificationsPage() {
   return (
     <div className="ntf-page">
       <header className="ntf-header">
-        <HomeLink className="ntf-back"><ChevronLeft size={16} /><span>{t('首页', 'Home')}</span></HomeLink>
+        <HomeLink className="ntf-back"><ChevronLeft size={16} /><span className="sr-only">{t('首页', 'Home')}</span></HomeLink>
       </header>
       <h1 className="ntf-title">{t('消息', 'Notifications')}</h1>
 
@@ -162,7 +163,7 @@ export default function NotificationsPage() {
 
           <RecordPreferences key={user.uid ?? user.wcaId} />
           {err && <div className="ntf-error">{err}</div>}
-          {!items && !err && <div className="ntf-empty">{t('加载中…', 'Loading…')}</div>}
+          {!items && !err && <div className="ntf-empty"><LoadingIndicator>{t('加载中…', 'Loading…')}</LoadingIndicator></div>}
           {items && items.length === 0 && (
             <div className="ntf-empty">
               <Check size={16} />

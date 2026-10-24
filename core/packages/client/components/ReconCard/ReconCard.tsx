@@ -6,14 +6,15 @@
 import { WcaPersonTeamBadge } from '@/components/WcaPersonTeamBadge';
 import { useEffect, useMemo, useState } from 'react';
 import Link from '@/components/AppLink';
-import { Video, Link2, Lock } from 'lucide-react';
+import { Video, Link2, Lock } from '@app-foundation/icons/lucide';
 import type { ReconSolve } from '@cuberoot/shared';
 import { getReconScramble } from '@cuberoot/shared/recon-completion';
-import { pickReconCover, coverSyncSrc, loadBiliCover, loadDouyinCover } from '@/lib/recon-video-cover';
+import { reconCoverCandidates, coverSyncSrc, coverPreviewSrc, loadBiliCover, loadDouyinCover, type CoverRef } from '@/lib/recon-video-cover';
+import { ProgressiveImage } from '@/components/ProgressiveImage';
 import { formatAvg, formatReconSingle } from '@/lib/recon-utils';
 import { displayCuberName } from '@/lib/cuber-name-display';
+import { CompCell } from '@/components/CompCell/CompCell';
 import { Flag } from '@/components/Flag';
-import { localizeCompName } from '@/lib/comp-localize';
 import { RecordBadge } from '@/components/RecordBadge';
 import { EventIcon } from '@/components/EventIcon';
 import { isWcaEvent, eventDisplayName } from '@/lib/wca-events';
@@ -23,45 +24,56 @@ import { ReconCompletionBadge } from '@/components/recon/ReconCompletionBadge';
 import './recon_card.css';
 
 // 卡片媒体区：有视频→封面图（YouTube 直链 / B 站 / 抖音异步取），否则打乱公式，再否则项目图标。
-// showScrambleFallback=false（首页「今日复盘」）时只留视频封面，没封面就整块不渲染（返回 null）。
-function ReconCardMedia({ solve, isZh, showScrambleFallback }: { solve: ReconSolve; isZh: boolean; showScrambleFallback: boolean }) {
-  const cover = useMemo(() => pickReconCover(solve.videoUrl, isZh), [solve.videoUrl, isZh]);
+// 首页保留已知视频的媒体区，即使所有封面都失败也不改变卡片高度。
+type ReconCardMediaProps = { solve: ReconSolve; isZh: boolean; showScrambleFallback: boolean };
+function ReconCardMedia(props: ReconCardMediaProps) {
+  return <ReconCardMediaSource key={`${props.isZh}\n${props.solve.videoUrl ?? ''}`} {...props} />;
+}
+
+function ReconCardMediaSource({ solve, isZh, showScrambleFallback }: ReconCardMediaProps) {
+  const covers = useMemo(() => reconCoverCandidates(solve.videoUrl, isZh), [solve.videoUrl, isZh]);
+  const [coverIndex, setCoverIndex] = useState(0);
+  const cover = covers[coverIndex] ?? null;
   const ytSrc = cover ? coverSyncSrc(cover) : null;
-  const [asyncSrc, setAsyncSrc] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState<{ cover: CoverRef; src: string } | null>(null);
 
   useEffect(() => {
-    setFailed(false);
-    setAsyncSrc(null);
     if (cover?.kind !== 'bili' && cover?.kind !== 'douyin') return;
     let alive = true;
     const loader = cover.kind === 'bili' ? loadBiliCover(cover.id) : loadDouyinCover(cover.id);
     void loader.then(pic => {
       if (!alive) return;
-      if (pic) setAsyncSrc(pic); else setFailed(true);
+      if (pic) setLoaded({ cover, src: pic }); else setCoverIndex(index => index + 1);
     });
     return () => { alive = false; };
   }, [cover]);
 
-  const imgSrc = failed ? null : (ytSrc ?? asyncSrc);
+  const imgSrc = ytSrc ?? (loaded?.cover === cover ? loaded.src : null);
 
   if (imgSrc) {
     return (
       <div className="recon-card-media">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <ProgressiveImage
           className="recon-card-cover"
           src={imgSrc}
+          previewSrc={coverPreviewSrc(cover, imgSrc)}
           alt=""
           referrerPolicy="no-referrer"
           loading="lazy"
-          onError={() => setFailed(true)}
+          fallback={<Video size={24} />}
+          onError={() => setCoverIndex(coverIndex + 1)}
         />
       </div>
     );
   }
 
-  if (!showScrambleFallback) return null;
+  // A known video owns its media slot before the cover request completes.
+  // Keep it on failure too, so sibling cards and everything below never move.
+  if (!showScrambleFallback) return covers.length ? (
+    <div className="recon-card-media" aria-hidden="true">
+      <Video size={24} className="recon-card-media-empty" />
+    </div>
+  ) : null;
 
   const scramble = getReconScramble(solve);
   const displayScramble = formatScrambleForEvent(solve.event, scramble);
@@ -97,13 +109,12 @@ export function ReconCard({ solve, isZh, href, horizontal = false, showScrambleF
     ...(solve.coPersons ?? []).map(c => ({ name: c.name, id: c.id, country: c.country })),
   ].filter(c => c.name);
   const single = formatReconSingle(solve.event, solve.value, solve.rawTime);
-  const compName = localizeCompName(solve.compWcaId ?? '', solve.comp || '', isZh);
 
   return (
     <Link href={href} prefetch={false} className={`recon-card${horizontal ? ' recon-card--row' : ''}`}>
       <ReconCardMedia solve={solve} isZh={isZh} showScrambleFallback={showScrambleFallback} />
       <div className="recon-card-body">
-        {/* 表头风格:成绩 + 项目图标 + 项目名 + 国旗 + 选手名,同一行(对齐 /recon 详情页标题) */}
+        {/* 成绩 + 项目图标 + 国旗 + 选手名；宽度不足时姓名换行完整显示。 */}
         <div className="recon-card-head">
           {/* 纪录标志(PB/WR…)作为成绩数字的右上角标,需与数字同处 inline 上下文才生效 vertical-align */}
           <span className="recon-card-result mono">
@@ -142,8 +153,7 @@ export function ReconCard({ solve, isZh, href, horizontal = false, showScrambleF
             </span>
           )}
           <span className="recon-card-foot">
-            {solve.country ? <Flag iso2={solve.country} className="recon-inline-flag" /> : null}
-            <span className="recon-card-comp">{compName || tr({ zh: '非官方', en: 'Unofficial' })}</span>
+            <span className="recon-card-comp">{solve.comp ? <CompCell compId={solve.compWcaId ?? ''} compName={solve.comp} country={solve.country} isZh={isZh} date={null} /> : tr({ zh: '非官方', en: 'Unofficial' })}</span>
           </span>
         </div>
       </div>

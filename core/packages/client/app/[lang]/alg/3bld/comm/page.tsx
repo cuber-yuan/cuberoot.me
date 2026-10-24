@@ -25,7 +25,7 @@ import {
   type JSX,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, Lightbulb, Boxes, Square, Pencil, Copy, Check, AlertTriangle } from 'lucide-react';
+import { Search, Lightbulb, Boxes, Square, Pencil, Copy, Check, AlertTriangle } from '@app-foundation/icons/lucide';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { AlgCase, AlgEntry, AlgFile } from '@cuberoot/shared/alg';
@@ -46,6 +46,7 @@ import { useIsAdmin } from '@/lib/auth-store';
 import '../3bld.css';
 import '../../alg.css';
 import { tr } from '@/i18n/tr';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 type Kind = 'corner' | 'edge';
 type AssocMap = Record<string, string>;
@@ -291,7 +292,7 @@ export default function CommLibraryPage(): JSX.Element {
 
         <span className="bld-comm-count">
           {loading
-            ? tr({ zh: '加载中…', en: 'Loading…' })
+            ? <LoadingIndicator>{tr({ zh: '加载中…', en: 'Loading…' })}</LoadingIndicator>
             : tr({ zh: `${shown.length} 组`, en: `${shown.length}` })}
         </span>
 

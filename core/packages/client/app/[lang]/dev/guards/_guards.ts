@@ -20,8 +20,8 @@ export const PAIRED_GUARDS: PairedGuard[] = [
     hook: 'block-unprotected-memory-compute.mts',
     test: 'codex_hook_adapters.test.ts',
     baseline: '0',
-    zh: { title: '大内存计算防交换启动检查', desc: '默认拦截尚无系统级防交换保护的已登记计算入口，包括双底 ZBLL、H48 大表生成、大表分析器和打乱统计。H10 求解按 2026-10-12 授权持续监控；Opt1–9、Rust H10 和泛化 H0–H10 研究仅经 cube48opt-rust/guard.mts 启动。泛化 solve-h48/query-h48 要求 CUBEOPT_BACKEND=h48、CUBEOPT_H=0..10 与 CLI、实际表大小和表头一致，沿用资源锁、时限、Swapouts 基线及至少 2 GiB 余量，触线停止且不得重设基线续跑。此次泛化不新增建表或其他批量、长期任务授权。H11 仅允许代码、静态检查和不接触其表文件的小数据算术测试；本机禁止建表、文件加载或映射、查表、求解和基准，经过 guard 也不豁免。按命令段检查，前一个 guard 不放行后续直接计算。AUF 保留精确命令、代码 hash 与期限限制。静态查看、小表校验及普通开发可用。CI 验证分类与注册；修改后仍需新会话信任并验证真实拦截，不证明系统禁用 swap，也不覆盖手动终端、已运行进程或任意间接脚本。' },
-    en: { title: 'No-swap startup check for large computations', desc: 'Blocks registered double ZBLL, H48 table generation, large-table analyzers and scramble statistics without verified OS swap protection by default. H10 solving uses monitoring under the 2026-10-12 authorization; Opt1–9, Rust H10 and generic H0–H10 research must use cube48opt-rust/guard.mts. Generic solve-h48/query-h48 require CUBEOPT_BACKEND=h48 and CUBEOPT_H=0..10 matching the CLI, actual table size and header. Resource locks, deadlines, Swapouts baselines and at least 2 GiB headroom remain mandatory; protection stops must not be bypassed by resetting baselines. Generalization grants no new table-generation, batch or long-running task authorization. H11 permits code, static checks and small arithmetic tests without accessing its table files; local generation, file loading or mapping, queries, solving and benchmarks are prohibited, including through the guard. Each shell segment is checked separately. AUF retains exact-command, code-hash and expiry restrictions. Static inspection, small-table checks and ordinary development remain available. CI checks classification and registration; changed hooks still need trust and live interception verification in a new session. This does not establish OS swap enforcement or cover manual terminals, existing processes or arbitrary indirect scripts.' },
+    zh: { title: '大内存计算防交换启动检查', desc: '默认拦截尚无系统级防交换保护的已登记计算入口，包括双底 ZBLL、H48 大表生成、大表分析器、打乱统计和 Reconer 视觉模型训练/批量推理。Reconer 的 doctor、audit 和 help 仍可只读运行。H10 求解按 2026-10-12 授权持续监控；Opt1–9、Rust H10 和泛化 H0–H10 研究仅经 cube48opt-rust/guard.mts 启动。泛化 solve-h48/query-h48 要求 CUBEOPT_BACKEND=h48、CUBEOPT_H=0..10 与 CLI、实际表大小和表头一致，沿用资源锁、时限、Swapouts 基线及至少 2 GiB 余量，触线停止且不得重设基线续跑。此次泛化不新增建表或其他批量、长期任务授权。H11 仅允许代码、静态检查和不接触其表文件的小数据算术测试；本机禁止建表、文件加载或映射、查表、求解和基准，经过 guard 也不豁免。按命令段检查，前一个 guard 不放行后续直接计算。AUF 保留精确命令、代码 hash 与期限限制。静态查看、小表校验及普通开发可用。CI 验证分类与注册；修改后仍需新会话信任并验证真实拦截，不证明系统禁用 swap，也不覆盖手动终端、已运行进程或任意间接脚本。' },
+    en: { title: 'No-swap startup check for large computations', desc: 'Blocks registered double ZBLL, H48 table generation, large-table analyzers, scramble statistics and Reconer vision training/batch inference without verified OS swap protection by default. Reconer doctor, audit and help remain available for inspection. H10 solving uses monitoring under the 2026-10-12 authorization; Opt1–9, Rust H10 and generic H0–H10 research must use cube48opt-rust/guard.mts. Generic solve-h48/query-h48 require CUBEOPT_BACKEND=h48 and CUBEOPT_H=0..10 matching the CLI, actual table size and header. Resource locks, deadlines, Swapouts baselines and at least 2 GiB headroom remain mandatory; protection stops must not be bypassed by resetting baselines. Generalization grants no new table-generation, batch or long-running task authorization. H11 permits code, static checks and small arithmetic tests without accessing its table files; local generation, file loading or mapping, queries, solving and benchmarks are prohibited, including through the guard. Each shell segment is checked separately. AUF retains exact-command, code-hash and expiry restrictions. Static inspection, small-table checks and ordinary development remain available. CI checks classification and registration; changed hooks still need trust and live interception verification in a new session. This does not establish OS swap enforcement or cover manual terminals, existing processes or arbitrary indirect scripts.' },
   },
   {
     id: 'puzzle-menu-label',
@@ -54,6 +54,9 @@ export const PAIRED_GUARDS: PairedGuard[] = [
     id: 'site-material',
     scope: 'project',
     hook: 'hook-detect-site-material.mjs',
+    // Includes the 11 scenery-content policies for formula/reconstruction
+    // reading sections; CI also requires their transparent adapters to remain.
+    // Real write rejection verified 2026-10-15; see docs/glass-menu-regression.md.
     test: 'site-material-guard.test.ts',
     baseline: '0',
     zh: { title: '背景材质统一复用', desc: '玻璃材质在 glass-material.css 定义，公共适配放 site-surfaces.css。底框规则仅针对 site-surface-policy.mts 中已确认的布局容器，标题只约束分隔边线；复用现有 Hook 和 CI 扫描，不增加独立检查任务。audit:surfaces 和菜单巡检按需运行，不作为日常提交门槛。新候选先人工确认，正常卡片、控件和焦点边界不禁用。承载菜单的外层不能直接加模糊，短提示复用 Tooltip。静态检查不覆盖任意动态样式，例外沿用同一行 allow-site-material 及具体理由。' },
@@ -73,9 +76,9 @@ export const PAIRED_GUARDS: PairedGuard[] = [
     scope: 'project',
     hook: 'check-architecture-boundaries.mjs',
     test: 'architecture-boundary-guard.test.ts + codex_hook_adapters.test.ts',
-    baseline: '223 个旧债指纹（238 次出现）+ 13 条人工契约',
-    zh: { title: '架构边界与公开入口', desc: '活跃 workspace 的运行时、构建、测试、产物、子进程和部署关系由 manifest 统一登记。223 个旧债指纹共出现 238 次,允许删除或减少,禁止新增、替换或复制同类违规。项目 Hook 在新会话中对新增片段里可见的 shared 根入口、跨 app 私有源码、未公开 subpath 和完整子进程调用提供即时反馈;CI 用同一 AST 扫描器做权威全文件复核。' },
-    en: { title: 'Architecture boundaries and public entry points', desc: 'One manifest records runtime, build, test, artifact, subprocess, and deployment relationships across active workspaces. The 223 legacy identities occur 238 times: removal and reduction are allowed, while additions, substitutions, and duplicate violations fail. In a new session, the project hook gives immediate feedback for visible shared root imports, private cross-app source imports, unexported subpaths, and complete subprocess calls in the added fragment; CI is the authoritative full-file check using the same AST scanner.' },
+    baseline: '192 个旧债指纹（206 次出现）+ 34 条人工契约',
+    zh: { title: '架构边界与公开入口', desc: 'Hook 与 CI 共用 AST 扫描器,检查跨包私有依赖、公开入口及子进程契约。package.json 的 build / build:* 直接声明的包顶层 scripts/ 入口按构建工具处理,生产代码不得导入这些 CLI。测试中的纯路径样本不算依赖;真实 import、路径构造、文件读写及进程调用仍受检查。其他子进程继续使用准确的人工契约,旧债只允许减少。' },
+    en: { title: 'Architecture boundaries and public entry points', desc: 'The hook and CI share an AST scanner for private cross-package dependencies, public entry points and subprocess contracts. Package-local scripts/ CLIs directly declared by build or build:* use package.json as their build contract; production code cannot import them. Inert test path fixtures are data, while imports, path construction, file access and process calls remain checked. Other subprocesses still require exact manual contracts; legacy debt may only decrease.' },
   },
   {
     id: 'browser-regexp-lookbehind',
@@ -243,10 +246,10 @@ export const PAIRED_GUARDS: PairedGuard[] = [
     id: 'recon-ground-truth',
     scope: 'project',
     hook: 'recon-ground-truth-gate.mts',
-    test: 'recon-ground-truth-gate.test.ts + recon_ground_truth.test.ts',
+    test: 'recon-ground-truth-gate.test.ts + recon_ground_truth.test.ts + recon-ground-truth-display.test.ts',
     baseline: '当前集合全量',
-    zh: { title: '复盘 Ground Truth 未验证', desc: '管理员管理器是唯一手工入口，测试命令从公开导出生成供 Git 和 AI 审查的 JSON。Codex 命令 hook 与 Git pre-commit 两层拦截：提交复盘算法、陀螺仪、转体处理或 ground-truth 管道前，当前内容指纹必须对应一次全部 confirmed 样本测试通过记录；管理器新增样本并同步后，旧凭证立即失效。' },
-    en: { title: 'Unverified reconstruction ground truth', desc: 'The admin manager is the only manual entry point; the test command generates the Git- and AI-reviewable JSON from its public export. The Codex command hook and Git pre-commit require the exact current content fingerprint to have a successful run over every confirmed case before reconstruction logic, gyro, rotation handling or the ground-truth pipeline can be committed. Syncing a newly confirmed case immediately invalidates the old credential.' },
+    zh: { title: '复盘 Ground Truth 未验证', desc: '管理员管理器维护人工确认样本，真实计时记录仅在用户明确说“收录到回归测试”并确认原始记录及答案后参加统一检查；待确认样例退出正式检查，历史保留，修改记录或答案会使确认失效。统一检查遍历已确认样本，覆盖公式匹配到最终显示的动作、标签、色块、图示和链接。安装依赖时自动启用 Git pre-commit；涉及复盘的提交自动检查全部样本，同一份内容通过后才复用结果。失败或检查期间改动会阻止提交，暂存与工作区不一致也会拦截。Codex 只做准备检查，测试由 Git 执行，CI 再独立验证。每次运行保留成功或失败记录，现有 ground-truth 页可查看历史、逐例实际显示与具体复盘；管理员集中同步失败时本机记录继续保留。' },
+    en: { title: 'Unverified reconstruction ground truth', desc: 'The admin manager maintains manually confirmed cases. The existing unified check runs only explicitly user-approved real timer regressions (pending cases keep their history but are excluded; changes to the recording or answer invalidate approval) through library matching and final displayed moves, labels, color chips, diagrams and links. Dependency installation enables Git pre-commit automatically. Relevant commits run the full suite unless the exact content already passed. Test failures, edits during verification and staged/worktree differences block commits. Codex only preflights readiness; Git owns the test run and CI verifies independently. Each run retains passes or failures for the existing ground-truth page, with per-case output and replay links. Failed administrator cloud synchronization preserves local history.' },
   },
 ];
 
@@ -366,7 +369,7 @@ export const CI_GUARDS_DRIFT: CiGuard[] = [
   {
     id: 'recon-report-layout',
     test: 'recon_report_layout.test.ts',
-    zh: { title: '复盘报告的顺序 + 打乱只出现一次', desc: '报告先给回放和按步谱子(默认展开),质量分 / 分步分析表 / 四个总量整块排在后面 —— 不知道自己拧了什么之前,一张 5×7 的表读不出东西。打乱是谱子的第一行且用视角归一化后那条(和复制导出的逐字相同);智能魔方那把不再另摆一遍打乱和打乱图,手动计时的成绩照旧两样都有。' },
+    zh: { title: '复盘报告的顺序 + 打乱只出现一次', desc: '报告先给回放和按步还原步骤(默认展开),质量分 / 分步分析表 / 四个总量整块排在后面 —— 不知道自己拧了什么之前,一张 5×7 的表读不出东西。打乱是还原步骤的第一行且用视角归一化后那条(和复制导出的逐字相同);智能魔方那把不再另摆一遍打乱和打乱图,手动计时的成绩照旧两样都有。' },
     en: { title: 'Reconstruction report order + the scramble appears once', desc: 'The report leads with the replay and the per-step move text (expanded by default); the quality score, step table and totals come after as one block — a 5×7 grid reads as nothing until you know what you turned. The scramble is the first line of that move text, in the normalized viewing frame (byte-identical to what the copy button exports); the smart-cube solve page no longer repeats the scramble or draws the scramble picture, while manually-timed solves keep both.' },
   },
   {

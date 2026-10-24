@@ -14,7 +14,7 @@ import { useContentRefreshKey } from '@/hooks/useContentRefreshKey';
 import { Suspense, useMemo, useCallback, useState, useEffect } from 'react';
 import { useQueryState, useQueryStates, parseAsArrayOf, parseAsString, parseAsStringEnum } from 'nuqs';
 import { useTranslation } from 'react-i18next';
-import { Search, AlertTriangle, Pencil, Trash2, ArrowUp, ArrowDown, Plus, LayoutGrid, List } from 'lucide-react';
+import { Search, AlertTriangle, Pencil, Trash2, ArrowUp, ArrowDown, Plus, LayoutGrid, List } from '@app-foundation/icons/lucide';
 import Fuse from 'fuse.js';
 import { ALG_CATALOG } from '@cuberoot/shared/alg';
 import { WCA_AUTHOR_BY_CREDIT } from './data/wca-authors';
@@ -36,6 +36,7 @@ import { listSites, listTopics, saveTopic, deleteSite, reorderGroup } from './na
 import { useT } from '@/hooks/useT';
 import SiteEditor from './SiteEditor';
 import './sites.css';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 function YouTubeBadge() {
   return (
@@ -555,7 +556,7 @@ function SitesPageInner() {
   const admin = mounted && isAdmin();
   const [viewMode, setViewMode] = useQueryState(
     'view',
-    parseAsStringEnum<ViewMode>(VIEW_MODES).withDefault('list').withOptions({ history: 'push', clearOnDefault: false }),
+    parseAsStringEnum<ViewMode>(VIEW_MODES).withDefault('list').withOptions({ history: 'replace', clearOnDefault: false }),
   );
 
   const [params, setQuery] = useQueryStates(
@@ -1058,7 +1059,6 @@ function SitesPageInner() {
               <PuzzlePicker
                 isZh={lang === 'zh'}
                 groups={eventPickerGroups}
-                showTriggerIcon={false}
                 selectedEvents={selectedEvents}
                 onToggle={toggleEvent}
               />
@@ -1220,7 +1220,7 @@ function SitesPageInner() {
         {loadErr ? (
           <div className="sites-empty">{TEXTS.err[lang]}: {loadErr}</div>
         ) : !sites ? (
-          <div className="sites-empty">{TEXTS.loading[lang]}</div>
+          <div className="sites-empty"><LoadingIndicator>{TEXTS.loading[lang]}</LoadingIndicator></div>
         ) : filtered.length === 0 ? (
           <div className="sites-empty">{TEXTS.noResults[lang]}</div>
         ) : (
@@ -1266,7 +1266,7 @@ function SitesPageInner() {
 
 export default function SitesPage() {
   return (
-    <Suspense fallback={<div className="sites-page"><div className="sites-empty">Loading…</div></div>}>
+    <Suspense fallback={<div className="sites-page"><div className="sites-empty"><LoadingIndicator /></div></div>}>
       <SitesPageInner />
     </Suspense>
   );

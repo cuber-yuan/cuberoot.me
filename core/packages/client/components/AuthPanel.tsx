@@ -8,9 +8,9 @@ import '@cuberoot/timer-ui/compact-select.css';
 // 两者共用同一套表单原语(CodeFlow / 密码表单 / 错误文案),故同处一文件。
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Copy, Loader2, Mail, Smartphone, KeyRound, Merge } from 'lucide-react';
+import { Check, Copy, Loader2, Mail, Smartphone, KeyRound, Merge } from '@app-foundation/icons/lucide';
 import { SiApple, SiWechat, SiQq, SiAlipay, SiTiktok } from 'react-icons/si';
-import { primaryHandle } from '@cuberoot/shared/account';
+import { primaryHandle, visibleAccountIdentities, ACCOUNT_PROVIDER_LABELS as PROVIDER_LABEL } from '@cuberoot/shared/account';
 import type { MobileAuthProvider } from '@cuberoot/shared/auth/web-session';
 import AppLink from '@/components/AppLink';
 import { PasswordInput } from '@/components/PasswordInput';
@@ -942,7 +942,7 @@ function LoginFormFields({
         <div className="auth-flow">
           <p className="auth-hint">{t(`已打开${name},请完成授权后返回本页面。`, `Opened ${name} — finish authorizing there, then return to this page.`)}</p>
           <button className="auth-primary" onClick={() => window.location.reload()}>{t('我已完成授权', 'I have authorized')}</button>
-          <button className="auth-textbtn" onClick={() => setSocialLaunched(null)}>{t('返回', 'Back')}</button>
+          <button className="auth-textbtn" onClick={() => setSocialLaunched(null)}><span aria-hidden="true">←</span> <span className="sr-only">{t('返回', 'Back')}</span></button>
         </div>
       </>
     );
@@ -1030,18 +1030,6 @@ export function WcaLinkPrompt({ returnTo, onSkip }: { returnTo?: string | null; 
     </>
   );
 }
-
-const PROVIDER_LABEL: Record<string, { zh: string; en: string }> = {
-  email: { zh: '邮箱', en: 'Email' },
-  phone: { zh: '手机', en: 'Phone' },
-  wca: { zh: 'WCA', en: 'WCA' },
-  apple: { zh: 'Apple', en: 'Apple' },
-  google: { zh: 'Google', en: 'Google' },
-  wechat: { zh: '微信', en: 'WeChat' },
-  alipay: { zh: '支付宝', en: 'Alipay' },
-  qq: { zh: 'QQ', en: 'QQ' },
-  douyin: { zh: '抖音', en: 'Douyin' },
-};
 
 /** Only an authenticated account may issue this short-lived proof; it is never an account lookup. */
 function MiniProgramLinkCodePanel({ emphasized = false }: { emphasized?: boolean }) {
@@ -1306,7 +1294,7 @@ export function AccountPanel({ expectedAppleUid, miniProgramLogin = false }: { e
         ) : identities.length === 0 ? (
           <p className="auth-hint">{t('暂无已绑定的登录方式。', 'No linked login methods yet.')}</p>
         ) : (
-          identities.filter((i, index, all) => i.provider !== 'douyin' || all.findIndex((row) => row.provider === 'douyin') === index).map((i) => {
+          visibleAccountIdentities(identities).map((i) => {
             const lab = PROVIDER_LABEL[i.provider] ?? { zh: i.provider, en: i.provider };
             const key = `${i.provider}:${i.providerUid}`;
             const onlyOne = new Set(identities.map((row) => row.provider === 'douyin' ? 'douyin' : `${row.provider}:${row.providerUid}`)).size <= 1;
@@ -1615,7 +1603,7 @@ export function DeleteAccountPanel({ backHref }: { backHref: string }) {
             {t('你的账号和私有数据已经删除,登录方式即刻失效。感谢一路同行。',
               'Your account and private data are gone, and your sign-in methods no longer work. Thanks for having been here.')}
           </p>
-          <AppLink href="/" className="auth-textbtn">{t('返回首页', 'Back to home')}</AppLink>
+          <AppLink href="/" className="auth-textbtn"><span aria-hidden="true">←</span> <span className="sr-only">{t('返回首页', 'Back to home')}</span></AppLink>
         </div>
       </>
     );

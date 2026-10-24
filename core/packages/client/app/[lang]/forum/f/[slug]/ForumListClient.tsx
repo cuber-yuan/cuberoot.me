@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useQueryState, parseAsInteger, parseAsStringEnum } from 'nuqs';
-import { Plus, Lock } from 'lucide-react';
+import { Plus, Lock } from '@app-foundation/icons/lucide';
 import Link from '@/components/AppLink';
 import Paginator from '@/components/wca-stats/Paginator';
 import { tr, T, useLang } from '@/i18n/tr';
@@ -19,6 +19,7 @@ import { ForumBreadcrumbs } from '../../_components/ForumBreadcrumbs';
 import { ThreadRowList } from '../../_components/ThreadRowList';
 import '../../forum.css';
 import './forum_list.css';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 type Sort = 'activity' | 'created';
 const SORTS: Sort[] = ['activity', 'created'];
@@ -38,7 +39,7 @@ export default function ForumListClient() {
   }, [pathname]);
 
   const [page, setPage] = useQueryState(
-    'page', parseAsInteger.withDefault(1).withOptions({ history: 'push' }));
+    'page', parseAsInteger.withDefault(1).withOptions({ history: 'replace' }));
   const [size, setSize] = useQueryState('size', parseAsInteger.withDefault(25));
   const [sort, setSort] = useQueryState(
     'sort', parseAsStringEnum<Sort>(SORTS).withDefault('activity'));
@@ -161,7 +162,7 @@ export default function ForumListClient() {
         </>
       )}
 
-      {loading && !data && !error && <div className="forum-loading"><T zh="加载中…" en="Loading…" /></div>}
+      {loading && !data && !error && <div className="forum-loading"><LoadingIndicator><T zh="加载中…" en="Loading…" /></LoadingIndicator></div>}
     </div>
   );
 }

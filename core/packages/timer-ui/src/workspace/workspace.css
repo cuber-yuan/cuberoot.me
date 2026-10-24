@@ -4,25 +4,26 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 4px 14px;
-  font-family: 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB', monospace;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
 }
 .stats-modal-row {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   padding: 4px 0;
-  border-bottom: 1px dashed var(--shell-divider);
+  border-bottom: 1px solid var(--border-default);
   font-size: 12px;
 }
 .stats-modal-lbl { color: var(--muted-foreground); }
 .stats-modal-val { color: var(--foreground); font-weight: 600; }
 .stats-modal-pb {
-  font-family: 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB', monospace;
+  font-family: inherit;
   display: flex;
   flex-direction: column;
   gap: 6px;
   font-size: 14px;
-  color: var(--signal-warning);
+  color: var(--accent);
 }
 .stats-modal-pb .scramble-text {
   background: var(--background);
@@ -53,7 +54,7 @@
 .timer-history-workspace .history-list {
   flex: 1;
   overflow-y: auto;
-  font-family: 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB', monospace;
+  font-family: inherit;
   font-size: 13px;
 }
 .timer-history-workspace .history-row .actions {
@@ -111,6 +112,16 @@
 .timer-statistics-workspace { min-width: 0; }
 .timer-statistics-workspace select { max-width: 100%; padding: 6px; background: var(--background); color: var(--foreground); border: 1px solid var(--border-default); border-radius: 4px; }
 .timer-statistics-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
+.timer-statistics-actions--report { justify-content: flex-end; }
+.timer-statistics-actions .timer-statistics-report {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 8px 12px;
+  background: var(--card);
+  font: inherit;
+}
 .timer-statistics-actions button { background: var(--background); color: var(--foreground); border: 1px solid var(--border-default); padding: 6px 10px; border-radius: 4px; cursor: pointer; }
 .timer-statistics-chart { overflow-x: auto; max-width: 100%; }
 .timer-statistics-chart svg { max-width: 100%; height: auto; }
@@ -119,6 +130,16 @@
 .stats-modal .modal-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .stats-modal .modal-action-btn { padding: 6px 10px; background: var(--background); color: var(--foreground); border: 1px solid var(--border-default); border-radius: 4px; cursor: pointer; }
 .stats-modal .stats-tab-bar { position: relative; top: auto; }
+.stats-modal :is(button, select, input) { font-family: inherit; }
+.stats-modal .stats-modal-grid { margin-top: 8px; }
+.stats-modal .stats-range-button {
+  min-height: 32px; padding: 6px 10px; border: 1px solid var(--border-default);
+  border-radius: 6px; background: transparent; color: var(--muted-foreground); cursor: pointer;
+}
+.stats-modal .stats-range-button.is-active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.stats-modal :is(.case-stats-table, .case-stats-empty, .subx-row) { font-family: inherit; }
+.stats-modal .subx-fill { background: var(--accent); opacity: .65; }
+.stats-modal .case-stats-panel { padding: 0; border: 0; }
 .timer-history-workspace .history-list { margin-top: 0; }
 
 .case-stats-panel {
@@ -180,3 +201,6 @@
 @media (max-width: 340px) {
   .stats-modal .stats-tab { min-width: 0; flex-direction: column; padding: 6px 3px; font-size: 12px; }
 }
+.stats-modal :is(.dsp-day, .dsp-table, .dsp-lbl) { font-family: inherit; }
+.stats-modal .dsp-row { grid-template-columns: 1fr 5.6rem 6.4rem; }
+.stats-modal .dsp-table.is-total .dsp-row { grid-template-columns: 1fr 5.6rem; }

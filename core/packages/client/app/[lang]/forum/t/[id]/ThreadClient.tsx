@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQueryState, parseAsInteger } from 'nuqs';
-import { Pin, PinOff, Lock, LockOpen, Trash2, Pencil, Hourglass, CircleX, Check } from 'lucide-react';
+import { Pin, PinOff, Lock, LockOpen, Trash2, Pencil, Hourglass, CircleX, Check } from '@app-foundation/icons/lucide';
 import Paginator from '@/components/wca-stats/Paginator';
 import { tr, T, useLang } from '@/i18n/tr';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -25,6 +25,7 @@ import { formatCount } from '@/lib/forum-format';
 import '../../forum.css';
 import './forum_thread.css';
 import '@/components/hash-highlight.css';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 const SIZE_DEFAULT = 20;
 
@@ -43,7 +44,7 @@ export default function ThreadClient() {
   }, [pathname]);
 
   const [page, setPage] = useQueryState(
-    'page', parseAsInteger.withDefault(1).withOptions({ history: 'push' }));
+    'page', parseAsInteger.withDefault(1).withOptions({ history: 'replace' }));
   const [size, setSize] = useQueryState('size', parseAsInteger.withDefault(SIZE_DEFAULT));
 
   const [data, setData] = useState<ThreadPageData | null>(null);
@@ -289,7 +290,7 @@ export default function ThreadClient() {
       ] : []} />
 
       {error && <div className="forum-error">{error}</div>}
-      {!data && !error && <div className="forum-loading"><T zh="加载中…" en="Loading…" /></div>}
+      {!data && !error && <div className="forum-loading"><LoadingIndicator><T zh="加载中…" en="Loading…" /></LoadingIndicator></div>}
 
       {data && (
         <>

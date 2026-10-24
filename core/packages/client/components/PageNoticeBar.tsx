@@ -8,7 +8,7 @@ import { useContentRefreshKey } from '@/hooks/useContentRefreshKey';
 // 数据走 /v1/page-notices(公开读 + admin 写),鉴权 authHeaders(WCA OAuth / X-Admin-Key)。
 import { useCallback, useEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react';
 import { usePathname } from 'next/navigation';
-import { X, Pencil, Trash2 } from 'lucide-react';
+import { X, Pencil, Trash2 } from '@app-foundation/icons/lucide';
 import { useIsAdmin } from '@/lib/auth-store';
 import { tr, T, useLang } from '@/i18n/tr';
 import BoolToggle from './BoolToggle';
@@ -357,7 +357,7 @@ export default function PageNoticeBar() {
             <span><T en="Target link (required for homepage feature)" zh="目标链接(首页焦点必填)" /></span>
             <input className="page-notice-input" value={form.href}
               onChange={(e) => setForm({ ...form, href: e.target.value })}
-              placeholder="/regulation/news#4-pad-2027" />
+              placeholder="/regulation/post#4-pad-2027" />
           </label>
 
           <div className="page-notice-editor-row">

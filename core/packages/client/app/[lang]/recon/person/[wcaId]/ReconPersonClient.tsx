@@ -11,7 +11,7 @@ import Link from '@/components/AppLink';
 import PersonLink from '@/components/PersonLink';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
-import { LogOut, TriangleAlert } from 'lucide-react';
+import { Bookmark, LogOut, TriangleAlert } from '@app-foundation/icons/lucide';
 import type { ReconSolve } from '@cuberoot/shared';
 import { listPersonRecons } from '@/lib/recon-api';
 import {
@@ -20,8 +20,8 @@ import {
 import { compLinkProps } from '@/lib/comp-link';
 import { displayCuberName } from '@/lib/cuber-name-display';
 import { loadFlagData, flagDataVersion, personFlagIso2 } from '@/lib/country-flags';
+import { CompCell } from '@/components/CompCell/CompCell';
 import { Flag } from '@/components/Flag';
-import { localizeCompName } from '@/lib/comp-localize';
 import { reconPathSeg } from '@/lib/recon-seo';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { RecordBadge } from '@/components/RecordBadge';
@@ -32,6 +32,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import '../../recon.css';
 import './recon-person.css';
 import { tr } from '@/i18n/tr';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 type Role = 'all' | 'solver' | 'reconer' | 'adder';
 
@@ -201,12 +202,10 @@ export default function ReconPersonClient() {
         <div className="recon-person-id">
           <h1>
             <PersonLink wcaId={wcaId} className="recon-person-name-link">{displayName}</PersonLink>
-          </h1>
-          {avatarUrl && identity.country && (
-            <div className="recon-person-meta">
+            {avatarUrl && identity.country && (
               <Flag iso2={identity.country} className="recon-inline-flag" />
-            </div>
-          )}
+            )}
+          </h1>
           <div className="recon-person-stats">
             <span><b>{counts.solver}</b> {tr({ zh: '选手', en: 'solver'
             })}</span>
@@ -225,6 +224,11 @@ export default function ReconPersonClient() {
       </div>
 
       <div className="recon-person-roles">
+        {isSelf && (
+          <Link href="/recon?favorites=true" className="btn-secondary recon-person-favorites" prefetch={false}>
+            <Bookmark size={17} aria-hidden="true" /> {tr({ zh: '收藏夹', en: 'Favorites' })}
+          </Link>
+        )}
         <ListSelect
           items={roleItems}
           value={role}
@@ -235,8 +239,8 @@ export default function ReconPersonClient() {
         />
       </div>
 
-      {loading && <div className="recon-loading">{tr({ zh: '加载中…', en: 'Loading…'
-    })}</div>}
+      {loading && <div className="recon-loading"><LoadingIndicator>{tr({ zh: '加载中…', en: 'Loading…'
+    })}</LoadingIndicator></div>}
       {error && <div className="recon-error"><TriangleAlert size={16} /> {error}</div>}
 
       {!loading && !error && (
@@ -273,8 +277,7 @@ export default function ReconPersonClient() {
                       { name: s.person || '', id: s.personId, country: s.personCountry },
                       ...(s.coPersons ?? []),
                     ].filter(c => c.name);
-                    const compName = s.comp ? localizeCompName(s.compWcaId ?? '', s.comp, isZh, { date: s.date }) : '';
-                    const compFlag = s.country ? <Flag iso2={s.country} className="recon-inline-flag" /> : null;
+                    const compName = s.comp ? <CompCell compId={s.compWcaId ?? ''} compName={s.comp} country={s.country} isZh={isZh} date={s.date ?? null} /> : null;
                     return (
                       <tr
                         key={s.id}
@@ -317,7 +320,6 @@ export default function ReconPersonClient() {
                           </span>
                         </td>
                         <td className="col-comp">
-                          {compFlag}{' '}
                           {s.compWcaId
                             ? <Link {...compLinkProps(s.compWcaId)} onClick={(e) => e.stopPropagation()}>{compName}</Link>
                             : compName}

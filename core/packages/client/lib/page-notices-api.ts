@@ -3,6 +3,7 @@ import { sessionFetch } from '@/lib/session-fetch';
 // 公共 GET 无认证;admin 写端点走 authHeaders(WCA OAuth Bearer / X-Admin-Key)。
 import { apiUrl } from './api-base';
 import { authHeaders, handleApi } from './admin-api';
+import { tr } from '@/i18n/tr';
 
 export type NoticeLevel = 'info' | 'warning' | 'maintenance';
 export type NoticePlacement = 'page_top' | 'home_featured';
@@ -46,6 +47,11 @@ export interface PageNoticeInput {
   endsAt: string | null;
 }
 
+function currentNoticeLink(notice: PageNotice): PageNotice {
+  const href = notice.href?.replace(/^(\/(?:zh\/|en\/)?regulation\/)news(?=\/|[?#]|$)/, '$1post');
+  return href === notice.href ? notice : { ...notice, href };
+}
+
 let pendingNotices: Promise<PageNotice[]> | null = null;
 
 /** 仅合并进行中的公开请求;完成后仍使用原有浏览器缓存规则。 */
@@ -53,6 +59,7 @@ export function fetchPageNotices(): Promise<PageNotice[]> {
   if (!pendingNotices) {
     const request = sessionFetch(apiUrl('/v1/page-notices'), { cache: 'no-cache' })
       .then((r) => handleApi<PageNotice[]>(r))
+      .then((rows) => rows.map(currentNoticeLink))
       .finally(() => {
         if (pendingNotices === request) pendingNotices = null;
       });
@@ -64,19 +71,41 @@ export function fetchPageNotices(): Promise<PageNotice[]> {
 /** 全部通知含 disabled(admin,行内编辑器预填用)。 */
 export async function fetchAllPageNotices(): Promise<PageNotice[]> {
   const r = await sessionFetch(apiUrl('/v1/page-notices/manage'), { headers: authHeaders(false), cache: 'no-store' });
-  return handleApi<PageNotice[]>(r);
+  return (await handleApi<PageNotice[]>(r)).map(currentNoticeLink);
 }
 
-/** 按 path upsert(admin)。 */
+/** 按 path/placement upsert，首页焦点额外按 href 区分(admin)。 */
 export async function savePageNotice(body: PageNoticeInput): Promise<PageNotice> {
-  const r = await sessionFetch(apiUrl('/v1/page-notices'), {
+  const r = await sessionFetch(apiUrl(body.placement === 'home_featured' ? '/v1/page-notices/home-feature' : '/v1/page-notices'), {
     method: 'PUT',
     headers: authHeaders(),
     body: JSON.stringify(body),
   });
+  if (body.placement === 'home_featured' && r.status === 404) {
+    throw new Error(tr({ zh: '多条置顶服务尚未更新，请在后端发布后重试。', en: 'Multiple pins require the backend update. Please retry after deployment.' }));
+  }
   const notice = await handleApi<PageNotice>(r);
   pendingNotices = null;
   return notice;
+}
+
+export function homepagePostNotice(notices: PageNotice[], postId: string): PageNotice | undefined {
+  const href = '/regulation/post/' + encodeURIComponent(postId);
+  return notices.find(n => n.path === '/' && n.placement === 'home_featured'
+    && pageKeyFromPathname(n.href ?? '') === href);
+}
+
+/** Pin this article without replacing other homepage features. */
+export async function featureHomepagePost(post: { id: string; title: { zh: string; en: string } }): Promise<PageNotice> {
+  const existing = homepagePostNotice(await fetchAllPageNotices(), post.id);
+  return savePageNotice({
+    ...(existing ? { id: existing.id } : {}),
+    path: '/', placement: 'home_featured',
+    level: existing?.level ?? 'info', icon: existing?.icon || 'megaphone', color: existing?.color || 'terracotta',
+    bodyZh: post.title.zh, bodyEn: post.title.en,
+    href: '/regulation/post/' + encodeURIComponent(post.id),
+    enabled: true, dismissible: false, startsAt: null, endsAt: null,
+  });
 }
 
 /** 删除(admin)。 */

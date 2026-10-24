@@ -184,6 +184,27 @@ export const NATIVE_PUZZLES = {
     axes: ICOSAHEDRON_FACE_AXES, order: 3, layers: 2,
     scrambleLength: 60, aspect: 8 / 5, visibleFacelets: 440,
   },
+  // Jason Smith's Radiolarian 5; Hyperspeedcube radio05 uses phi^2/(2+phi^2).
+  // Preserve this critical depth: nearby cuts have a different face partition.
+  catscradle: {
+    description: 'i f 0.566915270681799', zh: 'Cat’s Cradle', en: 'Cat’s Cradle', textLabel: 'Cradle',
+    axes: ICOSAHEDRON_FACE_AXES, order: 3, layers: 2,
+    scrambleLength: 60, aspect: 8 / 5, visibleFacelets: 380,
+  },
+  // Jason Smith's fixed-center Radiolarian 1.5; Hyperspeedcube radio01_5
+  // uses h = 0.77. Keep the twenty face centers and standard non-jumbling turns.
+  radiocanon: {
+    description: 'i f 0.77', zh: 'Radio Canon', en: 'Radio Canon', textLabel: 'Canon',
+    axes: ICOSAHEDRON_FACE_AXES, order: 3, layers: 2,
+    scrambleLength: 60, aspect: 8 / 5, visibleFacelets: 320,
+  },
+  // Radio Jam (Radiolarian 8): Hyperspeedcube radio08 uses radio7 - 0.06.
+  // The unused radio8 constant in that source is NOT this model's cut depth.
+  radiojam: {
+    description: 'i f 0.4678640450004204', zh: 'Radio Jam', en: 'Radio Jam', textLabel: 'Jam',
+    axes: ICOSAHEDRON_FACE_AXES, order: 3, layers: 2,
+    scrambleLength: 60, aspect: 8 / 5, visibleFacelets: 440,
+  },
 } as const;
 
 export type NativePuzzleId = keyof typeof NATIVE_PUZZLES;

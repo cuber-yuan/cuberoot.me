@@ -1,6 +1,8 @@
 import { createContext, useContext } from 'react';
 import type { ComponentType, ReactNode } from 'react';
 import type { Solve } from '@cuberoot/shared/timer';
+import type { ReconSnapshot } from '@cuberoot/shared/recon-ground-truth';
+import type { ReconTextLine } from '@cuberoot/shared/timer/reconstruct/recon-text';
 import BoolToggle, { type BoolToggleProps } from '../BoolToggle';
 
 export type ReconstructLocalize = <T>(text: { en: T; zh: T }) => T;
@@ -10,7 +12,15 @@ export interface ReconstructHost {
   localize: ReconstructLocalize;
   writeClipboardText: (text: string) => Promise<void>;
   replayUrl: (solve: Solve) => string | Promise<string>;
-  renderCaseLink?: (href: string, label: string, className: string) => ReactNode;
+  renderIntakeAction?: (solve: Solve, snapshot: ReconSnapshot | null) => ReactNode;
+  renderAnnotationAction?: (line: ReconTextLine, seek: () => void) => ReactNode;
+  renderCaseLink?: (href: string, label: ReactNode, className: string) => ReactNode;
+  LineDiagramProvider?: ComponentType<{
+    scramble: string; text: string; enabled: boolean;
+    children: (diagramAt: (line: number) => ReactNode, caseHrefAt: (line: number, colors: string) => string | undefined) => ReactNode;
+  }>;
+  inspectionColors?: (moves: string) => string | undefined;
+  wasteBrackets?: (text: string, scramble: string) => Map<number, string>;
   recordGyro: boolean;
   onEnableGyro?: () => void;
   BoolToggle?: ComponentType<BoolToggleProps>;

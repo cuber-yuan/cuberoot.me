@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, Trash2, Lightbulb, Bug, MessageSquare, ExternalLink, ChevronDown } from 'lucide-react';
+import { ChevronLeft, Trash2, Lightbulb, Bug, MessageSquare, ExternalLink, ChevronDown } from '@app-foundation/icons/lucide';
 import HomeLink from '@/components/HomeLink';
 import FeedbackConversation from '@/components/FeedbackConversation';
 import { UserIdLabel } from '@/components/UserIdLabel';
@@ -20,6 +20,7 @@ import {
   type AdminFeedbackItem, type FeedbackMedia, type FeedbackStatus, type FeedbackKind,
 } from '@/lib/feedback-api';
 import './feedback-admin.css';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 const KIND_ICON: Record<FeedbackKind, typeof Bug> = { need: Lightbulb, bug: Bug, other: MessageSquare };
 const STATUSES: FeedbackStatus[] = ['new', 'triaged', 'done'];
@@ -106,7 +107,7 @@ export default function FeedbackAdminPage() {
     return (
       <div className="fba-page fba-denied">
         <p>{t('需要管理员权限', 'Admin access required')}</p>
-        <HomeLink className="fba-back"><ChevronLeft size={16} /><span>{t('首页', 'Home')}</span></HomeLink>
+        <HomeLink className="fba-back"><ChevronLeft size={16} /><span className="sr-only">{t('首页', 'Home')}</span></HomeLink>
       </div>
     );
   }
@@ -114,7 +115,7 @@ export default function FeedbackAdminPage() {
   return (
     <div className="fba-page">
       <header className="fba-header">
-        <HomeLink className="fba-back"><ChevronLeft size={16} /><span>{t('首页', 'Home')}</span></HomeLink>
+        <HomeLink className="fba-back"><ChevronLeft size={16} /><span className="sr-only">{t('首页', 'Home')}</span></HomeLink>
       </header>
       <h1 className="fba-title">{t('反馈', 'Feedback')}</h1>
 
@@ -131,7 +132,7 @@ export default function FeedbackAdminPage() {
       </div>
 
       {err && <div className="fba-error">{err}</div>}
-      {!items && !err && <div className="fba-empty">{t('加载中…', 'Loading…')}</div>}
+      {!items && !err && <div className="fba-empty"><LoadingIndicator>{t('加载中…', 'Loading…')}</LoadingIndicator></div>}
       {items && items.length === 0 && <div className="fba-empty">{t('暂无反馈', 'No feedback yet')}</div>}
 
       <div className="fba-list">

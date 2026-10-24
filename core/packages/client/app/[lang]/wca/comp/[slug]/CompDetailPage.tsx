@@ -12,7 +12,7 @@ import Link from '@/components/AppLink';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQueryState, parseAsString, parseAsStringEnum } from 'nuqs';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, X as XIcon, RefreshCw, Info, Copy, Check, Radio, ArrowUp, ArrowDown, Ban, Download, Calculator } from 'lucide-react';
+import { ArrowLeft, X as XIcon, RefreshCw, Info, Copy, Check, Radio, ArrowUp, ArrowDown, Ban, Download, Calculator } from '@app-foundation/icons/lucide';
 import { Flag } from '@/components/Flag';
 import { RecordBadge } from '@/components/RecordBadge';
 import { RecentRecordsList } from '@/components/RecentRecords';
@@ -20,6 +20,7 @@ import { summarizeCompRecords } from '@/lib/comp-records';
 import { SearchInput } from '@/components/SearchInput';
 import { useModalBackdrop } from '@/hooks/useModalDismiss';
 import { useCopy } from '@/hooks/useCopy';
+import { Tooltip } from '@/components/Tooltip';
 import { stripRecordNewsPrefix } from '@/lib/record-news';
 import { countryFlag } from '@cuberoot/shared/record-news';
 import { eventDisplayName, isWcaEvent } from '@/lib/wca-events';
@@ -76,6 +77,7 @@ import '../comp.css';
 import { tr } from '@/i18n/tr';
 import i18n from '@/i18n/i18n-client';
 import { competitionRecordNews, withNewcomerRecords, type NewcomerRecord } from './record-news';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 // 「打乱」tab:把 /scramble/gen 的比赛模式整套内嵌进来。重(WASM 求解器 + 打乱引擎),
 // 懒加载 —— 只有用户点开「打乱」才拉这部分 JS,不拖累比赛页首屏。
@@ -775,16 +777,16 @@ export default function CompDetailPage() {
   // 比赛关注「盯一下」— 与首页 / 比赛列表共用同一份 server 关注集合
   const { loggedIn: followLoggedIn, follows, toggle: toggleFollow } = useCompFollows();
 
-  // URL 状态走 nuqs。导航型(项目 / 轮次 / 视图 / 预排名多选)默认 push,后退可逐步返回;
-  // 筛选 / 赛程布局 / 数据源覆盖是过滤/子开关,走 replace 不堆历史。多键联动(项目+轮次)
+  // URL 状态走 nuqs。导航型(视图)默认 push,后退可逐步返回;
+  // 项目 / 轮次 / 多选 / 筛选 / 赛程布局 / 数据源覆盖走 replace 不堆历史。多键联动(项目+轮次)
   // 用各自 setter 同 tick 调用,nuqs 自动合并;需要 replace 写入时传 per-call { history: 'replace' }。
   const [eventQuery, setEventParam] = useQueryState(
     'event',
-    parseAsString.withDefault('').withOptions({ history: 'push', scroll: false }),
+    parseAsString.withDefault('').withOptions({ history: 'replace', scroll: false }),
   );
   const [roundQuery, setRoundUrlParam] = useQueryState(
     'round',
-    parseAsString.withDefault('').withOptions({ history: 'push', scroll: false }),
+    parseAsString.withDefault('').withOptions({ history: 'replace', scroll: false }),
   );
   const [viewQuery, setExplicitView] = useQueryState(
     'view',
@@ -792,11 +794,11 @@ export default function CompDetailPage() {
   );
   const [psychEventParam, setPsychEventParam] = useQueryState(
     'psychEvent',
-    parseAsString.withDefault('').withOptions({ history: 'push', scroll: false }),
+    parseAsString.withDefault('').withOptions({ history: 'replace', scroll: false }),
   );
   const [schedEventParam, setSchedEventParam] = useQueryState(
     'schedEvent',
-    parseAsString.withDefault('').withOptions({ history: 'push', scroll: false }),
+    parseAsString.withDefault('').withOptions({ history: 'replace', scroll: false }),
   );
   const [filterParam, setFilterParam] = useQueryState(
     'filter',
@@ -1678,7 +1680,7 @@ export default function CompDetailPage() {
   if (error || !data) {
     return (
       <div className="comp-detail-page">
-        <Link href="/wca/comp" prefetch={false} className="comp-back-link"><ArrowLeft size={14} /> {tr({ zh: '返回', en: 'Back' })}</Link>
+        <Link href="/wca/comp" prefetch={false} className="comp-back-link"><ArrowLeft size={14} /> <span className="sr-only">{tr({ zh: '返回', en: 'Back' })}</span></Link>
         <div className="comp-err comp-err-block">
           <div className="comp-err-title">{tr({ zh: '加载失败', en: 'Failed to load'
         })}</div>
@@ -1762,7 +1764,7 @@ export default function CompDetailPage() {
     <div className="comp-detail-page">
       <div className="comp-table-section">
         <header className="comp-detail-header">
-          <Link href="/wca/comp" prefetch={false} className="comp-back-link"><ArrowLeft size={14} /> {tr({ zh: '返回', en: 'Back' })}</Link>
+          <Link href="/wca/comp" prefetch={false} className="comp-back-link"><ArrowLeft size={14} /> <span className="sr-only">{tr({ zh: '返回', en: 'Back' })}</span></Link>
           <h1 className="comp-detail-title">
             {(() => {
               // 国家旗:compInfo(权威,来自比赛详情)优先,回退 slug 推断 —— 当天刚公示的比赛
@@ -1845,13 +1847,13 @@ export default function CompDetailPage() {
                 })}
               </div>
             )}
-            {!isWca && (
+            {isAdmin && !isWca && (
               <span className="comp-detail-fetched">
                 {tr({ zh: '更新于', en: 'Updated'
                 })} {new Date(data.fetchedAt).toLocaleTimeString()}
               </span>
             )}
-            {!isWca && <LiveIndicator status={wsStatus} isZh={isZh} source={isWcaLive ? 'wca_live' : 'cubing'} />}
+            {isAdmin && !isWca && <LiveIndicator status={wsStatus} isZh={isZh} source={isWcaLive ? 'wca_live' : 'cubing'} />}
             {!isWca && wsStatus !== 'open' && (
               <button type="button" className="comp-refresh-btn" onClick={refresh} disabled={refreshing} title={tr({ zh: '刷新', en: 'Refresh'
             })}>
@@ -2153,7 +2155,7 @@ export default function CompDetailPage() {
         ) : !fullLoaded ? (
           // 分片首屏只带当前项目的选手 — 预排名要全场报名者,等后台的全量请求(已在飞)落地。
           <div className="comp-loading">
-            <div className="comp-loading-label">{tr({ zh: '加载中…', en: 'Loading…' })}</div>
+            <div className="comp-loading-label"><LoadingIndicator>{tr({ zh: '加载中…', en: 'Loading…' })}</LoadingIndicator></div>
           </div>
         ) : (
           <PsychSheet
@@ -2240,21 +2242,66 @@ function renderWcaText(text: string): React.ReactNode {
   return out.length ? out : text;
 }
 
+function CompAddress({ address, isZh }: { address: string; isZh: boolean }) {
+  const { copied, copy } = useCopy();
+  // WCA 地址可能包含 Markdown 链接；复制和地图检索都使用完整地址文本。
+  const text = address.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '$1');
+  const encoded = encodeURIComponent(text);
+  const providers = isZh ? ['amap', 'baidu'] as const : ['google'] as const;
+  const maps = {
+    amap: { label: tr({ zh: '高德地图', en: 'Amap' }), url: 'https://uri.amap.com/search?keyword=' + encoded + '&src=cuberoot&callnative=1' },
+    baidu: { label: tr({ zh: '百度地图', en: 'Baidu Maps' }), url: 'https://api.map.baidu.com/geocoder?address=' + encoded + '&output=html&src=webapp.cuberoot.web' },
+    google: { label: 'Google Maps', url: 'https://www.google.com/maps/search/?api=1&query=' + encoded },
+  };
+  return (
+    <span className="comp-address">
+      <Tooltip content={copied ? tr({ zh: '已复制', en: 'Copied' }) : tr({ zh: '复制地址', en: 'Copy address' })}>
+        {(tip) => <button {...tip} type="button" className="comp-address-copy" onClick={() => copy(text)} aria-label={tr({ zh: '复制地址', en: 'Copy address' }) + ': ' + text}>
+          {text}{copied && <Check size={14} aria-hidden />}
+        </button>}
+      </Tooltip>
+      <span className="comp-address-maps">
+        {providers.map(provider => <Tooltip key={provider} content={maps[provider].label}>
+          {(tip) => <a {...tip} className="comp-address-map" href={maps[provider].url} target="_blank" rel="noopener noreferrer" aria-label={maps[provider].label}
+            onClick={event => {
+              if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              const isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent)
+                || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+              const isAndroid = /Android/i.test(navigator.userAgent);
+              if (!isIos && !isAndroid) return;
+              event.preventDefault();
+              if (provider === 'google') {
+                window.location.href = isIos ? 'comgooglemaps://?q=' + encoded : maps.google.url;
+              } else if (provider === 'baidu') {
+                window.location.href = 'baidumap://map/geocoder?address=' + encoded + '&src=' + (isIos ? 'ios' : 'andr') + '.cuberoot.web';
+              } else {
+                window.location.href = (isIos ? 'iosamap' : 'androidamap') + '://poi?sourceApplication=cuberoot&' + (isIos ? 'name' : 'keywords') + '=' + encoded + '&dev=0';
+              }
+            }}>
+            <img src={'/icons/maps/' + provider + '.ico'} width={24} height={24} alt="" />
+          </a>}
+        </Tooltip>)}
+      </span>
+      <span className="sr-only" role="status">{copied ? tr({ zh: '已复制', en: 'Copied' }) : ''}</span>
+    </span>
+  );
+}
+
 function CompInfoPanel({
   info, isZh, cubingZh,
 }: { info: CompInfo; isZh: boolean; cubingZh: CubingZhMeta | null }) {
   const dateStr = info.start_date ? formatDateRangeIso(info.start_date, info.end_date) : '';
   const country = info.country_iso2 ? countryName(info.country_iso2.toUpperCase(), isZh) : '';
-  const cityStr = [info.city ? localizeCity(info.city, isZh, info.country_iso2) : '', country].filter(Boolean).join((i18n.language.startsWith('zh') ? ',' : ', '));
+  const cityStr = [info.city ? localizeCity(info.city, isZh, info.country_iso2) : '', country].filter(Boolean).join(tr({ zh: '，', en: ', ' }));
   const todayIso = toIsoDate(new Date());
   const isPast = (iso: string) => !!iso && iso.slice(0, 10) < todayIso;
-  const rows: { label: string; value: React.ReactNode; past?: boolean; hideLabel?: boolean }[] = [];
+  const rows: { label: string; value: React.ReactNode; past?: boolean; hideLabel?: boolean; compact?: boolean }[] = [];
   if (dateStr) {
     const wd = weekdayRangeLabel(info.start_date, info.end_date, isZh);
-    rows.push({ label: tr({ zh: '日期', en: 'Date' }), hideLabel: true, value: wd ? `${dateStr} ${wd}` : dateStr });
+    rows.push({ label: tr({ zh: '日期', en: 'Date' }), hideLabel: true, compact: true, value: wd ? `${dateStr} ${wd}` : dateStr });
   }
   if (info.competitor_limit) {
-    rows.push({ label: tr({ zh: '上限', en: 'Limit' }), value: info.competitor_limit });
+    rows.push({ label: tr({ zh: '上限', en: 'Limit' }), compact: true, value: info.competitor_limit });
   }
   const regOpenIso = info.registration_open ? toIsoDate(new Date(info.registration_open)) : '';
   const regCloseIso = info.registration_close ? toIsoDate(new Date(info.registration_close)) : '';
@@ -2293,9 +2340,9 @@ function CompInfoPanel({
     rows.push({ label: tr({ zh: '城市', en: 'City' }), value: cityStr });
   }
   if (isZh && cubingZh?.location) {
-    rows.push({ label: tr({ zh: '地点', en: 'Location' }), hideLabel: true, value: cubingZh.location });
+    rows.push({ label: tr({ zh: '地点', en: 'Location' }), hideLabel: true, value: <CompAddress address={cubingZh.location} isZh={isZh} /> });
   } else {
-    if (info.venue_address) rows.push({ label: tr({ zh: '地址', en: 'Address' }), value: renderWcaText(info.venue_address) });
+    if (info.venue_address) rows.push({ label: tr({ zh: '地址', en: 'Address' }), value: <CompAddress address={info.venue_address} isZh={isZh} /> });
     if (info.venue_details) rows.push({ label: tr({ zh: '详情', en: 'Details'
     }), value: renderWcaText(info.venue_details) });
   }
@@ -2310,14 +2357,14 @@ function CompInfoPanel({
 function CompInfoRows({
   activeRows, pastRows, isZh,
 }: {
-  activeRows: { label: string; value: React.ReactNode; hideLabel?: boolean }[];
+  activeRows: { label: string; value: React.ReactNode; hideLabel?: boolean; compact?: boolean }[];
   pastRows: { label: string; value: React.ReactNode }[];
   isZh: boolean;
 }) {
   return (
     <dl className={`comp-info-panel${isZh ? ' comp-info-panel--zh' : ''}`}>
       {activeRows.map((r, i) => (
-        <div key={r.label} className="comp-info-row">
+        <div key={r.label} className={`comp-info-row${r.hideLabel ? ' comp-info-row--unlabelled' : ''}${r.compact ? ' comp-info-row--compact' : ''}`}>
           {!r.hideLabel && <dt className="comp-info-label">{r.label}</dt>}
           <dd className="comp-info-value">
             {r.value}
@@ -3673,7 +3720,7 @@ function CuberModal({ number, data, isZh, pbMap, changeMap, personal = false, lo
         </header>
         <div className="comp-modal-body">
           {loading ? (
-            <div className="comp-empty" role="status">{tr({ zh: '加载中…', en: 'Loading…' })}</div>
+            <div className="comp-empty" role="status"><LoadingIndicator>{tr({ zh: '加载中…', en: 'Loading…' })}</LoadingIndicator></div>
           ) : groups.length === 0 ? (
             <div className="comp-empty">{personal
               ? tr({ zh: '本场比赛暂无你的成绩', en: 'No results for you at this competition yet' })

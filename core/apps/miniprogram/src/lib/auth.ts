@@ -1,4 +1,5 @@
 import { API_ORIGIN } from './runtime-config';
+import { isValidDisplayName, normalizeDisplayName } from '@cuberoot/shared/account';
 import {
   decodeWebSessionError,
   decodeWebSession,
@@ -156,16 +157,26 @@ function writeStoredSessionValue(session: SessionData): boolean {
   }
 }
 
-export function requestJson<T>(
-  path: string,
-  options: {
-    method?: 'GET' | 'POST';
+interface JsonRequestOptions {
+    method?: 'GET' | 'POST' | 'DELETE';
     body?: WechatMiniprogram.IAnyObject;
     timeoutMs?: number;
     token?: string;
     idempotencyKey?: string;
-  } = {},
-): Promise<T> {
+    signal?: AbortSignal;
+}
+
+export function requestJson<T>(path: string, options: JsonRequestOptions = {}): Promise<T> {
+  return requestNativeJson(`${API_ORIGIN}${path}`, options);
+}
+
+/** Public assets only: this entry cannot forward credentials or write methods. */
+export function requestStaticJson<T>(path: string): Promise<T> {
+  if (!path.startsWith('/stats/')) return Promise.reject(new Error('Invalid static asset path'));
+  return requestNativeJson(`https://static.cuberoot.me${path}`, {});
+}
+
+function requestNativeJson<T>(url: string, options: JsonRequestOptions): Promise<T> {
   return new Promise((resolve, reject) => {
     let requestTask: WechatMiniprogram.RequestTask | undefined;
     let settled = false;
@@ -178,8 +189,15 @@ export function requestJson<T>(
       if (settled) return;
       settled = true;
       clearRuntimeTimeout(hardTimeout);
+      options.signal?.removeEventListener('abort', abort);
       action();
     };
+    const abort = () => settle(() => {
+      try { requestTask?.abort(); } catch { /* Cancellation must still settle. */ }
+      reject(new ApiError(0, 'request cancelled'));
+    });
+    if (options.signal?.aborted) { abort(); return; }
+    options.signal?.addEventListener('abort', abort, { once: true });
     hardTimeout = scheduleRuntimeTimeout(() => {
       settle(() => {
         try {
@@ -198,7 +216,7 @@ export function requestJson<T>(
 
     try {
       requestTask = miniProgramApi().request({
-        url: `${API_ORIGIN}${path}`,
+        url,
         method: options.method ?? 'GET',
         data: options.body,
         header,
@@ -380,6 +398,46 @@ export async function validateStoredSession(session: SessionData): Promise<Sessi
     throw new ApiError(STORAGE_ERROR_STATUS, 'session storage unavailable');
   }
   return next;
+}
+
+export async function updateNativeDisplayName(session: SessionData, raw: string, isCurrent: () => boolean): Promise<SessionData> {
+  const name = normalizeDisplayName(raw);
+  if (!isValidDisplayName(name) || session.user.wcaId || !session.user.uid) {
+    throw new ApiError(400, 'invalid display name');
+  }
+  const current = () => isCurrent() && getStoredSession()?.token === session.token;
+  if (!current()) throw new ApiError(409, 'account changed', 'ACCOUNT_CHANGED');
+  const response = await requestJson<unknown>('/auth/profile', {
+    method: 'POST', token: session.token, body: { name },
+  });
+  return saveLoginResponse(response, current, session.user.uid);
+}
+
+export interface NativeAccountIdentity { provider: string; providerUid: string }
+export async function unlinkNativeAccountIdentity(session: SessionData, identity: NativeAccountIdentity, isCurrent: () => boolean) {
+  const current = () => isCurrent() && getStoredSession()?.token === session.token;
+  if (!session.user.uid || !current()) throw new ApiError(409, 'account changed', 'ACCOUNT_CHANGED');
+  const response = await requestJson<unknown>('/auth/unlink', {
+    method: 'POST', token: session.token,
+    body: { provider: identity.provider, ...(identity.provider === 'douyin' ? {} : { providerUid: identity.providerUid }) },
+  });
+  return saveLoginResponse(response, current, session.user.uid);
+}
+
+export async function fetchNativeAccountIdentities(session: SessionData, isCurrent: () => boolean) {
+  const current = () => isCurrent() && getStoredSession()?.token === session.token;
+  if (!current()) throw new ApiError(409, 'account changed', 'ACCOUNT_CHANGED');
+  const response = await requestJson<{ identities?: unknown; hasPassword?: unknown }>('/auth/identities', { token: session.token });
+  if (!current()) throw new ApiError(409, 'account changed', 'ACCOUNT_CHANGED');
+  if (!Array.isArray(response?.identities) || typeof response.hasPassword !== 'boolean'
+    || response.identities.some((row: unknown) => {
+      if (!row || typeof row !== 'object') return true;
+      const item = row as Record<string, unknown>;
+      return typeof item.provider !== 'string' || !/^[a-z][a-z0-9_-]{0,63}$/.test(item.provider)
+        || typeof item.providerUid !== 'string' || item.providerUid.length > 1024
+        || CONTROL_CHARACTER_PATTERN.test(item.providerUid);
+    })) throw new ApiError(502, 'invalid identities response');
+  return { identities: response.identities as NativeAccountIdentity[], hasPassword: response.hasPassword };
 }
 
 export async function createWebSessionTicket(session: SessionData): Promise<WebSessionTicket> {

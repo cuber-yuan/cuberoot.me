@@ -14,9 +14,16 @@ const ROOTS = [
   'packages/client/components', 'packages/client/hooks', 'packages/client/app/auth',
   'packages/client/app/[lang]/account', 'packages/client/app/api/google-verify',
   'packages/client/app/api/page-access', 'packages/client/app/api/web-session',
-  'packages/client/app/api/identity-choice',
+  'packages/client/app/api/identity-choice', 'packages/client/app/[lang]/dev/team',
 ];
 const EXACT = new Set([
+  'apps/api/src/routes/smart_cube_macs.ts', 'apps/api/migrations/0285_smart_cube_macs.sql',
+  "apps/api/src/payment/membership-handoff.ts",
+  "apps/api/src/routes/membership_subscriptions.ts",
+  "apps/miniprogram/src/pages/membership/index.ts",
+  "packages/client/lib/membership-api.ts",
+  "packages/client/app/[lang]/membership/AutoRenewModal.tsx",
+  'packages/client/app/api/admin/recon-tests/route.ts',
   'packages/client/app/[lang]/admin/page.tsx',
   'packages/client/lib/store-membership-bridge.ts',
   'packages/client/i18n/i18n-client.ts',
@@ -26,6 +33,8 @@ const EXACT = new Set([
   'apps/api/src/routes/mcp.ts',
   'apps/api/src/routes/dev_preview.ts', 'apps/api/migrations/0273_dev_preview_requests.sql',
   'scripts/dev-preview/enroll.ts', 'scripts/dev-preview/provision.ts',
+  'apps/api/src/routes/workspace.ts', 'apps/api/src/workspace/service.ts', 'apps/api/migrations/0281_workspace.sql', 'apps/api/migrations/0284_workspace_admin_access.sql',
+  'packages/client/app/[lang]/workspace/page.tsx',
   'apps/api/src/routes/remote_access.ts', 'apps/api/migrations/0272_remote_access.sql',
   'apps/api/scripts/remote-access-host.ts', 'packages/shared/src/remote-access.ts',
   'packages/client/lib/remote-access-key.ts',
@@ -39,6 +48,7 @@ const EXACT = new Set([
   'packages/client/components/LandingSearch.tsx', 'packages/client/components/SiteAssistantDialog.tsx',
   'apps/miniprogram/src/lib/navigation.ts', 'apps/miniprogram/src/lib/web-routes.ts',
   'apps/miniprogram/src/pages/web/index.ts',
+  'apps/miniprogram/src/lib/native-route-page.ts',
   'apps/miniprogram/src/pages/training/index.ts',
   'packages/client/app/[lang]/training/[orgSlug]/page.tsx',
   'apps/miniprogram/src/pages/external-timer/index.ts',
@@ -78,11 +88,15 @@ export function isAuthDocSource(path) {
   if (EXACT.has(normalized)) return true;
   if (normalized.startsWith('packages/client/app/auth/')
     || normalized.startsWith('packages/client/app/[lang]/account/')
+    || normalized.startsWith('packages/client/app/[lang]/dev/team/')
     || normalized.startsWith('packages/client/app/api/google-verify/')
     || normalized.startsWith('packages/client/app/api/page-access/')
     || normalized.startsWith('packages/client/app/api/web-session/')
     || normalized.startsWith('packages/client/app/api/identity-choice/')
     || normalized.startsWith('apps/miniprogram/src/pages/account/')
+    || normalized.startsWith('apps/miniprogram/src/pages/account-link/')
+    || normalized.startsWith('apps/miniprogram/src/pages/account-delete/')
+    || normalized.startsWith('apps/miniprogram/src/pages/account-settings/')
     || normalized.startsWith('packages/shared/src/auth/')
     || normalized.startsWith('packages/app-ui/src/auth/')) return true;
   return ROOTS.some(root => normalized.startsWith(`${root}/`)) && NAME.test(name);

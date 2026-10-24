@@ -1,0 +1,100 @@
+.staff-workspace {
+  --workspace-text: var(--foreground);
+  --workspace-background: var(--background);
+  --workspace-surface: var(--card);
+  --workspace-hover: var(--muted);
+  --workspace-border: var(--border-default);
+  --workspace-muted: var(--muted-foreground);
+  --workspace-accent: var(--accent);
+  --workspace-error: var(--destructive);
+}
+
+.staff-workspace .staff-header,
+.staff-workspace .staff-nav {
+  border-bottom: 0;
+}
+
+/* Group content with spacing rather than nested decorative cards. */
+.staff-workspace .staff-panel,
+.staff-workspace .staff-empty {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.staff-workspace .staff-main .staff-panel {
+  padding: 0;
+}
+
+.staff-workspace .staff-empty {
+  padding: 16px 0;
+  text-align: start;
+}
+
+.staff-workspace .staff-feed {
+  gap: 24px;
+}
+
+.staff-workspace .staff-comment,
+.staff-workspace .staff-revision {
+  border-top: 0;
+}
+
+.staff-workspace .staff-badge {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+
+/* The selected navigation item already names the page; retain its h1 for readers. */
+.staff-workspace .staff-layout:has(.staff-nav [aria-current="page"]) > .staff-main > .staff-page-heading,
+.cuberoot-workspace-navigation .af-nav-body:has(.af-nav-link[aria-current="page"]) > .staff-main > .staff-page-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.cuberoot-workspace-navigation.af-navigation { --af-nav-expanded: 208px; --af-nav-sidebar-bg: var(--muted); --af-nav-content-bg: var(--background); --af-nav-text: var(--muted-foreground); --af-nav-active: var(--foreground); --af-nav-hover: var(--card); --af-nav-selected: var(--card); }
+.cuberoot-workspace-navigation .staff-header { position: sticky; top: 0; z-index: 45; box-sizing: border-box; height: var(--af-nav-header-height); background: var(--af-nav-sidebar-bg); padding: 0 20px; justify-content: flex-start; }
+.cuberoot-workspace-navigation .staff-header-actions { margin-left: auto; }
+.cuberoot-workspace-navigation .staff-main { margin: 0 auto; }
+
+.staff-workspace .staff-workspace-handbook {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.cuberoot-workspace-navigation .staff-main.staff-handbook-main {
+  box-sizing: border-box;
+  max-width: 1232px;
+  padding: 40px clamp(24px, 3.3vw, 48px) 80px;
+}
+
+.cuberoot-workspace-navigation .af-nav-row:has(.af-nav-link[href*="section=onboarding"]) {
+  margin-top: 22px;
+}
+
+.cuberoot-workspace-navigation .staff-header {
+  flex-direction: row;
+  align-items: center;
+}
+
+@media (max-width: 767px) {
+  .cuberoot-workspace-navigation .staff-main.staff-handbook-main {
+    padding: 24px 18px 56px;
+  }
+
+  .cuberoot-workspace-navigation .staff-header {
+    gap: 12px;
+    padding-inline: 16px;
+  }
+}

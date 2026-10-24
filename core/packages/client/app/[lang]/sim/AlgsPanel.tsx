@@ -12,6 +12,8 @@ import './algs-panel.css';
 import { displayAlg } from '@/lib/alg_display';
 import { useT } from "@/hooks/useT";
 import { tr } from '@/i18n/tr';
+import { Search } from 'lucide-react';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 interface Props {
   onSelect: (setup: string, alg: string, caseName: string) => void;
@@ -45,6 +47,7 @@ export default function AlgsPanel({ onSelect, activePuzzle }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     if (sets[0] && !sets.find((s) => s.slug === setSlug)) {
@@ -73,6 +76,12 @@ export default function AlgsPanel({ onSelect, activePuzzle }: Props) {
   }, [puzzle, setSlug]);
 
   const cases = useMemo<AlgCase[]>(() => data?.cases ?? [], [data]);
+  const matchingCases = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return cases.map((value, index) => ({ value, index })).filter(({ value }) =>
+      !needle || [value.name, ...value.algs.flat().map(entry => entry.alg)].some(text => text.toLowerCase().includes(needle)));
+  }, [cases, query]);
+  const selectedSet = sets.find(set => set.slug === setSlug);
 
   const choose = (idx: number) => {
     const c = cases[idx];
@@ -94,7 +103,10 @@ export default function AlgsPanel({ onSelect, activePuzzle }: Props) {
   return (
     <div className="sim-algs">
       <div className="sim-algs-sets">
+        <label className="sim-algs-set">
+        <span aria-hidden="true">{selectedSet ? tr(selectedSet) : ''}</span>
         <select
+          aria-label={t('公式集', 'Algorithm set')}
           value={setSlug}
           onChange={(e) => setSetSlug(e.target.value)}
         >
@@ -104,17 +116,20 @@ export default function AlgsPanel({ onSelect, activePuzzle }: Props) {
             </option>
           ))}
         </select>
-        <span className="sim-algs-hint">
-          {t('点公式 = 摆出此情形;下方回放区按播放看动画', 'Click case = set up the position; hit play below to watch the alg')}
-        </span>
+        </label>
+        <label className="sim-algs-search">
+          <Search size={14} aria-hidden="true" />
+          <input type="search" value={query} onChange={event => setQuery(event.target.value)}
+            aria-label={t('搜索公式', 'Search algorithms')} placeholder={t('搜索公式', 'Search algorithms')} />
+        </label>
       </div>
       <div className="sim-algs-list">
-        {loading ? <div className="sim-algs-msg">{t('加载中…', 'Loading…')}</div> : null}
+        {loading ? <div className="sim-algs-msg"><LoadingIndicator>{t('加载中…', 'Loading…')}</LoadingIndicator></div> : null}
         {error ? <div className="sim-algs-msg error">{error}</div> : null}
-        {!loading && !error && cases.length === 0 ? (
-          <div className="sim-algs-msg">{t('暂无数据', 'No data')}</div>
+        {!loading && !error && matchingCases.length === 0 ? (
+          <div className="sim-algs-msg">{query.trim() ? t('没有匹配的公式', 'No matching algorithms') : t('暂无数据', 'No data')}</div>
         ) : null}
-        {cases.map((c, i) => {
+        {matchingCases.map(({ value: c, index: i }) => {
           const algText = c.algs?.[0]?.[0]?.alg ?? '';
           return (
             <button

@@ -1,5 +1,12 @@
 'use client';
+
+import { trainingSolveMetrics } from '@cuberoot/shared/timer/reconstruct/recon-text';
+import { useDouyinToolSurface } from '@/lib/douyin-content';
 import { TimerSoloPage, timerSoloModalState, useTimerSoloCompactLayout } from '@cuberoot/timer-ui/TimerSoloPage';
+import SoloLayoutEditor from '../_components/SoloLayoutEditor';
+import { Tooltip } from '@/components/Tooltip';
+import { useIvyMode } from '@/hooks/useIvyMode';
+import { ivyScrambleForMode } from '@/lib/scramble-ivy-mode';
 import { get222Mode } from '@/lib/scramble-222-mode';
 import { browserTimerToolTransport, type TimerTool } from '@cuberoot/timer-ui/TimerTools';
 import { timerSeedTicket } from '@cuberoot/shared/timer/sync-seed';
@@ -12,7 +19,7 @@ import { apiUrl as replayApiUrl } from '@/lib/api-base';
 import { timerStatsPanelLabels } from '@cuberoot/timer-ui';
 import { loadAllSessionData, deleteSessionSolves } from '../_lib/storage/db';
 import { TIMER_DEVICE_CENTER_LABELS } from '@cuberoot/timer-ui';
-import { timerHidesRunningUi, upsertNetRecordedSolve } from '@cuberoot/shared/timer';
+import { timerHidesRunningUi, upsertNetRecordedSolve, timerSupportsTrainingTiming, type SolveResult } from '@cuberoot/shared/timer';
 import { useTimerRound, TimerTargetTime, useTimerTargetFeedback } from '@cuberoot/timer-ui';
 
 import { TimerWorkspace, useTimerWideLayout } from '@cuberoot/timer-ui';
@@ -39,10 +46,11 @@ import { useTranslation } from 'react-i18next';
 import { useQueryState, parseAsBoolean, parseAsString, parseAsStringEnum } from 'nuqs';
 import {
   AlertTriangle,
+  LayoutTemplate,
   ArrowLeft,
   Box,
   X,
-} from 'lucide-react';
+} from '@app-foundation/icons/lucide';
 import HomeLink from '@/components/HomeLink';
 import { petReact } from '@/lib/deskpet';
 import {
@@ -80,6 +88,7 @@ import { use222Mode, use222Type } from '@/lib/scramble-222-mode';
 import TimerTrainingMenu from './TimerTrainingMenu';
 import {
   isCube222StateType,
+  isScramble222Type,
   resolveTimerWcaSourceCore,
   stepPuzzleOf,
   timerWcaDifficultyFilter,
@@ -249,6 +258,7 @@ import {
   TimerAttemptSplitStatus,
   TimerPrintController,
   TimerScrambleStrip,
+  ManualScrambleQueueEditor,
   TimerWcaScrambleProgress,
   TimerWcaScrambleSource,
   TimerScrambleSourceSelect,
@@ -362,10 +372,10 @@ function useMediaQuery(query: string): boolean {
 // 三档各答一个问题,名字就是答案:**成绩**是这些把本身(会话 + 那张单子),**统计**
 // 是从它们算出来的数(当前/最佳、σ、阈值占比、完整统计),**图表**是画出来的。
 // 原来成绩那一档从当前/最佳一路铺到阈值占比再到历史,要滚很久才够到自己刚拧的那把。
-type PanelTab = 'times' | 'stats' | 'chart';
+type PanelTab = 'times' | 'stats';
 
 interface SoloViewProps {
-  /** The players (人数) select node, injected by the shell at the topbar left. */
+  /** The players select node, injected by the shell into settings. */
   playersControl?: React.ReactNode;
   presenceControl?: React.ReactNode;
   onPresenceChange?: (report: TimerPresenceReport) => void;
@@ -405,6 +415,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   const languagePrefix = ['', '/zh'][Number(isZh)];
   const printControllerRef = useRef<TimerPrintControllerHandle>(null);
   const settings = useSettings();
+  const douyin = useDouyinToolSurface();
   const authUser = useAuthStore((st) => st.user);
   const isAdmin = useIsAdmin();
   const competition = useCompetitionAttempt();
@@ -422,9 +433,10 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   const [trainingOrg] = useQueryState('trainingOrg', parseAsString);
   const [trainingAssignment] = useQueryState('trainingAssignment', parseAsString);
   useEffect(() => {
+    if (douyin) return;
     trainingDestinationRef.current = parseTrainingAssignmentDestination(new URLSearchParams({ trainingOrg: trainingOrg ?? '', trainingAssignment: trainingAssignment ?? '' }).toString());
     return startTrainingEvidenceOutbox(trainingDestinationRef.current);
-  }, [trainingOrg, trainingAssignment]);
+  }, [douyin, trainingOrg, trainingAssignment]);
 
   // 解法提示的全屏浮层由 SolverHintPanel 经同一个 URL param 开合(手机点 pill、桌面把头部的
   // 形态开关拨到「全屏」都进这一个);这里只读,用来把它算进 anyModalOpen(浮层盖住整屏时,
@@ -438,6 +450,12 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   const [solverBlocking, setSolverBlocking] = useState(false);
   const [historyOverlayOpen, setHistoryOverlayOpen] = useState(false);
   const [devFakeCubeOpen, setDevFakeCubeOpen] = useState(false);
+  const [layoutEditing, setLayoutEditing] = useState(false);
+  const layoutEditingRef = useRef(false);
+  const finishLayoutEditing = useCallback(() => {
+    layoutEditingRef.current = false;
+    setLayoutEditing(false);
+  }, []);
   const [sessionSwitcherOpen, setSessionSwitcherOpen] = useState(false);
   const closeResultsPanel = useCallback(() => setPanelTab(null), []);
   useEffect(() => {
@@ -481,18 +499,14 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   );
   const event: EventId = competition.enabled ? '333' : queryEvent;
   const supportsSmartCube = timerSupportsSmartCubeAutoTiming(event);
-  // 裸 /timer(无 ?event=)→ 用 localStorage 记的上次项目补齐并强制写回 URL;
-  // 有 ?event= 时(分享链接 / 收藏)以 URL 为准。
+  const [sourceParam, setSourceParam] = useQueryState('source');
+  // URL owns the public source choice. Other sources retain their existing
+  // detailed settings; no stored preference may override a shared cases/random link.
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (new URLSearchParams(window.location.search).has('event')) return;
-    const stored = localStorage.getItem('cuberoot-timer.event');
-    const valid = EVENTS.some(e => e.id === stored);
-    // 始终显式写一次(哪怕就是当前默认值 '333'),否则 clearOnDefault:false 只在真调用
-    // setEvent 时生效 —— 光靠 withDefault 不会自动把默认值补进 URL。
-    void setEvent(valid ? (stored as EventId) : event, { history: 'replace' });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (competition.enabled) return;
+    const source = sourceParam === 'manual' ? 'manual' : sourceParam === 'wca' ? 'wca' : 'random';
+    if (getSettings().scrambleSource !== source) updateSettings({ scrambleSource: source });
+  }, [sourceParam, competition.enabled]);
   useEffect(() => { persistItem('cuberoot-timer.event', event); }, [event]);
 
   const selectEvent = useCallback((nextEvent: EventId) => {
@@ -525,7 +539,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   // ── Drill mode ──────────────────────────────────────────────────
   const [drillTarget, setDrillTarget] = useState<TimerDrillTarget | null>(null);
   const [drillModalOpen, setDrillModalOpen] = useState(false);
-  const drillAllowed = timerEventSupportsDrill(event);
+  const drillAllowed = !douyin && timerEventSupportsDrill(event);
   useEffect(() => {
     if (!drillAllowed && drillTarget) setDrillTarget(null);
   }, [drillAllowed, drillTarget]);
@@ -567,7 +581,13 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   // 2x2 口径(WCA 11 步 ↔ 最优/Q|H):与 /scramble/gen 同一个全站设置(Scramble222ModePicker)。
   // 真题:optimal → 服务端 God's-number 最优等态(复用 optimal_scramble);随机状态 → 见 scramble222。
   const [mode222] = use222Mode();
-  const [type222] = use222Type();
+  const [ivyMode] = useIvyMode();
+  const [savedType222, setType222] = use222Type();
+  const [type222Param] = useQueryState('scramble222');
+  const type222 = isScramble222Type(type222Param) ? type222Param : savedType222;
+  useEffect(() => {
+    if (event === '222' && isScramble222Type(type222Param)) setType222(type222Param);
+  }, [event, type222Param, setType222]);
   const wca222Type = event === '222' && settings.scrambleSource === 'wca'
     && isCube222StateType(type222) ? type222 : undefined;
   const wca222TypeSig = wca222Type ?? '';
@@ -700,6 +720,8 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
 
   // 手动输入队列:每行一条打乱(去空行);source==='manual' 时按游标顺序取用(走完循环回队首),
   // ←/→ 仍走 scrambleHist 历史。队列内容变了即重置打乱历史(经 genScramble 身份变化)+ 游标。
+  const [manualEditing, setManualEditing] = useState(false);
+  useEffect(() => setManualEditing(settings.scrambleSource === 'manual'), [settings.scrambleSource]);
   const manualQueue = useMemo(
     () => parseManualScrambleQueue(settings.manualScrambles),
     [settings.manualScrambles],
@@ -714,7 +736,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
 
   const phaseRef = useRef<TimerPhase>('idle');
 
-  const seedOptionsSignature = JSON.stringify([settings.syncSeed, settings.syncSeedRevision, settings.cnMode, mode222, type222, settings.ollSubset, settings.pllSubset]);
+  const seedOptionsSignature = JSON.stringify([settings.syncSeed, settings.syncSeedRevision, settings.cnMode, mode222, type222, ivyMode, settings.ollSubset, settings.pllSubset]);
   const genScramble = useCallback((): TimerScrambleHistoryEntry => {
     // Manual queue: walk the user-typed lines in order, wrapping at the end.
     // Empty queue → '' placeholder (the strip shows a "paste scrambles" hint).
@@ -787,7 +809,8 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
     // 按所选度量最优步数生成(非案例库)。必须先于 non-WCA worker 分支,否则后两项会绕过难度。
     // 度量+区间进 pool key,改设置即换 buffer;拒绝采样 + IDA* 在 Worker 生成,不阻塞计时。
     if (non222ByStepsEvent) {
-      return timerScrambleHistoryEntry(takeWebNon222ByStepsScramble(non222ByStepsEvent, s));
+      const next = takeWebNon222ByStepsScramble(non222ByStepsEvent, s);
+      return timerScrambleHistoryEntry(event === 'ivy' ? ivyScrambleForMode(next, ivyMode) : next);
     }
     if (event === '222' && genStepsSig) return timerScrambleHistoryEntry('');
     // Only the async shared client generates ordinary random slots. Never run
@@ -840,10 +863,10 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
     const entry = current.list[current.idx];
     if (entry?.id !== expectedId || entry.scramble !== '') return false;
     const list = [...current.list];
-    list[current.idx] = { ...entry, scramble: value, trainerMeta, wca, caseId };
+    list[current.idx] = { ...entry, scramble: event === 'ivy' ? ivyScrambleForMode(value, ivyMode) : value, trainerMeta, wca, caseId };
     applyScrambleHist({ list, idx: current.idx });
     return true;
-  }, [applyScrambleHist]);
+  }, [applyScrambleHist, event, ivyMode]);
   const randomRequest = currentScrambleEntry.randomRequest;
   const [ordinaryFailedId, setOrdinaryFailedId] = useState<number | null>(null);
   const [ordinaryRetry, setOrdinaryRetry] = useState(0);
@@ -1375,7 +1398,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   const attemptStartedAtRef = useRef(0);
   const timerDisplayMsRef = useRef(0);
 
-  const recordSolve = useCallback((res: { timeMs: number; inspectionMs: number; autoPenalty: 'ok' | '+2' | 'DNF' }) => {
+  const recordSolve = useCallback((res: SolveResult) => {
     if (competitionRef.current.enabled) {
       const faces = bluetoothCubeRef.current?.getFaces();
       const currentRun = competitionRef.current.run();
@@ -1400,6 +1423,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
     if (stages) solve.stages = stages;
     if (bld) solve.bld = bld;
     if (caseIdAtStartRef.current) solve.caseId = caseIdAtStartRef.current;
+    if (res.trainingStartMode) solve.trainingStartMode = res.trainingStartMode;
     Object.assign(solve, smartCubeAttemptProducerRef.current.finishSolveFields(solve));
     reconstructionAnalyzer.handoff(`live-${attemptStartedAtRef.current}`, solve.id);
     // Inspection actually used (0 when inspection was off / never entered).
@@ -1449,6 +1473,10 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
     nextScramble();
   }, [attemptSplitRecorder, isDesktop, nextScramble, settings.autoOpenSolution, settings.precision, settings.autoRecap]);
 
+  const trainingTimingMode = () => !competitionRef.current.enabled && timerSupportsTrainingTiming(event)
+    && bluetoothCubeRef.current?.status.connected ? getSettings().trainingStartMode : undefined;
+  const trainingTimingModeRef = useRef(trainingTimingMode);
+  trainingTimingModeRef.current = trainingTimingMode;
   const timer = useTimer(recordSolve, (startedAtMs) => {
     const history = scrambleHistRef.current;
     const entry = competitionRef.current.enabled ? competitionScrambleEntry : history.list[history.idx];
@@ -1468,7 +1496,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
       multiStage: settings.multiStage && timerSupportsStageSplits(eventAtStartRef.current),
     });
     const bt = bluetoothCubeRef.current?.status;
-    gyroStartRef.current = performance.now();
+    gyroStartRef.current = trainingTimingModeRef.current() ? startedAtMs : performance.now();
     // begin resets both streams; later start handlers must preserve this recording.
     smartCubeAttemptProducerRef.current.begin(startedAtMs, bt?.connected
       ? { model: bt.brand, name: bt.deviceName }
@@ -1479,7 +1507,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
     if (liveSolvePublishRef.current !== null) clearTimeout(liveSolvePublishRef.current);
     liveSolvePublishRef.current = null;
     setLiveSolve(null);
-  });
+  }, () => ({ trainingStartMode: trainingTimingModeRef.current() }));
   cancelArmForScrambleChangeRef.current = competition.enabled ? () => {} : timer.cancelArm;
   useLayoutEffect(() => { timer.reset(); smartCubeAttemptProducerRef.current.reset(); }, [competition.enabled, competition.attemptKey, timer.reset]);
   timerDisplayMsRef.current = timer.displayMs;
@@ -1515,7 +1543,15 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
     (supportsSmartCube && bluetoothCubeRef.current?.status.connected) || cubeStartedRef.current
   ), [supportsSmartCube]);
   const onPressDown = useCallback((withWarmup = false): boolean => {
-    if (competitionRef.current.enabled) return false;
+    if (competitionRef.current.enabled || layoutEditingRef.current) return false;
+    if (trainingTimingModeRef.current() === 'manual') {
+      if (!getSettings().timingEnabled || !attemptCanStartRef.current
+        || smartCubeSoloController.getGuidanceSnapshot().match !== true) return false;
+      if (withWarmup) warmupSound();
+      const armed = timer.armFromCube();
+      if (armed) phaseSnapshotRef.current = 'inspecting';
+      return armed;
+    }
     if (!timerCanHandleAttemptPress(
       phaseSnapshotRef.current,
       attemptCanStartRef.current,
@@ -1524,9 +1560,9 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
     if (withWarmup) warmupSound();
     timer.onPressDown();
     return true;
-  }, [smartCubeInputBlocked, timer.onPressDown]);
+  }, [smartCubeInputBlocked, timer.onPressDown, timer.armFromCube]);
   const onPressUp = useCallback((): boolean => {
-    if (competitionRef.current.enabled || smartCubeInputBlocked()) return false;
+    if (competitionRef.current.enabled || layoutEditingRef.current || smartCubeInputBlocked()) return false;
     if (!attemptCanStartRef.current && phaseSnapshotRef.current !== 'running') {
       timer.cancelArm();
       return false;
@@ -1590,18 +1626,21 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
     match: null,
   });
   const smartCubeSoloController = useMemo(() => new SmartCubeSoloTimerController<CubeMoveMetadata>({
-    armFromCube: () => {
+    armFromCube: (timestamp) => {
       warmupSound();
-      const armed = timerHandleRef.current.armFromCube();
+      const armed = timerHandleRef.current.armFromCube(timestamp);
       if (armed) {
-        phaseSnapshotRef.current = getSettings().inspectionSec > 0 ? 'inspecting' : 'ready';
+        const mode = trainingTimingModeRef.current();
+        phaseSnapshotRef.current = mode ? mode === 'first-turn' ? 'ready' : 'inspecting'
+          : getSettings().inspectionSec > 0 ? 'inspecting' : 'ready';
         if (!scrambleGyroRef.current && gyroQuatRef.current) scrambleGyroRef.current = { ...gyroQuatRef.current };
       }
       return armed;
     },
     autoReadyOnScramble: () => !competitionRef.current.enabled
-      && getSettings().bluetoothAutoReady === 'scrambled',
-    canStartAttempt: () => attemptCanStartRef.current
+      && (trainingTimingModeRef.current() ? trainingTimingModeRef.current() !== 'manual'
+        : getSettings().bluetoothAutoReady === 'scrambled'),
+    canStartAttempt: () => !layoutEditingRef.current && attemptCanStartRef.current
       && !autoRecapInputBlockedRef.current
       && (!competitionRef.current.enabled || competitionRef.current.canStart()),
     getPhase: () => phaseSnapshotRef.current,
@@ -1695,6 +1734,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
       }
       : undefined,
     onMove: (move: string, ts: number, facelets: string, metadata?: CubeMoveMetadata) => {
+      setBluetoothOpen(false);
       liveAnchorRef.current?.move(move, ts);
       const outcome = smartCubeSoloController.move({ facelets, metadata, move, timestamp: ts });
       if (outcome.guidancePenultimate && getSettings().autoCalibrateGyro && gyroQuatRef.current) {
@@ -1788,6 +1828,15 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   liveAnchorRef.current = liveAnchor;
   useEffect(() => () => liveAnchor.setConnection(null), [liveAnchor]);
   const cubeConnected = supportsSmartCube && bluetoothCube.status.connected;
+  useEffect(() => {
+    if (cubeConnected) reconstructionAnalyzer.warmup();
+  }, [cubeConnected]);
+  const trainingTimingActive = cubeConnected && !competition.enabled && timerSupportsTrainingTiming(event);
+  useEffect(() => {
+    // A new start preference or lost transport cancels an unstarted observation;
+    // an already running attempt keeps its frozen mode and timestamps.
+    timer.cancelArm();
+  }, [settings.trainingStartMode, trainingTimingActive, timer.cancelArm]);
   useEffect(() => {
     if (!cubeConnected) {
       gyroQuatRef.current = null;
@@ -1986,6 +2035,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   type ExternalRecordContext = ExternalAttempt & { inspectionMs?: number };
   const externalTimeRecordRef = useRef<((ms: number, context?: ExternalRecordContext) => void) | null>(null);
   externalTimeRecordRef.current = (ms: number, context?: ExternalRecordContext) => {
+    if (layoutEditingRef.current) return;
     if (competitionRef.current.enabled) return;
     if (!Number.isFinite(ms) || ms < 0) {
       setInfoToast({
@@ -2013,7 +2063,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   const stackmatAttemptRef = useRef<ExternalAttempt | null>(null);
   const stackmat = useStackmat({
     onStart: () => {
-      stackmatAttemptRef.current = attemptCanStartRef.current ? { event, scramble } : null;
+      stackmatAttemptRef.current = !layoutEditingRef.current && attemptCanStartRef.current ? { event, scramble } : null;
     },
     onStop: (ms) => {
       const attempt = stackmatAttemptRef.current;
@@ -2040,7 +2090,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   const bluetoothTimer = useBluetoothTimer({
     onNeedMac: requestBluetoothTimerMac,
     onEvent: (timerEvent) => {
-      if (competitionRef.current.enabled) return;
+      if (competitionRef.current.enabled || layoutEditingRef.current) return;
       if (timerEvent.state === 'IDLE' || timerEvent.state === 'GAN_RESET') {
         bluetoothTimerAttemptRef.current = null;
         timer.reset();
@@ -2130,7 +2180,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   const { wheelRef: gestureWheelRef } = useGestureWheel({
     surfaceRef,
     canGesture: () => {
-      if (competitionRef.current.enabled) return false;
+      if (competitionRef.current.enabled || layoutEditingRef.current) return false;
       const ph = phaseSnapshotRef.current;
       return timerCanUseGestureWheel(ph);
     },
@@ -2332,7 +2382,6 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   const handlePasteReplay = useCallback(() => setReplayImportOpen(true), []);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [practiceSettingsOpen, setPracticeSettingsOpen] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const [bluetoothOpen, setBluetoothOpen] = useState(false);
   const bluetoothButtonRef = useRef<HTMLButtonElement>(null);
@@ -2466,7 +2515,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   // 成绩 / 图表面板在非桌面宽度下是整屏的(桌面是右侧常驻栏,不挡计时器),所以只有
   // 整屏那一形态要算进「有东西盖住计时器」—— 否则空格会穿到后面预备计时。
   const panelFullscreen = panelTab !== null && !isDesktop;
-  const otherModalOpen = solverBlocking ||
+  const otherModalOpen = layoutEditing || solverBlocking ||
     settingsOpen || bluetoothOpen || bluetoothTimerOpen || stackmatOpen ||
     trainerSubsetOpen !== null || statsModalOpen || historyOverlayOpen ||
     manualEntryOpen || solverOpen || bulkScrambleOpen ||
@@ -2481,14 +2530,14 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
     return () => window.removeEventListener('keydown', onKey);
   }, [panelFullscreen, sessionSwitcherOpen]);
 
-  const anyModalOpen = otherModalOpen || hintsSheetOpen || practiceSettingsOpen;
+  const anyModalOpen = otherModalOpen || hintsSheetOpen;
   const anyModalOpenRef = useRef(anyModalOpen);
   useEffect(() => { anyModalOpenRef.current = anyModalOpen; }, [anyModalOpen]);
   useAutoReady({
     // A subscription belongs to one armable attempt. Leaving that phase or
     // covering the timer cancels gestures; returning starts a fresh lifetime.
     // 'scrambled' is state matching, not a move-stream gesture.
-    enabled: !competition.enabled && settings.timingEnabled && attemptCanStart && !anyModalOpen
+    enabled: !trainingTimingActive && !competition.enabled && settings.timingEnabled && attemptCanStart && !anyModalOpen
       && (timer.phase === 'idle' || timer.phase === 'inspecting' || timer.phase === 'stopped')
       && (settings.bluetoothAutoReady === 'still' || settings.bluetoothAutoReady === 'double-flick')
       && cubeConnected,
@@ -2710,12 +2759,24 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
 
   // ── Derived display (digits text + color class) ─────────────────
   const stats = useMemo(() => summarize(solves, event), [solves, event]);
+  const trainingStatistics = useMemo(() => {
+    if (!timerSupportsTrainingTiming(event)) return undefined;
+    const repetitions = solves.filter(solve => solve.moves?.length
+      && (solve.trainingStartMode ?? 'first-turn') === settings.trainingStartMode);
+    const samples = repetitions.map(solve => ({ solve, metrics: trainingSolveMetrics(solve) }));
+    return (['observationMs', 'executionMs', 'totalMs'] as const).map(key => summarize(
+      samples.map(({ solve, metrics }) => ({ ...solve, timeMs: metrics[key],
+        // Penalties belong to the total; do not add +2 to each component.
+        penalty: key === 'totalMs' ? solve.penalty : solve.penalty === '+2' ? 'ok' as const : solve.penalty,
+      })), event));
+  }, [solves, event, settings.trainingStartMode]);
   const inspectionLimit = settings.inspectionSec;
   const colorClass = useMemo(() => {
     if (timer.phase === 'holding') return 'holding';
     if (timer.phase === 'ready') return 'ready';
     if (timer.phase === 'running') return 'running';
     if (timer.phase === 'inspecting') {
+      if (trainingTimingActive) return 'inspection';
       const penalty = inspectionPenalty(timer.inspectionDisplayMs, inspectionLimit);
       if (penalty === 'DNF') return 'inspection-dnf';
       if (penalty === '+2') return 'inspection-plus2';
@@ -2726,7 +2787,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
     }
     if (timer.phase === 'stopped' && (lastPenalty === 'DNF' || lastPenalty === 'DNS')) return 'dnf';
     return '';
-  }, [timer.phase, timer.inspectionDisplayMs, inspectionLimit, lastPenalty]);
+  }, [timer.phase, timer.inspectionDisplayMs, inspectionLimit, lastPenalty, trainingTimingActive]);
 
   const digitsText = useMemo(() => {
     return formatTimerTimingDisplay({
@@ -2734,13 +2795,14 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
       hideTime: settings.hideTime,
       inspectionDisplayMs: timer.inspectionDisplayMs,
       inspectionLimitSec: inspectionLimit,
+      trainingObservation: trainingTimingActive,
       lastPenalty,
       phase: timer.phase,
       precision: settings.precision,
       runningPrecision: settings.runningPrecision,
       timingEnabled: settings.timingEnabled,
     });
-  }, [timer.phase, timer.inspectionDisplayMs, timer.displayMs, inspectionLimit, lastPenalty, settings.hideTime, settings.precision, settings.runningPrecision, settings.timingEnabled]);
+  }, [timer.phase, timer.inspectionDisplayMs, timer.displayMs, inspectionLimit, lastPenalty, settings.hideTime, settings.precision, settings.runningPrecision, settings.timingEnabled, trainingTimingActive]);
 
   const fontSize = `calc(clamp(48px, 10vw, 132px) * ${settings.timerFontScale})`;
 
@@ -2778,6 +2840,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   const [diffSlot, setDiffSlot] = useState<HTMLSpanElement | null>(null);
   const [wcaSourceSlot, setWcaSourceSlot] = useState<HTMLDivElement | null>(null);
   const [mergeSlot, setMergeSlot] = useState<HTMLDivElement | null>(null);
+  const [historyQuery, setHistoryQuery] = useState('');
 
   const distractionFree = timer.phase === 'running' && !prefersReducedMotion;
   // Opt-in, and stronger than `distractionFree`: that one only fades
@@ -2793,6 +2856,8 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
       return (
         <>
           <SessionSwitcher
+            query={historyQuery}
+            onQueryChange={setHistoryQuery}
             isZh={isZh}
             event={event}
             open={sessionSwitcherOpen}
@@ -2801,6 +2866,9 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
           />
           {/* 这一档就是这些把本身:会话切换器 + 那张单子。算出来的数都在「统计」那档。 */}
           <HistoryPanel onBlockingChange={setHistoryOverlayOpen}
+            minimal
+            searchQuery={historyQuery}
+            onSearchQueryChange={setHistoryQuery}
             historyContextKey={`${getActiveSessionId()}|${event}`}
             solves={solves}
             isZh={isZh}
@@ -2814,8 +2882,8 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
         </>
       );
     }
-    if (panelTab === 'stats' || panelTab === 'chart') {
-      return <TimerStatisticsWorkspace view={panelTab} language={isZh ? 'zh' : 'en'} event={event} solves={solves}
+    if (panelTab === 'stats') {
+      return <TimerStatisticsWorkspace compact view={panelTab} language={isZh ? 'zh' : 'en'} event={event} solves={solves}
         labels={timerStatsPanelLabels(isZh ? 'zh' : 'en')} rollingColumns={settings.statsRollingColumns}
         onRollingColumnsChange={statsRollingColumns => updateSettings({statsRollingColumns})}
         sessionData={loadAllSessionData().map(item => item.session.id === getActiveSessionId() ? {...item, byEvent} : item)} activeSessionId={getActiveSessionId()}
@@ -2826,10 +2894,15 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
 
   // 解法提示(仅 333)。同一个组件在两处挂点里二选一:桌面进左侧 .shell-rail(展开成竖栏),
   // 手机进顶栏那一组控件的末尾(点开 = 全屏浮层)。写成一个变量,免得两处各写一遍 props。
-  const solverHintPanel = event === '333'
+  const solverHintPanel = !douyin && event === '333'
     ? (
         <SolverHintPanel
           scramble={scramble}
+          onScrambleChange={timerCanSwitchScramble(timer.phase) ? manualScrambles => {
+            if (!canSwitchScramble()) return;
+            updateSettings({ scrambleSource: 'manual', manualScrambles });
+            setManualEditing(false);
+          } : undefined}
           isZh={isZh}
           autoCollapseOnReady={timer.phase === 'ready' && bluetoothCube.status.connected}
           autoOpenOnSolve={solverOpenRequest}
@@ -2935,7 +3008,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
                       : null;
   const scrambleStatus = scrambleStatusReason ? timerScrambleStatus(scrambleStatusReason) : null;
   const scrambleClickEffect = timerScrambleClickEffect(
-    'none', // Scramble presses belong to timing, including legacy click preferences.
+    settings.scrambleClickAction,
     displayScramble.length > 0,
     attemptCanStart,
     scrambleStatus?.retryable === true,
@@ -3002,11 +3075,20 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   );
 
   return (
-    <TimerWorkspace panelOpen={Boolean(panelTab) && !liveSolutionPanel} recap={liveSolutionPanel ?? solveRecap}
+    <TimerWorkspace resizeLabel={tr({ zh: '拖动调整侧栏宽度', en: 'Drag to resize panel' })} panelOpen={Boolean(panelTab) && !liveSolutionPanel} recap={liveSolutionPanel ?? solveRecap}
       className={`timer-shell${fullscreen ? ' fullscreen' : ''}${distractionFree ? ' is-solving' : ''}${hideAllUi ? ' hide-ui' : ''}${isDesktop && (panelTab || recapSolve || liveSolutionPanel) ? ' panel-open' : ''}${isDesktop && (liveSolutionPanel || (recapSolve && !panelTab)) ? ' recap-open' : ''}`}
+      data-layout-editing={layoutEditing ? '' : undefined}
       data-solving={timer.phase === 'running' ? 'true' : undefined}
       data-mini-program-fullscreen={fullscreen && miniProgramFullscreen ? '' : undefined}
       data-live-reconstruction={liveSolutionPanel ? '' : undefined}
+      style={{
+        '--solo-scramble-gap': `${settings.soloLayout.scrambleGap}px`,
+        '--solo-source-gap': `${settings.soloLayout.sourceGap}px`,
+        '--solo-timer-gap': `${settings.soloLayout.timerGap}px`,
+        '--solo-cube-gap': `${settings.soloLayout.cubeGap}px`,
+        '--solo-source-scale': settings.soloLayout.sourceScale,
+        '--solo-cube-scale': settings.soloLayout.cubeScale,
+      } as React.CSSProperties}
     >
       <TimerPrintController
         currentResult={digitsText}
@@ -3027,7 +3109,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
       />
 
       {/* ── Topbar ──────────────────────────────────────────── */}
-      <TimerSoloPage tools={{
+      <TimerSoloPage resizeLabel={tr({ zh: '拖动调整侧栏宽度', en: 'Drag to resize panel' })} tools={{
           tool: tool,
           event: event,
           scramble: scramble,
@@ -3101,11 +3183,9 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
               />
             )}
           </TimerDeviceCenter>
-          {playersControl}
           <TimerTrainingMenu currentEvent={event} onTimerEventChange={selectEvent}
             disabled={!sourceControlsEnabled} showProject
             onAdvancedSettings={() => setSettingsOpen(true)}
-            onSettingsOpenChange={setPracticeSettingsOpen}
             sourceControl={onSelectCases => <span className="timer-practice-control">
           <TimerScrambleSourceSelect
             showArrow={false}
@@ -3126,34 +3206,43 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
             realAvailable={realSourceAvailable}
             trainingItems={onSelectCases ? [{ value: 'cases', label: tr({ zh: '选定情况', en: 'Selected cases' }) }] : []}
             onTrainingChange={onSelectCases}
-            onChange={(scrambleSource) => updateSettings({ scrambleSource })}
+            onChange={(scrambleSource) => {
+              updateSettings({ scrambleSource });
+              void setSourceParam(scrambleSource === 'random' ? null : scrambleSource);
+            }}
             realValue="wca"
             realMenuContent={<div ref={setWcaSourceSlot} />}
           />
             </span>}
-          />
-          {/* 「难度」开关的落点(内容由 ScrambleSourceBar 里的两个配置组件 portal 过来)。
-              摆在「解法」左边,和来源下拉同一组:难度讲的就是这条打乱怎么来的。
-              data-no-timer 得挂在这儿 —— 开关已经不在打乱来源条里,借不到那块的豁免。 */}
+            beforeSettings={<>
           <span className="shell-topbar-diff" data-no-timer ref={setDiffSlot} />
+          <Tooltip content={tr({ zh: '调整布局', en: 'Edit layout' })}>{tip => (
+            <button {...tip} type="button" className="tb-btn solo-layout-toggle" data-no-timer
+              aria-label={tr({ zh: '调整布局', en: 'Edit layout' })}
+              disabled={!layoutEditing && timer.phase !== 'idle' && timer.phase !== 'stopped'}
+              aria-pressed={layoutEditing}
+              onClick={() => {
+                if (layoutEditing) finishLayoutEditing();
+                else { layoutEditingRef.current = true; setLayoutEditing(true); }
+              }}><LayoutTemplate size={18} strokeWidth={1.6} /></button>
+          )}</Tooltip>
+            </>}
+          />
           {/* 解法提示(手机形态)。桌面同一个组件挂在左侧 .shell-rail 里(见下),
               这里是二选一 —— 两处同时挂就有两个实例抢同一个 ?hints。 */}
 
           </>
         ),
-          actions: (
-          <>
-          {presenceControl}
-          </>
-        )}}
+        }}
         stage={{
           className: "shell-main",
           fullscreen: fullscreen,
-          source: <ScrambleSourceBar disabled={!sourceControlsEnabled} event={event} isZh={isZh} diffSlot={diffSlot} mergeSlot={mergeSlot} wcaSourceSlot={wcaSourceSlot} />,
+          source: !douyin && <ScrambleSourceBar disabled={!sourceControlsEnabled} event={event} isZh={isZh} diffSlot={diffSlot} mergeSlot={mergeSlot} wcaSourceSlot={wcaSourceSlot} />,
           statistics: <TimerStatRail
             ariaExpanded={panelTab != null}
             language={timerLanguage}
             summary={stats}
+            trainingSummaries={trainingStatistics}
             onClick={() => setPanelTab(t => (t ? null : 'times'))}
           />,
         }}
@@ -3169,6 +3258,13 @@ className: targetFeedbackClass,
 onMouseDown: onCenterMouseDown,
 onMouseUp: onCenterMouseUp,
 scrambleSlot: <TimerScrambleStrip
+              editor={settings.scrambleSource === 'manual' && manualEditing ? <ManualScrambleQueueEditor
+                inline disabled={timer.phase !== 'idle' && timer.phase !== 'stopped'}
+                ariaLabel={tr({ zh: '手动输入打乱', en: 'Manual scramble input' })}
+                placeholder={tr({ zh: '输入打乱，回车提交', en: 'Enter scramble, press Enter to apply' })}
+                value={settings.manualScrambles}
+                onChange={manualScrambles => { updateSettings({ manualScrambles }); setManualEditing(parseManualScrambleQueue(manualScrambles).length === 0); }}
+              /> : undefined}
               compact={settings.compactScramble}
               copiedLabel={tr({ zh: '已复制', en: 'Copied' })}
               correctionActive={scrambleGuidance.correctionActive}
@@ -3207,7 +3303,17 @@ scrambleSlot: <TimerScrambleStrip
                       } : undefined,
                     }
                 : undefined}
-              title={tr(TIMER_SCRAMBLE_CLICK_TITLE_COPY[scrambleClickEffect])}
+              title={settings.scrambleSource === 'manual' ? tr({ zh: '编辑打乱，回车提交', en: 'Edit scramble, press Enter to apply' }) : tr(TIMER_SCRAMBLE_CLICK_TITLE_COPY[scrambleClickEffect])}
+              timingEnabled={!layoutEditing && settings.scrambleSource !== 'manual' && scrambleClickEffect === 'start'}
+              onActivate={layoutEditing ? undefined : settings.scrambleSource === 'manual' ? () => { if (canSwitchScramble()) setManualEditing(true); } : scrambleClickEffect === 'next' ? sheetNextScramble
+                : scrambleClickEffect === 'copy' ? () => {
+                  if (!canSwitchScramble()) return;
+                  void browserTimerToolTransport.copy(displayScramble).then(() => {
+                    setInfoToast({ msg: tr({ zh: '已复制打乱', en: 'Scramble copied' }) });
+                  }).catch(() => {
+                    setInfoToast({ msg: tr({ zh: '复制失败，请重试', en: 'Copy failed. Please try again.' }) });
+                  });
+                } : undefined}
               verificationLabels={{
                 copiedCorrection: tr({ zh: '已复制原打乱', en: 'Copied the scramble' }),
               }}
@@ -3247,7 +3353,6 @@ scrambleSlot: <TimerScrambleStrip
                   key={curMarkKey ?? 'wca-source-progress'}
                   allMarksHref={`${languagePrefix}/timer/marks`}
                   language={timerLanguage}
-                  markCount={curMarks?.count}
                   marked={myMark}
                   marks={curMarks?.marks.map((mark) => ({
                     country: mark.country,
@@ -3272,8 +3377,14 @@ digitsCorner: settings.rankScopes.length > 0 && rankBadgePhase && solves.length 
           ) : undefined,
 children: <>
           {/* sub-content under the digits */}
+          {trainingTimingActive && timer.phase === 'inspecting' && <div className="timer-live-tps">
+            {tr({ zh: '观察中 · 起手后自动记录分段', en: 'Observing · turn to record the attempt' })}
+          </div>}
+          {trainingTimingActive && settings.trainingStartMode === 'manual'
+            && (timer.phase === 'idle' || timer.phase === 'stopped') && scrambleGuidance.match === true
+            && <div className="timer-live-tps">{tr({ zh: '按空格或点击计时区开始观察', en: 'Press Space or tap the timer to start observation' })}</div>}
           {timer.phase === 'running' && <TimerTargetTime targetMs={targetMs} displayMs={timer.displayMs} localize={tr} />}
-          {timer.phase === 'inspecting' && inspectionIllegalCount > 0 && (
+          {!trainingTimingActive && timer.phase === 'inspecting' && inspectionIllegalCount > 0 && (
             <div className="inspection-illegal-warn" title={tr({ zh: 'WCA 4d: 观察期间只允许整体旋转 (x/y/z)，转面会判 DNF', en: 'WCA 4d: only rotations (x/y/z) are legal during inspection — face turns are DNF'
             })}>
               <AlertTriangle size={14} />
@@ -3330,7 +3441,7 @@ children: <>
             );
           })()}
         </div>
-        {(event === '222' || event === 'pyra' || event === 'skewb' || event === 'sq1' || event === 'mega') && (
+        {!douyin && (event === '222' || event === 'pyra' || event === 'skewb' || event === 'sq1' || event === 'mega') && (
           <div className="shell-undersurface surface-chrome"><SolverHints scramble={scramble} isZh={isZh} event={event} /></div>
         )}
 
@@ -3344,8 +3455,6 @@ children: <>
         <aside className={`timer-workspace-panel shell-panel${isDesktop ? ' shell-panel--rail' : ' shell-panel--sheet'}`}>
           <div className="shell-panel-tabs">
             <button type="button" className={`shell-panel-tab${panelTab === 'times' ? ' active' : ''}`} onClick={() => setPanelTab('times')}>{tr({ zh: '成绩', en: 'Times'
-          })}</button>
-            <button type="button" className={`shell-panel-tab${panelTab === 'chart' ? ' active' : ''}`} onClick={() => setPanelTab('chart')}>{tr({ zh: '图表', en: 'Chart'
           })}</button>
             <button type="button" className={`shell-panel-tab${panelTab === 'stats' ? ' active' : ''}`} onClick={() => setPanelTab('stats')}>{tr({ zh: '统计', en: 'Stats'
           })}</button>
@@ -3443,7 +3552,10 @@ children: <>
         />
       )}
 
-      {settingsOpen && <SettingsPanel event={event} actions={moreItems} mergeSlotRef={setMergeSlot} onClose={closeSettings} onDataReplaced={() => { trainingRound.reset(); setByEvent(loadAll()); }} />}
+      {layoutEditing && <SoloLayoutEditor surfaceRef={surfaceRef}
+        contentKey={`${displayScramble}:${settings.showCubePreview}:${cubeConnected}`}
+        onDone={finishLayoutEditing} />}
+      {settingsOpen && <SettingsPanel event={event} actions={douyin ? moreItems.filter(item => !['more.drill', 'more.bld-helper', 'more.solver', 'more.bulk'].includes(item.id)) : moreItems} playersControl={playersControl} presenceControl={presenceControl} mergeSlotRef={setMergeSlot} onClose={closeSettings} onDataReplaced={() => { trainingRound.reset(); setByEvent(loadAll()); }} />}
 
       {infoToast && (
         <TimerInfoToast

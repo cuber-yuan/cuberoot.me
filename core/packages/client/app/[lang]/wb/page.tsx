@@ -7,7 +7,7 @@
  */
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, ChevronDown, ChevronRight, ExternalLink, Trophy, Play } from 'lucide-react';
+import { Search, ChevronDown, ChevronRight, ExternalLink, Trophy, Play } from '@app-foundation/icons/lucide';
 import { useWbData } from './use_wb_data';
 import type { WbCategory, WbEvent, WbRecord, WbTab } from './types';
 import { displayCuberName } from '@/lib/cuber-name-display';
@@ -15,6 +15,7 @@ import { Flag } from '@/components/Flag';
 import { ClearButton } from '@/components/ClearButton';
 import BackHome from '@/components/BackHome';
 import './wb.css';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 const SOURCE_URL = 'https://www.speedsolving.com/wiki/index.php?title=List_of_Unofficial_World_Records';
 
@@ -99,7 +100,7 @@ export default function WbPage() {
 
       <main className="wb-main">
         {error && <div className="wb-error">{t('加载失败', 'Failed to load')}: {error}</div>}
-        {!data && !error && <div className="wb-loading">{t('加载中…', 'Loading…')}</div>}
+        {!data && !error && <div className="wb-loading"><LoadingIndicator>{t('加载中…', 'Loading…')}</LoadingIndicator></div>}
         {data && filteredCats.length === 0 && (
           <div className="wb-empty">{t('没有匹配项', 'No matches')}</div>
         )}

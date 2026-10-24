@@ -41,6 +41,13 @@ const SEP = ' — ';
 const SHARE_IMAGE = '/icons/CubeRoot.png';
 
 export const PAGE_META: Record<string, PageMetaEntry> = {
+  'dev/continuous-corners': {
+    title: { zh: '连续圆角：几何与实现', en: 'Continuous Corners: Geometry and Implementation' },
+    description: {
+      zh: 'continuous-corners 实现记录：SwiftUI 路径重建、贝塞尔曲线、曲率、同心圆角、误差测量与 TypeScript 接入。',
+      en: 'Implementation notes for continuous-corners: SwiftUI path reconstruction, Bézier curves, curvature, concentric corners, error measurements and TypeScript integration.',
+    },
+  },
   'download': {
     title: { zh: '下载', en: 'Download' },
     description: {
@@ -49,10 +56,10 @@ export const PAGE_META: Record<string, PageMetaEntry> = {
     },
   },
   'alg/double-zbll-about': {
-    title: { zh: '双底 ZBLL：对称与最短解', en: 'Double ZBLL: Symmetry and Shortest Solutions' },
+    title: { zh: 'ZBLL 打乱方式与统计', en: 'ZBLL Scramble Modes and Statistics' },
     description: {
-      zh: '从 62,220,544 个组合到 7,555,446 个代表状态：双底 ZBLL 如何利用 AUF 去重、顶底互换和旋转对称，保留全局最优 HTM 解。',
-      en: 'From 62,220,544 combinations to 7,555,446 representatives: AUF deduplication and rotational symmetry preserve globally optimal HTM solutions for double ZBLL.',
+      zh: '比较双底 HTM、逆 case、最优 HTM / STM / SQTM / QTM、COEP 与 csTimer 的打乱分布、极端情况及计步规则。',
+      en: 'Compare double ZBLL HTM, inverse case, optimal HTM / STM / SQTM / QTM, COEP and csTimer: distributions, extremes and counting rules.',
     },
   },
   'cube-history': {
@@ -122,7 +129,12 @@ export const PAGE_META: Record<string, PageMetaEntry> = {
   'pets': { title: { zh: '领养宠物', en: 'Adopt a companion' }, description: { zh: '领养根号兽、螃蟹、三花猫或云宝。喂食、互动，点亮星星、月亮与太阳，一起长大。', en: 'Adopt a Root Beast, Clawd, Calico, or Cloud. Feed, play, and grow a friendship from little stars to suns.' } },
   'pets/gallery': { title: { zh: '宠物图鉴', en: 'Companion gallery' }, description: { zh: '探索 CubeRoot 小伙伴的动作与表情，播放喜欢的片段，分享给朋友。', en: 'Explore CubeRoot companion animations and expressions. Play your favorite moments and share them with friends.' } },
   'account': { title: { zh: '账号', en: 'Account' } },
-  'account/get-started': { title: { zh: '新员工入门', en: 'Getting Started for Staff' }, description: { zh: '注册或登录 CubeRoot，复制账号 ID 并联系负责人开通管理员权限。', en: 'Register or sign in to CubeRoot, copy your account ID and contact your team lead for administrator access.' } },
+  'team': { title: { zh: '团队手册', en: 'Team Handbook' }, description: { zh: '入职、离职与 AI 协作 SOP。', en: 'Onboarding, offboarding and AI collaboration SOP.' } },
+  'workspace': { title: { zh: 'Workspace', en: 'Workspace' }, description: { zh: 'CubeRoot 员工工作台。', en: 'CubeRoot employee workspace.' } },
+  'dev/team': { title: { zh: '团队手册', en: 'Team Handbook' }, description: { zh: '入职、离职与 AI 协作 SOP。', en: 'Onboarding, offboarding and AI collaboration SOP.' } },
+  'account/sop': { title: { zh: 'AI 协作 SOP', en: 'AI Collaboration SOP' }, description: { zh: '团队 AI 协作的工作流程、质量标准与交接规范。', en: 'Workflow, quality standards and handoff guidelines for team AI collaboration.' } },
+  'account/offboarding': { title: { zh: '离职', en: 'Offboarding' }, description: { zh: '工作交接、设备归还与组织权限撤销。', en: 'Work handoff, equipment return and organizational access revocation.' } },
+  'account/get-started': { title: { zh: '入职', en: 'Onboarding' }, description: { zh: '注册或登录 CubeRoot，复制账号 ID 并联系负责人开通管理员权限。', en: 'Register or sign in to CubeRoot, copy your account ID and contact your team lead for administrator access.' } },
   'account/verify': { title: { zh: '实名认证', en: 'Identity Verification' } },
   'account/mcp': { title: { zh: 'ChatGPT 只读连接', en: 'ChatGPT Read-only Connection' } },
   'admin': {
@@ -453,10 +465,10 @@ export const PAGE_META: Record<string, PageMetaEntry> = {
   'cross_trainer': { title: { zh: '十字训练', en: 'Cross Trainer' } },
   'cstimer': { title: { zh: 'csTimer', en: 'csTimer' } },
   'contests': {
-    title: { zh: '比赛系统', en: 'Contests' },
+    title: { zh: '非官方比赛与纪录', en: 'Unofficial contests & records' },
     description: {
-      zh: '创建比赛、管理项目与选手、录入现场成绩,并自动生成排名和纪录。',
-      en: 'Create competitions, manage events and competitors, enter live results, and generate rankings and records.',
+      zh: '查询 Cubing Contests 非官方比赛、项目排名、世界与地区纪录，以及选手成绩和 WCA 档案。',
+      en: 'Explore Cubing Contests unofficial competitions, event rankings, world and regional records, competitor results and linked WCA profiles.',
     },
   },
   'documentation': { title: { zh: '文档', en: 'Documentation' } },
@@ -667,6 +679,13 @@ export const PAGE_META: Record<string, PageMetaEntry> = {
       en: 'The WCA Regulations, illustrated — every official article rewritten with diagrams and 3D examples, one page per article, plus the full official text for citation.',
     },
   },
+  'regulation/rules': {
+    title: { zh: 'WCA 规则', en: 'WCA Regulations' },
+    description: {
+      zh: '按核心条款与项目附则分类浏览 WCA 规则图解，并查阅官方条文。',
+      en: 'Browse illustrated WCA regulations by core articles and event-specific articles, with access to the official text.',
+    },
+  },
   'regulation/full': {
     title: { zh: 'WCA 竞赛规则:完整原文', en: 'WCA Regulations: Full Official Text' },
     description: {
@@ -674,7 +693,18 @@ export const PAGE_META: Record<string, PageMetaEntry> = {
       en: 'The complete official WCA Regulations, verbatim, for citation.',
     },
   },
-  'regulation/news': { title: { zh: 'WCA 规则:最新动态', en: 'WCA Regulations: Updates' } },
+  'regulation/translation': {
+    title: { zh: 'WCA 英中翻译参考', en: 'WCA English–Chinese Translation Reference' },
+    description: {
+      zh: 'WCA 规则术语、规范句式、易混译法及条款双语对照，提供 Markdown 下载供翻译与学习使用。',
+      en: 'WCA terminology, regulatory phrasing, translation pitfalls and aligned English–Chinese clauses, with Markdown downloads.',
+    },
+  },
+  'regulation/post': { title: { zh: '公告', en: 'Posts' } },
+  'regulation/logs': {
+    title: { zh: 'WCA 意外事件与纪律处分日志', en: 'WCA Incidents and Disciplinary Logs' },
+    description: { zh: 'WCA 意外事件及纪律处分历史日志，提供中文译文与英文原文。', en: 'Historical WCA incidents and disciplinary announcements, in Chinese and English.' },
+  },
   'scramble': {
     title: { zh: '打乱分析', en: 'Scramble Analysis' },
     description: {
@@ -758,6 +788,9 @@ export const PAGE_META: Record<string, PageMetaEntry> = {
     title: { zh: '魔方空间', en: 'Cube Space' },
     description: { zh: '在开放的三维空间中摆放、移动和旋转魔方，自由切换视角并保存布局。', en: 'Arrange, move and rotate puzzles in an open 3D space. Explore every angle and save your layout.' },
   },
+  'sim/embed': {
+    title: { zh: '魔方嵌入', en: 'Cube Embed' },
+  },
   'sim': {
     title: { zh: '魔方模拟器', en: 'Puzzle Simulator' },
     description: {
@@ -828,6 +861,10 @@ export const PAGE_META: Record<string, PageMetaEntry> = {
   'tutorial/lbl': {
     title: { zh: '三阶魔方层先法', en: '3×3 LBL' },
     description: { zh: '从小花到六面复原，跟随可交互魔方逐步学习三阶层先法。', en: 'Learn to solve the 3×3 layer by layer with interactive demonstrations, from the daisy to the last edges.' },
+  },
+  'tutorial/f2l': {
+    title: { zh: '三阶魔方 F2L 教程', en: '3×3 F2L Tutorial' },
+    description: { zh: '从层先法走向 F2L：认识四种三步标态，理解顶面调整，逐步学习右前槽角棱对的还原。', en: 'Move from LBL to F2L: recognize four three-move cases, understand top-layer alignment and learn front-right pair insertions step by step.' },
   },
   'tutorial': {
     title: { zh: '魔方教程', en: 'Cubing Tutorials' },

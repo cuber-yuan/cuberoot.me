@@ -20,7 +20,7 @@ import { loadCalendarManifest, loadCalendarMonth } from '@/lib/competition-calen
 import type { CalendarManifest } from '@cuberoot/shared/competition-calendar';
 import HomeLink from '@/components/HomeLink';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, ChevronRight, Star, Earth as GlobeIcon, List, LayoutGrid, BarChart3, CalendarDays, CalendarRange, HelpCircle, Users, Gauge, Percent, CaseSensitive, MapPin, Mountain, MoveVertical, MoveHorizontal, ArrowDownAZ, ArrowDownZA, X as XIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Star, Earth as GlobeIcon, List, LayoutGrid, BarChart3, CalendarDays, CalendarRange, HelpCircle, Users, Gauge, Percent, CaseSensitive, MapPin, Mountain, MoveVertical, MoveHorizontal, ArrowDownAZ, ArrowDownZA, X as XIcon } from '@app-foundation/icons/lucide';
 import { SortArrow } from '@/components/SortArrow';
 import { WCA_EVENT_ORDER } from '@cuberoot/shared/wca-events';
 import {
@@ -74,13 +74,14 @@ import { loadRecent, recentKeyFor, type RecentEntry } from '@/lib/comp-recent';
 import './calendar_page.css';
 import './comp.css';
 import { tr } from '@/i18n/tr';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 // view=globe 视图:地球是本页的一个视图,不是自己的路由 —— 实现放在 wca/_globe/,
 // 下划线前缀让 Next 不当它是路由段(同 alg/_roux、alg/_trainer)。
 // dynamic + ssr:false 懒加载,~550KB maplibre 仅在切到地球视图时下载,不进日历首屏 bundle。
 const GlobeMapClient = dynamic(() => import('../_globe/GlobeMapClient'), {
   ssr: false,
-  loading: () => <div className="comp-globe-loading">Loading globe…</div>,
+  loading: () => <div className="comp-globe-loading"><LoadingIndicator /></div>,
 });
 
 // 最近浏览(localStorage,登录用户专属)的读写在 lib/comp-recent.ts —— 详情页也要
@@ -2061,8 +2062,8 @@ function CalendarPageInner() {
         </h1>
         <div className="upcoming-meta">
           <HomeLink className="globe-link">
-            <ChevronLeft size={12} strokeWidth={1.75} /> {tr({ zh: '首页', en: 'Home'
-            })}
+            <ChevronLeft size={12} strokeWidth={1.75} /> <span className="sr-only">{tr({ zh: '首页', en: 'Home'
+            })}</span>
           </HomeLink>
           <Link href="/wca/comp/stats" className="globe-link">
             <BarChart3 size={12} strokeWidth={1.75} /> {tr({ zh: '统计', en: 'Stats'
@@ -2219,7 +2220,7 @@ function CalendarPageInner() {
             role="tab"
             aria-selected={viewMode === 'calendar'}
             className={`view-btn ${viewMode === 'calendar' ? 'is-active' : ''}`}
-            onClick={() => setViewMode('calendar')}
+            onClick={() => setViewMode('calendar', { history: viewMode === 'globe' ? 'push' : 'replace' })}
             aria-label={tr({ zh: '日历', en: 'Calendar'
             })}
             title={tr({ zh: '日历', en: 'Calendar'
@@ -2231,7 +2232,7 @@ function CalendarPageInner() {
             role="tab"
             aria-selected={viewMode === 'card'}
             className={`view-btn ${viewMode === 'card' ? 'is-active' : ''}`}
-            onClick={() => setViewMode('card')}
+            onClick={() => setViewMode('card', { history: viewMode === 'globe' ? 'push' : 'replace' })}
             aria-label={tr({ zh: '卡片', en: 'Cards' })}
             title={tr({ zh: '卡片', en: 'Cards' })}
           >
@@ -2241,7 +2242,7 @@ function CalendarPageInner() {
             role="tab"
             aria-selected={viewMode === 'list'}
             className={`view-btn ${viewMode === 'list' ? 'is-active' : ''}`}
-            onClick={() => { setViewMode('list'); setMode('all'); }}
+            onClick={() => { setViewMode('list', { history: viewMode === 'globe' ? 'push' : 'replace' }); setMode('all'); }}
             aria-label={tr({ zh: '列表', en: 'List' })}
             title={tr({ zh: '列表', en: 'List' })}
           >
@@ -2940,7 +2941,7 @@ function CalendarPageInner() {
 
 export default function CalendarPage() {
   return (
-    <Suspense fallback={<div className="calendar-page"><div className="calendar-loading">Loading…</div></div>}>
+    <Suspense fallback={<div className="calendar-page"><div className="calendar-loading"><LoadingIndicator /></div></div>}>
       <CalendarPageInner />
     </Suspense>
   );

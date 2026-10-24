@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Settings } from 'lucide-react';
+import { Settings } from '@app-foundation/icons/lucide';
 import BoolToggle from '@/components/BoolToggle';
 import { usePanelClamp } from '@/hooks/usePanelClamp';
 import { usePopoverDismiss } from '@/hooks/usePopoverDismiss';
@@ -133,11 +133,7 @@ export function SettingsPopover({
             className={`settings-popover-panel${panelClassName ? ` ${panelClassName}` : ''}`}
             data-site-surface="popover"
           >
-            {settingsHost?.practiceSettings}
-            {settingsHost ? <details className="timer-practice-advanced">
-              <summary>{tr({ zh: '更多', en: 'More' })}</summary>
-              <div className="timer-practice-advanced__content">{children}</div>
-            </details> : children}
+            {children}
           </div>
         </div>
       )}
@@ -145,11 +141,12 @@ export function SettingsPopover({
   );
 
   if (!settingsHost) return popover;
+  const context = (triggerPrefix || triggerSuffix) && <div className="settings-popover-context" data-no-timer={ignoreTimer || undefined}>
+    {triggerPrefix}
+    {triggerSuffix}
+  </div>;
   return <>
-    {(triggerPrefix || triggerSuffix) && <div className="settings-popover-context" data-no-timer={ignoreTimer || undefined}>
-      {triggerPrefix}
-      {triggerSuffix}
-    </div>}
+    {settingsHost.contextPortal ? createPortal(context, settingsHost.contextPortal) : context}
     {settingsHost.settingsPortal ? createPortal(popover, settingsHost.settingsPortal) : null}
   </>;
 }

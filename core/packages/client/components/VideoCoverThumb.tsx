@@ -4,8 +4,9 @@
 // 外链用真 <a target=_blank>(中键可开),stopPropagation 防冒泡关弹窗。样式见 result-change.css 的 .att-vid-*。
 
 import { useEffect, useMemo, useState } from 'react';
-import { Video } from 'lucide-react';
-import { videoCoverInfo, coverSyncSrc, loadBiliCover, loadDouyinCover } from '@/lib/recon-video-cover';
+import { Video } from '@app-foundation/icons/lucide';
+import { videoCoverInfo, coverSyncSrc, coverPreviewSrc, loadBiliCover, loadDouyinCover } from '@/lib/recon-video-cover';
+import { ProgressiveImage } from '@/components/ProgressiveImage';
 
 export function VideoCoverThumb({ url, pending, pendingLabel }: {
   url: string;
@@ -42,8 +43,8 @@ export function VideoCoverThumb({ url, pending, pendingLabel }: {
       onClick={(e) => e.stopPropagation()}
     >
       {imgSrc ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img className="att-vid-thumb-img" src={imgSrc} alt="" referrerPolicy="no-referrer" loading="lazy" onError={() => setFailed(true)} />
+        <ProgressiveImage className="att-vid-thumb-img" src={imgSrc} previewSrc={coverPreviewSrc(cover, imgSrc)}
+          alt="" referrerPolicy="no-referrer" loading="lazy" fallback={<Video size={26} />} />
       ) : (
         <span className="att-vid-thumb-fallback"><Video size={26} /></span>
       )}

@@ -10,7 +10,7 @@
 // this site can deep-link the rules without leaving for worldcubeassociation.org.
 
 import type { ReactNode } from 'react';
-import { ChevronLeft, ArrowUp } from 'lucide-react';
+import { ChevronLeft, ArrowUp } from '@app-foundation/icons/lucide';
 import Link from '@/components/AppLink';
 import { tr } from '@/i18n/tr';
 import { useT } from '../../../../hooks/useT';
@@ -106,8 +106,8 @@ export default function RegulationFull() {
   return (
     <div className="reg-page" id="top">
       <div className="reg-wrap reg-doc">
-        <Link href="/regulation" className="reg-crumb">
-          <ChevronLeft size={16} /> {t('WCA 竞赛规则', 'WCA Regulations')}
+        <Link href="/regulation/rules" className="back-home" aria-label={t('返回规则', 'Back to regulations')}>
+          <ChevronLeft size={16} aria-hidden="true" />
         </Link>
 
         <header className="reg-hero">
@@ -132,6 +132,10 @@ export default function RegulationFull() {
             )}
           </p>
         </header>
+
+        <Link href="/regulation/translation" prefetch={false} className="reg-fulllink">
+          {t('英中翻译参考与 Markdown 对照表', 'Translation reference and parallel Markdown')}
+        </Link>
 
         <section className="reg-doc-notes">
           {doc.notes.map((n, i) => {

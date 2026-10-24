@@ -21,6 +21,7 @@ vi.mock('next/navigation', async (importOriginal) => ({
   useRouter: () => navigation.router,
 }));
 vi.mock('next/link', () => ({
+  useLinkStatus: () => ({ pending: false }),
   default: ({ children, ...props }: { children: ReactNode; href: string }) => createElement('a', props, children),
 }));
 import AppLink from '@/components/AppLink';
@@ -48,6 +49,7 @@ const trainingHost: TrainingHost = {
 describe('practice menu availability and transitions', () => {
   let container: HTMLDivElement;
   let settingsPortal: HTMLDivElement;
+  let contextPortal: HTMLDivElement;
   let root: Root;
   let initialStore: ReturnType<typeof useTrainerStore.getState>;
   let initialSettings: ReturnType<typeof getSettings>;
@@ -73,13 +75,15 @@ describe('practice menu availability and transitions', () => {
     onUrlUpdate.mockClear();
     container = document.createElement('div');
     settingsPortal = document.createElement('div');
-    document.body.append(container, settingsPortal);
+    contextPortal = document.createElement('div');
+    document.body.append(container, settingsPortal, contextPortal);
     root = createRoot(container);
   });
   afterEach(async () => {
     await act(async () => root.unmount());
     container.remove();
     settingsPortal.remove();
+    contextPortal.remove();
     useTrainerStore.setState(initialStore, true);
     updateSettings(initialSettings);
     vi.unstubAllGlobals();
@@ -92,8 +96,7 @@ describe('practice menu availability and transitions', () => {
     const menu = createElement(TimerTrainingMenu);
     const children = target?.kind === 'alg-run'
       ? createElement(TrainingHostProvider, {
-        value: { path: training!, params: target.params, mapHref, settingsPortal,
-          practiceSettings: createElement(TimerTrainingMenu, { settingsOnly: true }) },
+        value: { path: training!, params: target.params, mapHref, settingsPortal, contextPortal },
         children: createElement(Fragment, null, menu, createElement(SettingsPopover, {
           hosted: true, label: label('训练设置', 'Training settings'),
           triggerPrefix: createElement('span', null, '8/472'),
@@ -107,7 +110,7 @@ describe('practice menu availability and transitions', () => {
   }
   async function openSettings() {
     const gear = trigger('训练设置', 'Training settings');
-    if (gear.getAttribute('aria-expanded') !== 'true') await act(async () => gear.click());
+    if (gear && gear.getAttribute('aria-expanded') !== 'true') await act(async () => gear.click());
   }
   async function choosePractice(value: 'memo' | 'action') {
     await act(async () => trigger('练习方式', 'Practice method').click());
@@ -116,7 +119,6 @@ describe('practice menu availability and transitions', () => {
     return onUrlUpdate.mock.lastCall![0].searchParams;
   }
   async function chooseSource(zh: string, en: string) {
-    await openSettings();
     await act(async () => trigger('出题来源', 'Question source').click());
     await act(async () => option(zh, en).click());
     await vi.waitFor(() => expect(onUrlUpdate).toHaveBeenCalled());
@@ -208,7 +210,7 @@ describe('practice menu availability and transitions', () => {
     expect(trigger('计时', 'Timing')).toBeNull();
   });
 
-  it.each([true, false])('enters recall without selected cases and discards legacy timing preferences (%s)', async timing => {
+  it.each([true, false])('enters recall without selected cases and preserves explicit trainer timing preferences (%s)', async timing => {
     useTrainerStore.setState({ selected: [], timing });
     updateSettings({ timingEnabled: timing });
     await renderMenu(null);
@@ -225,8 +227,8 @@ describe('practice menu availability and transitions', () => {
     const returned = await choosePractice('action');
     expect(returned.get('training')).toBe('/alg/3x3/oll/run');
     expect(returned.get('train.mode')).toBe('recap');
-    expect(returned.has('train.timing')).toBe(false);
-    expect(getSettings().timingEnabled).toBe(true);
+    expect(returned.get('train.timing')).toBe(timing ? '1' : '0');
+    expect(getSettings().timingEnabled).toBe(timing);
   });
 
   it.each(['train', 'recap'] as const)('restores the original draw mode after recall (%s)', async mode => {
@@ -264,16 +266,19 @@ describe('practice menu availability and transitions', () => {
     await renderMenu('/alg/3x3/oll/run');
     const gear = trigger('训练设置', 'Training settings');
     expect(settingsPortal.contains(gear)).toBe(true);
-    expect(container.textContent).toContain('8/472');
+    expect(contextPortal.textContent).toContain('8/472');
+    expect(container.textContent).not.toContain('8/472');
     expect(settingsPortal.textContent).not.toContain('8/472');
+    expect(settingsPortal.contains(trigger('出题来源', 'Question source'))).toBe(false);
     expect(document.querySelectorAll(`button[aria-label="${label('训练设置', 'Training settings')}"]`)).toHaveLength(1);
     await openSettings();
     expect(settingsPortal.querySelector('[data-existing-setting]')).not.toBeNull();
+    expect(settingsPortal.querySelector('details')).toBeNull();
     expect(practiceType()).toBeNull();
     await act(async () => trigger('出题来源', 'Question source').click());
     const cases = option('选定情况', 'Selected cases');
     await act(async () => cases.dispatchEvent(new Event('pointerdown', { bubbles: true })));
-    expect(gear.getAttribute('aria-expanded')).toBe('true');
+    expect(gear.getAttribute('aria-expanded')).toBe('false');
     await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
     expect(settingsPortal.querySelector('[role="dialog"]')).toBeNull();
     await openSettings();
@@ -354,23 +359,23 @@ describe('trainer URL isolation', () => {
     const url = new URL(mapHref('/zh/alg/3x3/pll/run?room=new-room&share=training-share&case=A&case=B#answer'), 'https://example.test');
     expect(url.pathname).toBe('/zh/timer');
     expect(url.hash).toBe('#answer');
-    expect(url.searchParams.get('training')).toBe('/alg/3x3/pll/run');
-    expect(url.searchParams.get('event')).toBe('333');
+    expect(url.searchParams.get('content')).toBe('pll');
+    expect(url.searchParams.has('event')).toBe(false);
     expect(url.searchParams.get('players')).toBe('2');
     expect(url.searchParams.get('room')).toBe('timer-room');
     expect(url.searchParams.get('share')).toBe('timer-share');
-    expect(url.searchParams.get('train.room')).toBe('new-room');
-    expect(url.searchParams.get('train.share')).toBe('training-share');
-    expect(url.searchParams.getAll('train.case')).toEqual(['A', 'B']);
+    expect(url.searchParams.get('trainingRoom')).toBe('new-room');
+    expect(url.searchParams.get('trainingShare')).toBe('training-share');
+    expect(url.searchParams.getAll('case')).toEqual(['A', 'B']);
     expect(url.searchParams.get('trainingOrg')).toBe('school');
     expect(url.searchParams.get('trainingAssignment')).toBe('homework');
   });
 
   it('preserves attribution, accepts incoming attribution and resolves local query links', () => {
     const url = new URL(mapHref('?case=new&trainingOrg=other&trainingAssignment=next'), 'https://example.test');
-    expect(url.searchParams.get('training')).toBe('/alg/3x3/oll/run');
-    expect(url.searchParams.get('train.case')).toBe('new');
-    expect(url.searchParams.has('train.room')).toBe(false);
+    expect(url.searchParams.get('content')).toBe('oll');
+    expect(url.searchParams.get('case')).toBe('new');
+    expect(url.searchParams.has('trainingRoom')).toBe(false);
     expect(url.searchParams.get('trainingOrg')).toBe('other');
     expect(url.searchParams.get('trainingAssignment')).toBe('next');
     expect(url.searchParams.has('train.trainingOrg')).toBe(false);
@@ -388,7 +393,8 @@ describe('trainer URL isolation', () => {
       timerPathname: '/timer', currentSearch: '', acceptsPath,
     }), 'https://example.test');
     expect(url.pathname).toBe('/timer');
-    expect(url.searchParams.get('training')).toBe('/alg/3x3/oll/select');
+    expect(url.searchParams.get('content')).toBe('oll');
+    expect(url.searchParams.get('view')).toBe('select');
   });
 
   it('exposes only trainer parameters and assignment attribution without mutating the URL', () => {
@@ -403,7 +409,7 @@ describe('trainer URL isolation', () => {
   });
 
   it('restores timer state on exit and namespaces the keys used by share links', () => {
-    expect(timerTrainingExitHref('/zh/timer', timerSearch)).toBe('/zh/timer?event=333&players=2&room=timer-room&share=timer-share&trainingOrg=school&trainingAssignment=homework');
+    expect(timerTrainingExitHref('/zh/timer', timerSearch)).toBe('/zh/timer?players=2&room=timer-room&share=timer-share&trainingOrg=school&trainingAssignment=homework');
     expect(timerTrainingExitHref('/timer', 'training=%2Falg&train.case=A')).toBe('/timer');
     expect(trainingQueryKey('room')).toBe('train.room');
     expect(trainingQueryKey('room', false)).toBe('room');
@@ -425,6 +431,20 @@ describe('training host hooks and links', () => {
   });
   afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); });
 
+  it('links directly from the formula library to the timer with scoped state and the same fragment', async () => {
+    await act(async () => root.render(createElement(AppLink, {
+      href: '/alg/3x3/pll/select?scope=g&case=A&case=B#cases',
+    }, 'Train')));
+    const href = container.querySelector('a')!.getAttribute('href')!;
+    const url = new URL(href, 'https://example.test');
+    expect(url.pathname).toBe('/zh/timer');
+    expect(url.searchParams.get('content')).toBe('pll');
+    expect(url.searchParams.get('view')).toBe('select');
+    expect(url.searchParams.get('group')).toBe('g');
+    expect(url.searchParams.getAll('case')).toEqual(['A', 'B']);
+    expect(url.hash).toBe('#cases');
+  });
+
   it('keeps formula content unique and returns to full solve without losing timer state', async () => {
     const onUrlUpdate = vi.fn();
     await act(async () => root.render(createElement(NuqsTestingAdapter, {
@@ -441,20 +461,20 @@ describe('training host hooks and links', () => {
     await act(async () => selectedGroup.click());
     const selected = container.querySelector('.pp-cascade-options .pp-item[aria-current="page"]')!;
     expect(selected.textContent).toBe('OLL');
-    expect(selected.querySelector('.pp-item-check')).not.toBeNull();
+    expect(selected.classList.contains('pp-item--active')).toBe(true);
     expect(container.querySelector('.pp-popup .cubing-icon')).toBeNull();
     expect(container.querySelector('.pp-popup')?.textContent).not.toContain('Ortega');
     const timer = [...container.querySelectorAll<HTMLButtonElement>('.pp-item')]
-      .find(item => item.textContent === tr({ zh: '完整', en: 'Full solve' }))!;
+      .find(item => item.textContent === tr({ zh: '完整', en: 'Full' }))!;
     await act(async () => timer.click());
     await vi.waitFor(() => expect(onUrlUpdate).toHaveBeenCalled());
     const update = onUrlUpdate.mock.lastCall![0];
     expect(update.searchParams.toString()).toBe('event=333&players=2&room=timer-room&share=timer-share&trainingOrg=school&trainingAssignment=homework');
     expect(update.options.history).toBe('push');
-    expect(trigger.textContent).toBe(tr({ zh: '完整', en: 'Full solve' }));
+    expect(trigger.textContent).toBe(tr({ zh: '完整', en: 'Full' }));
     await act(async () => trigger.click());
-    expect(container.querySelector('.pp-item[aria-current="page"]')?.textContent).toBe(tr({ zh: '完整', en: 'Full solve' }));
-    expect(container.querySelector('.pp-item[aria-current="page"] .pp-item-check')).not.toBeNull();
+    expect(container.querySelector('.pp-item[aria-current="page"]')?.textContent).toBe(tr({ zh: '完整', en: 'Full' }));
+    expect(container.querySelector('.pp-item.pp-item--active[aria-current="page"]')).not.toBeNull();
   });
 
   it('maps actual link hrefs, virtual route context and router navigation while retaining lang', async () => {
@@ -481,7 +501,7 @@ describe('training host hooks and links', () => {
     expect(navigation.router.back).toHaveBeenCalledOnce();
 
     await act(async () => root.render(createElement(Probe)));
-    expect(container.querySelector('a')!.getAttribute('href')).toBe('/zh/alg/3x3/pll/run?case=A');
+    expect(container.querySelector('a')!.getAttribute('href')).toBe('/zh/timer?content=pll&source=cases&case=A');
     expect(route).toBe(navigation.router);
     expect(pathname).toBe('/zh/timer');
     expect(params).toEqual({ lang: 'zh' });

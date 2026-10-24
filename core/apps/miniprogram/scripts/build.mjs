@@ -7,6 +7,7 @@ import process from 'node:process';
 import { build } from 'esbuild';
 
 import { BUILD_ASSETS } from './build-assets.mjs';
+import { buildWechatBundle } from './build-wechat-bundle.mjs';
 import { buildDouyinTabIcons } from './build-tab-icons.mjs';
 import { resolveProjectConfig } from './build-config.mjs';
 import {
@@ -22,6 +23,7 @@ import {
 import { validateJsonObjectFiles } from './json-object-file.mjs';
 import { publishStagedDirectory } from './staged-output.mjs';
 import { validateWxmlExpressionFiles } from './wxml-expression.mjs';
+import { validateNativePages } from './native-page-check.mjs';
 
 const packageRoot = resolve(import.meta.dirname, '..');
 const sourceRoot = join(packageRoot, 'src');
@@ -45,6 +47,7 @@ const douyinUnsupportedAppConfigKeys = [
   'sitemapLocation',
   'style',
   'themeLocation',
+  'navigateToMiniProgramAppIdList',
 ];
 const watch = process.argv.includes('--watch');
 
@@ -72,6 +75,11 @@ async function prepareOutput(sourceFiles) {
     .map(async (file) => {
       const output = join(compileRoot, relative(sourceRoot, file));
       await mkdir(dirname(output), { recursive: true });
+      const page = relative(sourceRoot, file).replaceAll('\\', '/').match(/^pages\/(timer|tools|web)\/index\.wxml$/)?.[1];
+      if (douyin && page) {
+        await writeFile(output, `<include src="../../templates/native-${page}.wxml" />\n`);
+        return;
+      }
       await copyFile(file, output);
     }));
   await Promise.all(BUILD_ASSETS.map(async (asset) => {
@@ -104,7 +112,7 @@ async function buildProject() {
       templateLabel: 'project.douyin.config.template.json',
     } : {}),
   });
-  const sourceFiles = await walkFiles(sourceRoot);
+  const sourceFiles = (await walkFiles(sourceRoot)).filter(file => !douyin || !normalizedRelativePath(sourceRoot, file).startsWith('pages/membership/'));
   const appConfigPath = join(sourceRoot, 'app.json');
   const sourceJsonFiles = [
     appConfigPath,
@@ -120,9 +128,10 @@ async function buildProject() {
     { labelForPath: (file) => normalizedRelativePath(packageRoot, file) },
   );
   await prepareOutput(sourceFiles);
-  const buildResult = await build({
+  const buildResult = await (douyin ? build : buildWechatBundle)({
     absWorkingDir: packageRoot,
     bundle: true,
+    inject: [join(sourceRoot, 'lib/native-timer-runtime.ts')],
     entryPoints: entryPoints(sourceFiles),
     format: 'iife',
     logLevel: 'info',
@@ -154,14 +163,18 @@ async function buildProject() {
     stagedPath: stagingRoot,
     targetPath: outputRoot,
     backupPath: backupRoot,
-    preserveRoot: douyin,
+    preserveRoot: douyin || process.platform === 'win32',
   });
-  if (!douyin) {
+  {
     await writeBuildState(packageRoot, {
+      bundleInputs: Object.fromEntries(Object.entries(buildResult.metafile.outputs).map(([path, output]) => [
+        normalizedRelativePath(compileRoot, resolve(packageRoot, path)),
+        Object.keys(output.inputs).map(input => normalizedRelativePath(packageRoot, resolve(packageRoot, input))),
+      ])),
       buildGraphInputs: serializeBuildGraphInputs(packageRoot, graphInputFiles),
       sourceFingerprint: await buildInputFingerprint(packageRoot, graphInputFiles),
       outputFingerprint: await outputFingerprint(packageRoot, outputRoot),
-    });
+    }, target);
   }
   return collectExternalGraphWatchFiles(packageRoot, graphInputFiles);
 }
@@ -196,6 +209,11 @@ async function normalizeDouyinAppConfig() {
   // Douyin privacy-related capabilities (including Bluetooth) must enter the
   // platform privacy authorization flow before the native API is invoked.
   normalized.usePrivacyCheck = true;
+  normalized.pages = normalized.pages.filter(page => page !== 'pages/training/index' && page !== 'pages/membership/index');
+  normalized.tabBar.list = normalized.tabBar.list.filter(tab => tab.pagePath !== 'pages/training/index');
+  await rm(join(stagingRoot, 'pages/training'), { recursive: true, force: true });
+  // No Douyin page uses the WeChat-only web container after native routing.
+  await rm(join(stagingRoot, 'templates/web-route-view.ttml'), { force: true });
   normalized.tabBar.list = await buildDouyinTabIcons(stagingRoot, normalized.tabBar);
   await writeFile(appConfigPath, `${JSON.stringify(normalized, null, 2)}\n`, 'utf8');
   await Promise.all([
@@ -212,6 +230,17 @@ async function validateDouyinOutput() {
     throw new Error(`抖音产物残留微信模板：${normalizedRelativePath(stagingRoot, forbiddenFile)}`);
   }
   const appConfig = JSON.parse(await readFile(join(stagingRoot, 'app.json'), 'utf8'));
+  const nativePages = [
+    'pages/timer/index', 'pages/tools/index', 'pages/account/index',
+    'pages/smart-cube/index', 'pages/external-timer/index', 'pages/privacy/index', 'pages/contact/index', 'pages/account-link/index', 'pages/account-delete/index', 'pages/account-settings/index',
+  ];
+  for (const page of nativePages) {
+    if (!appConfig.pages.includes(page)) throw new Error(`抖音原生页面未登记：${page}`);
+  }
+  await validateNativePages(stagingRoot, [...new Set([
+    ...appConfig.pages,
+    ...nativePages, appConfig.pages[0], ...appConfig.tabBar.list.map(tab => tab.pagePath),
+  ])]);
   const unsupportedKey = douyinUnsupportedAppConfigKeys.find((key) => key in appConfig);
   if (unsupportedKey) throw new Error(`抖音 app.json 残留微信配置：${unsupportedKey}`);
   if (appConfig.usePrivacyCheck !== true) {

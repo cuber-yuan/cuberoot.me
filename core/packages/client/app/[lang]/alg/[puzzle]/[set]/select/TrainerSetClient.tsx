@@ -6,7 +6,7 @@ import Link from '@/components/AppLink';
 import { parseAsStringEnum } from 'nuqs';
 import { useTrainingRouter as useRouter, useTrainingParams as useParams, useTrainingQueryState as useQueryState, useTrainingHost } from '@/lib/training-host';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Eraser, MousePointer2 } from 'lucide-react';
+import { Eraser, MousePointer2 } from '@app-foundation/icons/lucide';
 import { getAlgSetMeta, type AlgCase } from '@cuberoot/shared/alg';
 import { loadTrainingAlg as loadAlg } from '@/lib/alg_case_alignment';
 import { MIX_SLUG, MIX_MIN_SETS, parseMixSets, mixTitle, mixHref, loadMixCases, setLabel } from '@/lib/alg-mix';
@@ -29,6 +29,7 @@ import { useAlgSrs } from '@/lib/alg-srs-store';
 import '@/app/[lang]/alg/_trainer/trainer.css';
 import '@/app/[lang]/alg/_trainer/memory.css';
 import { tr } from '@/i18n/tr';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 /** 显示过滤:按标记只看一类(大 set 里找 case 用)。 */
 const MARK_FILTERS = ['all', 'none', 'learning', 'mastered'] as const;
@@ -177,7 +178,7 @@ export default function TrainerSetClient() {
         <div className="trainer-root">
           {mounted
             ? <MixSetPicker puzzle={puzzle} puzzleParam={puzzleParam} leaf="select" initial={mixSets} />
-            : <div className="trainer-landing-empty">{tr({ zh: '加载中…', en: 'Loading…' })}</div>}
+            : <div className="trainer-landing-empty"><LoadingIndicator>{tr({ zh: '加载中…', en: 'Loading…' })}</LoadingIndicator></div>}
         </div>
       );
     }
@@ -191,7 +192,7 @@ export default function TrainerSetClient() {
   }
 
   if (sessionLoadError) return <div className="trainer-root"><p role="alert">{tr({ zh: '训练加载失败，请重试。', en: 'Training could not load. Please retry.' })}</p><button type="button" onClick={() => setLoadRetry(value => value + 1)}>{tr({ zh: '重试', en: 'Retry' })}</button></div>;
-  if (storePuzzle !== puzzle || storeSet !== sessionId) return <div className="trainer-root" role="status">{tr({ zh: '加载中…', en: 'Loading…' })}</div>;
+  if (storePuzzle !== puzzle || storeSet !== sessionId) return <div className="trainer-root" role="status"><LoadingIndicator>{tr({ zh: '加载中…', en: 'Loading…' })}</LoadingIndicator></div>;
 
   const selectedSet = new Set(selected);
   const scopedSelectedCount = scopedCases.filter(c => selectedSet.has(caseKey(c))).length;
@@ -227,9 +228,6 @@ export default function TrainerSetClient() {
     if (modeParam === 'memo' && drawParam) runUrl.searchParams.set('draw', drawParam);
   }
   const runBase = `${runUrl.pathname}${runUrl.search}`;
-  const backHref = isMix
-    ? `/alg/${puzzleParam}`
-    : (scopeSlug ? `/alg/${puzzleParam}/${setSlug}/${scopeSlug}` : `/alg/${puzzleParam}/${setSlug}`);
   const brushItems = [
     {
       value: 'off',
@@ -265,15 +263,8 @@ export default function TrainerSetClient() {
   ];
 
   return (
-    <div className="trainer-root">
+    <div className="trainer-root trainer-select">
       <div className="trainer-topbar">
-        <Link
-          href={backHref}
-          className="trainer-back"
-          aria-label={tr({ zh: '返回公式集', en: 'Back to alg set' })}
-        >
-          <ArrowLeft size={14} />
-        </Link>
         {(!trainingHost || scopeSlug) && <span style={{ fontSize: '1.1rem', fontWeight: 600 }}>
           {!trainingHost && `${puzzle} · ${tr(meta)}`}
           {scopeSlug && `${trainingHost ? '' : ' · '}${setSlug === 'zbll' ? displayZbllToken(scopeSlug) : scopeSlug.toUpperCase()}`}
@@ -293,34 +284,32 @@ export default function TrainerSetClient() {
           disabled={!canStart}
         >
           {trainingHost
-            ? tr({ zh: '开始', en: 'Start' })
+            ? `${tr({ zh: '开始练习', en: 'Start practice' })} (${scopedSelectedCount})`
             : `${tr({ zh: '训练', en: 'Train' })} (${scopedSelectedCount})`}
         </button>
       </div>
 
       {cases.length === 0 ? (
-        <div className="trainer-landing-empty">{tr({ zh: '加载中…', en: 'Loading…'
-        })}</div>
+        <div className="trainer-landing-empty"><LoadingIndicator>{tr({ zh: '加载中…', en: 'Loading…'
+        })}</LoadingIndicator></div>
       ) : (
         <>
-          {/* 本 set 学习进度 + 待复习 / 连续天数。与 run 页共用同一条(components 单一源) */}
-          <SetProgressStrip keys={scopedKeys} selectHref={selectBase} />
-
           <div className="trainer-marks-toolbar">
-            <label className="trainer-marks-tool">
-              <span className="trainer-opts-label">{tr({ zh: '只看', en: 'Show' })}</span>
-              <select
-                className="trainer-scramble-kind trainer-filter-select"
+            <div className="trainer-marks-tool">
+              <ListSelect
+                className="trainer-filter-select"
                 value={markFilter}
-                onChange={e => setMarkFilter(e.target.value === 'all' ? null : e.target.value as MarkFilter)}
-                aria-label={tr({ zh: '按标记过滤', en: 'Filter by mark' })}
-              >
-                <option value="all">{tr({ zh: '全部', en: 'All' })}</option>
-                <option value="none">{tr({ zh: '未学', en: 'Unlearned' })}</option>
-                <option value="learning">{MARK_STATUS_LABEL.learning()}</option>
-                <option value="mastered">{MARK_STATUS_LABEL.mastered()}</option>
-              </select>
-            </label>
+                onChange={next => setMarkFilter(next === 'all' ? null : next as MarkFilter)}
+                items={[
+                  { value: 'all', label: tr({ zh: '全部情况', en: 'All cases' }) },
+                  { value: 'none', label: tr({ zh: '未学', en: 'Unlearned' }) },
+                  { value: 'learning', label: MARK_STATUS_LABEL.learning() },
+                  { value: 'mastered', label: MARK_STATUS_LABEL.mastered() },
+                ]}
+                allLabel={tr({ zh: '全部情况', en: 'All cases' })}
+                clearable={false}
+              />
+            </div>
             <div className="trainer-marks-tool">
               <ListSelect
                 className="trainer-brush-select"
@@ -342,6 +331,12 @@ export default function TrainerSetClient() {
               />
             </div>
           </div>
+          <SetProgressStrip keys={scopedKeys} selectHref={selectBase} />
+          {visibleCases.length === 0 && (
+            <p className="trainer-selection-empty" role="status">
+              {tr({ zh: '没有符合筛选的情况，可切换为全部情况。', en: 'No matching cases. Switch to all cases to see the full set.' })}
+            </p>
+          )}
           {/* 合练按成员集分块 —— 两套里都有叫「T」的组,混在一棵树里会并成一组、认不出谁是谁 */}
           {isMix ? mixSets.map(slug => {
             const own = visibleCases.filter(c => c.srcSet === slug);

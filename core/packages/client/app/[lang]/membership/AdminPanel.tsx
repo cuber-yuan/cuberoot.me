@@ -7,7 +7,7 @@
  *  - 套餐:改价格(元)/ 启用,免动 migration。
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Check } from 'lucide-react';
+import { Plus, Check } from '@app-foundation/icons/lucide';
 import { tr } from '@/i18n/tr';
 import { WcaPersonPicker } from '@/components/WcaPersonPicker';
 import BoolToggle from '@/components/BoolToggle';
@@ -71,7 +71,7 @@ export default function AdminPanel({ plans, isZh, onPlanUpdated, onViewRenewal }
 
   function loadList() {
     adminList().then((r) => {
-      const listedPlans = r.plans ?? plans;
+      const listedPlans = (r.plans ?? plans).filter(p => !['enterprise_yearly', 'enterprise_yearly_auto_renew'].includes(p.slug));
       setAdminPlans(listedPlans);
       setPriceDraft(Object.fromEntries(listedPlans.map((p) => [p.slug, String(p.priceCents / 100)])));
     }).catch(() => {});

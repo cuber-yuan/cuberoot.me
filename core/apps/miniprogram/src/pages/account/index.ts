@@ -1,13 +1,5 @@
-import {
-  CONTACT_DIRECT_DETAILS,
-  CONTACT_GROUP_SECTIONS,
-  CONTACT_JOIN_INSTRUCTION,
-  CONTACT_SOCIAL_PLATFORMS,
-  CONTACT_WEBSITE,
-  CONTACT_WECHAT_ID,
-  type ContactDirectDetailId,
-  type ContactPlatformId,
-} from '@cuberoot/shared/contact';
+import { createContactView } from '../../lib/native-contact';
+import { ACCOUNT_PROVIDER_LABELS, visibleAccountIdentities, isValidDisplayName, normalizeDisplayName } from '@cuberoot/shared/account';
 import { applyNativeAppearance, nativeAppearanceStyle } from '../../lib/appearance';
 import type { PendingIdentity } from '@cuberoot/shared/auth/web-session';
 import {
@@ -20,6 +12,11 @@ import {
   loginWithMiniProgram,
   previewIdentityLinkCode,
   validateStoredSession,
+  updateNativeDisplayName,
+  fetchNativeAccountIdentities,
+  unlinkNativeAccountIdentity,
+  clearStoredSession,
+  type NativeAccountIdentity,
   type SessionData,
 } from '../../lib/auth';
 import { cancelWebsiteNavigation, openWebsitePageOnce } from '../../lib/navigation';
@@ -40,6 +37,17 @@ function createAccountCopy() {
     : { en: 'WeChat', zh: '微信' });
   return {
     accountEyebrow: tr({ en: 'ACCOUNT', zh: '账号' }),
+    editName: tr({ en: 'Edit display name', zh: '修改展示名' }),
+    saveName: tr({ en: 'Save', zh: '保存' }),
+    clearName: tr({ en: 'Clear display name', zh: '清除展示名' }),
+    identities: tr({ en: 'Sign-in methods', zh: '登录方式' }),
+    identitiesEmpty: tr({ en: 'No linked sign-in methods', zh: '暂无已绑定的登录方式' }),
+    identitiesRetry: tr({ en: 'Retry', zh: '重试' }),
+    password: tr({ en: 'Password set', zh: '已设置密码' }),
+    unlink: tr({ en: 'Unlink', zh: '解绑' }),
+    signOut: tr({ en: 'Sign out of this Mini Program', zh: '退出小程序登录' }),
+    deleteAccount: tr({ en: 'Delete account', zh: '注销账号' }),
+    securitySettings: tr({ en: 'Email, phone and password', zh: '邮箱、手机与密码' }),
     wcaLinkHint: tr({ en: 'Complete WCA authorization in your system browser. This page refreshes when you return.', zh: '请在系统浏览器完成 WCA 授权，返回后页面会刷新' }),
     agreementLabel: tr({
       en: 'I have read and agree to the terms above',
@@ -82,13 +90,14 @@ function createAccountCopy() {
     cancelLabel: tr({ en: 'Cancel', zh: '取消' }),
     clearCodeLabel: tr({ en: 'Clear sign-in code', zh: '清除登录码' }),
     linkCodeLabel: tr({ en: 'Enter 6-digit sign-in code', zh: '输入 6 位登录码' }),
-    linkCodeHint: tr({ en: 'Sign in to your existing CubeRoot account on the website, generate a 6-digit code, then enter it here.', zh: '在网站登录原账号并生成 6 位登录码，然后在这里输入。' }),
+    linkCodeHint: tr({ en: 'Verify your existing account to get a six-digit sign-in code, then enter it here.', zh: '验证原账号后获取 6 位登录码，然后在这里输入。' }),
     linkCodeReadyHint: tr({ en: 'Have a code? Enter the 6 digits below.', zh: '已有登录码？在下方输入 6 位数字。' }),
     openLinkCodeWebsiteLabel: tr({ en: 'Sign in on the website', zh: '去网站登录' }),
+    emailLinkCodeLabel: tr({ en: 'Email, phone or password', zh: '邮箱、手机或密码验证' }),
     previewLinkCodeLabel: tr({ en: 'Continue', zh: '继续' }),
     confirmLinkCodeLabel: tr({ en: 'Sign in to this account', zh: '登录这个账号' }),
     loginAsLabel: tr({ en: 'Account:', zh: '登录账号：' }),
-    linkCodeInvalid: tr({ en: 'Enter the 6-digit sign-in code shown on the website.', zh: '请输入网站上显示的 6 位登录码。' }),
+    linkCodeInvalid: tr({ en: 'Enter the six-digit sign-in code you received.', zh: '请输入获取的 6 位登录码。' }),
     choiceExpired: tr({ en: 'This sign-in request expired. Start again.', zh: '本次登录已过期，请重新开始。' }),
     defaultUser: tr({ en: 'CubeRoot user', zh: 'CubeRoot 用户' }),
     entryCopy: tr({
@@ -159,76 +168,6 @@ function createAccountCopy() {
   };
 }
 let ACCOUNT_COPY = createAccountCopy();
-const CONTACT_PLATFORM_ICON_PATHS: Record<ContactPlatformId, string> = {
-  youtube: '/assets/contact/youtube.png',
-  tiktok: '/assets/contact/tiktok.png',
-  instagram: '/assets/contact/instagram.png',
-  bilibili: '/assets/contact/bilibili.png',
-  douyin: '/assets/contact/douyin.png',
-  xiaohongshu: '/assets/contact/xiaohongshu.png',
-  kuaishou: '/assets/contact/kuaishou.png',
-  'wechat-official': '/assets/contact/wechat.png',
-};
-const CONTACT_DETAIL_ICON_PATHS: Record<ContactDirectDetailId, string> = {
-  author: '/assets/contact/author.png',
-  wechat: '/assets/contact/wechat.png',
-  qq: '/assets/contact/qq.png',
-  email: '/assets/contact/email.png',
-  discord: '/assets/contact/discord.png',
-};
-function createContactView() {
-  const contactLocale = getMiniProgramLocale();
-  const joinInstruction = tr(CONTACT_JOIN_INSTRUCTION, contactLocale);
-  const [joinInstructionBefore, joinInstructionAfter = ''] = joinInstruction.split(CONTACT_WECHAT_ID);
-  return {
-    eyebrow: tr({ en: 'CONTACT & COMMUNITY', zh: '联系与社群' }, contactLocale),
-    joinInstructionAfter,
-    joinInstructionBefore,
-    joinInstructionValue: CONTACT_WECHAT_ID,
-    joinTitle: tr({ en: 'How to join', zh: '进群方法' }, contactLocale),
-    qrAria: tr({ en: 'View WeChat QR code', zh: '查看微信二维码' }, contactLocale),
-    qrPath: '/assets/contact/ruimin-wechat-qr.jpg',
-    title: tr({ en: 'Contact', zh: '联系方式' }, contactLocale),
-    websiteLabel: tr({ en: 'Website', zh: '网站' }, contactLocale),
-    website: CONTACT_WEBSITE,
-    platforms: [...CONTACT_SOCIAL_PLATFORMS]
-      .sort((a, b) => Number(b.language === contactLocale) - Number(a.language === contactLocale))
-      .map((platform) => ({
-        account: platform.account,
-        count: platform.count ? tr(platform.count, contactLocale) : '',
-        href: platform.href ?? '',
-        icon: CONTACT_PLATFORM_ICON_PATHS[platform.id],
-        id: platform.id,
-        label: tr(platform.label, contactLocale),
-      })),
-    details: CONTACT_DIRECT_DETAILS.map((detail) => {
-      const value = detail.value ? tr(detail.value, contactLocale) : '';
-      return {
-        action: detail.action,
-        actionValue: detail.action === 'link' ? detail.href ?? '' : value,
-        icon: CONTACT_DETAIL_ICON_PATHS[detail.id],
-        id: detail.id,
-        label: tr(detail.label, contactLocale),
-        showQr: detail.showQr,
-        value,
-      };
-    }),
-    sections: CONTACT_GROUP_SECTIONS.map((section, sectionIndex) => ({
-      blocks: section.blocks.map((block) => ({
-        groups: block.groups.map((group) => ({
-          name: tr(group, contactLocale),
-          secondaryName: contactLocale === 'en' ? group.zh : '',
-        })),
-        title: tr(block.title, contactLocale),
-      })),
-      description: tr(section.description, contactLocale),
-      id: section.id,
-      index: String(sectionIndex + 1).padStart(2, '0'),
-      title: tr(section.title, contactLocale),
-    })),
-  };
-
-}
 const CONTACT_VIEW = createContactView();
 
 interface ContactCopyEvent {
@@ -257,6 +196,15 @@ interface AccountPageData {
   contact: typeof CONTACT_VIEW;
   copy: typeof ACCOUNT_COPY;
   displayName: string;
+  editingName: boolean;
+  nameDraft: string;
+  nameBusy: boolean;
+  identitiesOpen: boolean;
+  identitiesBusy: boolean;
+  identitiesError: string;
+  identityRows: Array<{ key: string; label: string; handle: string }>;
+  hasPassword: boolean;
+  identityMutationBusy: boolean;
   isTimelineEntry: boolean;
   loginBusy: boolean;
   loginError: string;
@@ -286,6 +234,12 @@ interface AccountPageInstance {
 type PagePendingIdentity = PendingIdentity & { expiresAt: number; sessionToken: string | undefined };
 const pendingIdentities = new WeakMap<AccountPageInstance, PagePendingIdentity>();
 const disposedPages = new WeakSet<AccountPageInstance>();
+const profileAttempts = new WeakMap<object, object>();
+const profileSessions = new WeakMap<object, string>();
+const identityAttempts = new WeakMap<object, object>();
+const loadedIdentities = new WeakMap<object, { session: SessionData; rows: NativeAccountIdentity[] }>();
+const accountActionAttempts = new WeakMap<object, object>();
+const EMPTY_IDENTITIES = { identitiesOpen: false, identitiesBusy: false, identitiesError: '', identityRows: [], hasPassword: false };
 const phonePrompts = new WeakMap<AccountPageInstance, object>();
 const phoneAuthorizations = new WeakMap<AccountPageInstance, { prompt: object; sessionToken: string | undefined }>();
 const EMPTY_LINK_CODE = { accountLinkCode: '', accountLinkTargetId: null, accountLinkTargetName: '' };
@@ -569,6 +523,11 @@ Page<AccountPageData, WechatMiniprogram.Page.CustomOption>({
     contact: CONTACT_VIEW,
     copy: ACCOUNT_COPY,
     displayName: '',
+    editingName: false,
+    nameDraft: '',
+    nameBusy: false,
+    ...EMPTY_IDENTITIES,
+    identityMutationBusy: false,
     isTimelineEntry: false,
     loginBusy: false,
     loginError: '',
@@ -598,7 +557,7 @@ Page<AccountPageData, WechatMiniprogram.Page.CustomOption>({
       ? options.wcaLink : '';
     const wcaUrl = typeof options.wcaUrl === 'string' && isExternalHttpsUrl(options.wcaUrl)
       ? options.wcaUrl : '';
-    if (wcaLink && wcaUrl) {
+    if (!isDouyinMiniProgram() && wcaLink && wcaUrl) {
       const snapshot = getStoredSessionSnapshot();
       this.wcaLinkTicket = wcaLink;
       this.wcaLinkBaseline = snapshot.status === 'available' ? snapshot.session?.user.wcaId ?? '' : '';
@@ -644,6 +603,8 @@ Page<AccountPageData, WechatMiniprogram.Page.CustomOption>({
 
   onShow() {
     if (this.data.isTimelineEntry) return;
+    identityAttempts.delete(this);
+    this.setData({ ...EMPTY_IDENTITIES });
     this.refreshLocale();
     this.setData({ appearanceStyle: nativeAppearanceStyle() });
     applyNativeAppearance();
@@ -663,7 +624,21 @@ Page<AccountPageData, WechatMiniprogram.Page.CustomOption>({
 }
   },
 
+  onHide() {
+    accountActionAttempts.delete(this);
+    loadedIdentities.delete(this);
+    identityAttempts.delete(this);
+    profileAttempts.delete(this);
+    profileSessions.delete(this);
+    this.setData({ editingName: false, nameDraft: '', nameBusy: false, identityMutationBusy: false, ...EMPTY_IDENTITIES });
+  },
+
   onUnload() {
+    accountActionAttempts.delete(this);
+    loadedIdentities.delete(this);
+    identityAttempts.delete(this);
+    profileAttempts.delete(this);
+    profileSessions.delete(this);
     disposedPages.add(this as unknown as AccountPageInstance);
     pendingIdentities.delete(this as unknown as AccountPageInstance);
     phonePrompts.delete(this as unknown as AccountPageInstance);
@@ -737,6 +712,16 @@ Page<AccountPageData, WechatMiniprogram.Page.CustomOption>({
     openWebsitePageOnce(this, 'account-link', { failureMessage: ACCOUNT_COPY.accountLinkFailure, onFailure: (message) => this.setData({ loginError: message }) });
   },
 
+  openEmailLinkCode() {
+    if (this.data.loginBusy || !currentPendingIdentity(this as unknown as AccountPageInstance)) return;
+    this.setData({ loginBusy: true });
+    try { miniProgramApi().navigateTo({
+      url: '/pages/account-link/index',
+      fail: () => this.setData({ loginError: ACCOUNT_COPY.accountLinkFailure }),
+      complete: () => this.setData({ loginBusy: false }),
+    }); } catch { this.setData({ loginBusy: false, loginError: ACCOUNT_COPY.accountLinkFailure }); }
+  },
+
   onLinkCodeInput(event: WechatMiniprogram.Input) {
     if (this.data.loginBusy) return;
     const accountLinkCode = event.detail.value.replace(/\D/g, '').slice(0, 6);
@@ -796,6 +781,180 @@ Page<AccountPageData, WechatMiniprogram.Page.CustomOption>({
     });
   },
 
+  toggleIdentities() {
+    if (this.data.identityMutationBusy) return;
+    if (this.data.identitiesOpen) {
+      identityAttempts.delete(this);
+      loadedIdentities.delete(this);
+      this.setData({ ...EMPTY_IDENTITIES });
+    } else { void this.loadIdentities(); }
+  },
+
+  async loadIdentities() {
+    if (this.data.loginRequired || this.data.isTimelineEntry || this.data.identitiesBusy || this.data.identityMutationBusy) return;
+    const session = getStoredSessionSnapshot().session;
+    if (!session) { refreshStoredSession(this as unknown as AccountPageInstance); return; }
+    const attempt = {};
+    identityAttempts.set(this, attempt);
+    loadedIdentities.delete(this);
+    const current = () => identityAttempts.get(this) === attempt;
+    this.setData({ ...EMPTY_IDENTITIES, identitiesOpen: true, identitiesBusy: true });
+    try {
+      const result = await fetchNativeAccountIdentities(session, current);
+      if (!current()) return;
+      const rows = visibleAccountIdentities(result.identities);
+      loadedIdentities.set(this, { session, rows });
+      this.setData({ hasPassword: result.hasPassword, identityRows: rows.map((row, index) => ({
+        key: String(index), label: tr(Object.prototype.hasOwnProperty.call(ACCOUNT_PROVIDER_LABELS, row.provider)
+          ? ACCOUNT_PROVIDER_LABELS[row.provider] : { zh: row.provider, en: row.provider }),
+        handle: ['email', 'phone', 'wca'].includes(row.provider) ? row.providerUid : '',
+      })) });
+    } catch {
+      if (current()) this.setData({ identitiesError: tr({ zh: '登录方式加载失败，请重试。', en: 'Could not load sign-in methods. Try again.' }) });
+    } finally {
+      if (current()) { identityAttempts.delete(this); this.setData({ identitiesBusy: false }); }
+    }
+  },
+
+  unlinkIdentity(event: { currentTarget: { dataset: { index?: string | number } } }) {
+    if (this.data.identityMutationBusy || this.data.nameBusy) return;
+    const loaded = loadedIdentities.get(this);
+    const index = Number(event.currentTarget.dataset.index);
+    if (!loaded || !Number.isSafeInteger(index) || index < 0 || !loaded.rows[index]) return;
+    const identity = loaded.rows[index];
+    if (getStoredSessionSnapshot().session?.token !== loaded.session.token) {
+      loadedIdentities.delete(this); this.setData({ ...EMPTY_IDENTITIES }); return;
+    }
+    const attempt = {};
+    accountActionAttempts.set(this, attempt);
+    this.setData({ identityMutationBusy: true, accountError: '' });
+    const current = () => accountActionAttempts.get(this) === attempt;
+    const release = () => {
+      if (current()) { accountActionAttempts.delete(this); this.setData({ identityMutationBusy: false }); }
+    };
+    let handled = false;
+    try { miniProgramApi().showModal({
+      title: tr({ zh: '解绑登录方式', en: 'Unlink sign-in method' }),
+      content: tr({ zh: `解绑 ${this.data.identityRows[index].label} 后，将无法用它登录此账号。最后一种登录方式不能解绑。`,
+        en: `You will no longer be able to sign in with ${this.data.identityRows[index].label}. Your last sign-in method cannot be unlinked.` }),
+      confirmText: ACCOUNT_COPY.unlink, cancelText: ACCOUNT_COPY.cancelLabel,
+      success: async result => {
+        if (handled || !current()) return;
+        handled = true;
+        if (!result.confirm) { release(); return; }
+        try {
+          await unlinkNativeAccountIdentity(loaded.session, identity, current);
+          if (!current()) return;
+          release();
+          refreshStoredSession(this as unknown as AccountPageInstance);
+          await this.loadIdentities();
+        } catch (error) {
+          if (current()) this.setData({ accountError: error instanceof ApiError && error.status === 409
+            ? tr({ zh: '不能解绑最后一种登录方式，或账号状态已变化，请刷新后重试。', en: 'Cannot unlink the last sign-in method, or the account changed. Refresh and retry.' })
+            : tr({ zh: '未能确认解绑结果，请刷新登录方式后核对。', en: 'Could not confirm unlinking. Refresh sign-in methods to check.' }) });
+          release();
+        }
+      },
+      fail: release,
+    }); } catch { release(); }
+  },
+
+  signOut() {
+    if (this.data.loginRequired || this.data.nameBusy || this.data.identityMutationBusy) return;
+    const session = getStoredSessionSnapshot().session;
+    if (!session) return;
+    const attempt = {};
+    accountActionAttempts.set(this, attempt);
+    this.setData({ identityMutationBusy: true, accountError: '' });
+    const release = () => {
+      if (accountActionAttempts.get(this) === attempt) {
+        accountActionAttempts.delete(this); this.setData({ identityMutationBusy: false });
+      }
+    };
+    let handled = false;
+    try { miniProgramApi().showModal({
+      title: ACCOUNT_COPY.signOut,
+      content: tr({ zh: '退出本机小程序账号，本地计时成绩保留。其他设备和网站的登录不会退出。', en: 'Sign out on this device and keep local solves. Other devices and website sessions remain signed in.' }),
+      confirmText: tr({ zh: '退出', en: 'Sign out' }), cancelText: ACCOUNT_COPY.cancelLabel,
+      success: result => {
+        if (handled || accountActionAttempts.get(this) !== attempt) return;
+        handled = true;
+        if (result.confirm && getStoredSessionSnapshot().session?.token === session.token) {
+          if (clearStoredSession()) {
+            identityAttempts.delete(this); loadedIdentities.delete(this); profileSessions.delete(this);
+            this.setData({ ...EMPTY_IDENTITIES, editingName: false, nameDraft: '' });
+            refreshStoredSession(this as unknown as AccountPageInstance);
+          } else this.setData({ accountError: ACCOUNT_COPY.storageUnavailable });
+        }
+        release();
+      }, fail: release,
+    }); } catch { release(); }
+  },
+
+  editDisplayName() {
+    if (this.data.loginRequired || this.data.isTimelineEntry || this.data.wcaId || this.data.nameBusy || this.data.identityMutationBusy) return;
+    const session = getStoredSessionSnapshot().session;
+    if (!session || session.user.wcaId) return;
+    profileSessions.set(this, session.token);
+    this.setData({ editingName: true, nameDraft: this.data.displayName, accountError: '' });
+  },
+
+  inputDisplayName(event: WechatMiniprogram.Input) {
+    if (!this.data.nameBusy) this.setData({ nameDraft: event.detail.value, accountError: '' });
+  },
+
+  clearDisplayName() {
+    if (!this.data.nameBusy) this.setData({ nameDraft: '' });
+  },
+
+  cancelDisplayName() {
+    if (!this.data.nameBusy) this.setData({ editingName: false, nameDraft: '', accountError: '' });
+  },
+
+  async saveDisplayName() {
+    if (!this.data.editingName || this.data.nameBusy || this.data.loginRequired || this.data.identityMutationBusy) return;
+    const name = normalizeDisplayName(this.data.nameDraft);
+    if (!isValidDisplayName(name)) {
+      this.setData({ accountError: tr({ zh: '展示名须为 1–50 个字符，不能包含控制字符。', en: 'Use 1–50 characters without control characters.' }) });
+      return;
+    }
+    const session = getStoredSessionSnapshot().session;
+    if (!session || session.user.wcaId || profileSessions.get(this) !== session.token) {
+      this.setData({ editingName: false, nameDraft: '' });
+      refreshStoredSession(this as unknown as AccountPageInstance);
+      return;
+    }
+    const attempt = {};
+    profileAttempts.set(this, attempt);
+    const current = () => profileAttempts.get(this) === attempt;
+    this.setData({ nameBusy: true, accountError: '' });
+    try {
+      await updateNativeDisplayName(session, name, current);
+      if (current()) {
+        refreshStoredSession(this as unknown as AccountPageInstance);
+        this.setData({ editingName: false, nameDraft: '' });
+      }
+    } catch {
+      if (current()) this.setData({ accountError: tr({
+        zh: '未能确认保存结果，请刷新账号资料后重试。',
+        en: 'Could not confirm the save. Refresh your account before retrying.',
+      }) });
+    } finally {
+      if (current()) { profileAttempts.delete(this); this.setData({ nameBusy: false }); }
+    }
+  },
+
+  openSecuritySettings() { this.openNativeAccountPage('account-settings'); },
+  openDeleteAccount() { this.openNativeAccountPage('account-delete'); },
+  openNativeAccountPage(page: 'account-settings' | 'account-delete') {
+    if (this.data.loginRequired || this.data.isTimelineEntry || this.data.identityMutationBusy || this.data.nameBusy) return;
+    this.setData({ identityMutationBusy: true, accountError: '' });
+    const fail = () => this.setData({ accountError: ACCOUNT_COPY.accountFailure });
+    try { miniProgramApi().navigateTo({ url: `/pages/${page}/index`, fail,
+      complete: () => this.setData({ identityMutationBusy: false }) }); }
+    catch { this.setData({ identityMutationBusy: false }); fail(); }
+  },
+
   openAccount() {
     if (this.data.isTimelineEntry || this.data.loginRequired) return;
     this.setData({ accountError: '' });
@@ -815,6 +974,7 @@ Page<AccountPageData, WechatMiniprogram.Page.CustomOption>({
   },
 
   previewWechatQr() {
+    if (this.data.contact.platformFeedback) return;
     if (this.data.isTimelineEntry || this.data.loginRequired) return;
     const path = CONTACT_VIEW.qrPath;
     try {
@@ -828,6 +988,7 @@ Page<AccountPageData, WechatMiniprogram.Page.CustomOption>({
   },
 
   copyContactValue(event: ContactCopyEvent) {
+    if (this.data.contact.platformFeedback) return;
     const value = event.currentTarget.dataset.value;
     if (typeof value !== 'string' || value.length === 0) return;
 

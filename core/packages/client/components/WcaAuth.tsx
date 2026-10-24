@@ -1,21 +1,20 @@
 'use client';
 
 /**
- * 登录 / 我的 入口 — 全站通用。两态都是真链接、都指 /account,没有弹层:
+ * 登录 / 我的 入口 — 全站通用。两态都是真链接,没有弹层:
  *   未登录 → /account 渲染登录表单(带 ?next= 回跳本页)
- *   已登录 → /account 就是「我的」页
- * 地址里不带 wcaId:那是当前登录者的页面,不随看的是谁而变。
+ *   已登录 → 默认 /account,页面可通过 href 指定个人入口。
  */
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { Key } from 'lucide-react';
+import { Key } from '@app-foundation/icons/lucide';
 import { useTranslation } from 'react-i18next';
 import AppLink from '@/components/AppLink';
 import { useAuthStore, nextQuery } from '@/lib/auth-store';
 import './wca_auth.css';
 import { tr } from '@/i18n/tr';
 
-export default function WcaAuth({ onNavigate, showLabel = false }: { onNavigate?: () => void; showLabel?: boolean }) {
+export default function WcaAuth({ onNavigate, showLabel = false, href = '/account', linkClassName, labelClassName = 'toolbar-label' }: { onNavigate?: () => void; showLabel?: boolean; href?: string; linkClassName?: string; labelClassName?: string }) {
   const { t } = useTranslation();
   const pathname = usePathname();
   const user = useAuthStore(s => s.user);
@@ -30,14 +29,14 @@ export default function WcaAuth({ onNavigate, showLabel = false }: { onNavigate?
     return (
       <AppLink
         href={`/account${nextQuery(pathname)}`}
-        className="wca-auth-btn"
+        className={linkClassName ?? 'wca-auth-btn'}
         title={label}
         aria-label={label}
         prefetch={false}
         onClick={onNavigate}
       >
         <Key size={18} />
-        {showLabel && <span className="toolbar-label">{tr({ zh: '登录', en: 'Login' })}</span>}
+        {showLabel && <span className={labelClassName}>{tr({ zh: '登录', en: 'Login' })}</span>}
       </AppLink>
     );
   }
@@ -53,15 +52,15 @@ export default function WcaAuth({ onNavigate, showLabel = false }: { onNavigate?
 
   return (
     <AppLink
-      href="/account"
-      className="wca-auth-trigger"
+      href={href}
+      className={linkClassName ?? 'wca-auth-trigger'}
       title={label}
       aria-label={label}
       prefetch={false}
       onClick={onNavigate}
     >
       {face}
-      {showLabel && <span className="toolbar-label">{tr({ zh: '我的', en: 'Account' })}</span>}
+      {showLabel && <span className={labelClassName}>{tr({ zh: '我的', en: 'Account' })}</span>}
     </AppLink>
   );
 }

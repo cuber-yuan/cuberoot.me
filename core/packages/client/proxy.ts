@@ -28,6 +28,8 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { fillPlatformParams, matchPlatformRoute } from './lib/platform-routes';
 import { competitionGate } from './lib/competition-gate';
+import { isRetiredAlgTrainer, retiredAlgTrainerHref } from './lib/timer-training-catalog';
+import { canonicalTimerPracticeSearch } from './lib/timer-practice-url';
 
 const SUPPORTED_LOCALES = ['en', 'zh'] as const;
 type Locale = typeof SUPPORTED_LOCALES[number];
@@ -167,10 +169,30 @@ function routeLanguage(req: NextRequest) {
 
   const { locale, rest } = stripLocalePrefix(pathname);
 
+  if (rest === '/timer') {
+    const canonical = canonicalTimerPracticeSearch(searchParams).toString();
+    if (canonical !== searchParams.toString()) {
+      const target = url.clone();
+      target.search = canonical;
+      return NextResponse.redirect(target, 308);
+    }
+  }
+
   // 1. ?lang=zh|en on any path → set cookie + redirect to that language's
   //    canonical shape (en = bare, zh = /zh/…), dropping the query. Keeps old
   //    ?lang= links (Vite era) working.
   const queryLang = searchParams.get('lang');
+  // Retire the standalone surface before rendering it. Scope trainer parameters
+  // (especially room/share/event) so they cannot activate a timer battle/session.
+  if (isRetiredAlgTrainer(rest)) {
+    const lang = queryLang === 'zh' || queryLang === 'en' ? queryLang : locale ?? preferredLocale(req);
+    const trainerQuery = new URLSearchParams(searchParams);
+    trainerQuery.delete('lang');
+    const href = retiredAlgTrainerHref(`${lang === 'zh' ? '/zh' : ''}${rest}?${trainerQuery}`);
+    const res = NextResponse.redirect(new URL(href, req.url), locale && !queryLang ? 308 : 307);
+    setLangCookie(res, lang);
+    return res;
+  }
   if (queryLang === 'zh' || queryLang === 'en') {
     const target = url.clone();
     target.searchParams.delete('lang');

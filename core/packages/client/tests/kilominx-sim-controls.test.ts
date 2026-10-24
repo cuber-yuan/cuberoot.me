@@ -17,6 +17,8 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('@/lib/cubing-scramble', () => ({ tnoodleRandomScramble: vi.fn() }));
 
+import type { TwistyPlaybackPlayer } from '@/lib/twisty-playback';
+
 import PlayerControls, { type SimPuzzle } from '@/app/[lang]/sim/PlayerControls';
 import { DEFAULT_SETTINGS } from '@/app/[lang]/sim/SettingDrawer';
 import { DEFAULT_KEYMAP } from '@/app/[lang]/sim/keymap';
@@ -45,6 +47,15 @@ describe('Kilominx simulator controls', () => {
   const copyLinks = vi.fn<(setup: string, alg: string) => Promise<void>>().mockResolvedValue(undefined);
   const userMoveRef: NonNullable<ComponentProps<typeof PlayerControls>['userMoveRef']> = { current: null };
   const player = {
+    experimentalModel: {
+      setupAlg: { get: vi.fn(async () => ({ alg: player.experimentalSetupAlg })) },
+      alg: { get: vi.fn(async () => ({ alg: player.alg })) },
+      setupAnchor: { get: vi.fn(async () => player.experimentalSetupAnchor) },
+      detailedTimelineInfo: { get: vi.fn(async () => ({ timestamp: 0 })), addFreshListener: vi.fn(), removeFreshListener: vi.fn() },
+      indexer: { get: vi.fn(async () => null), addFreshListener: vi.fn(), removeFreshListener: vi.fn() },
+      playingInfo: { get: vi.fn(async () => ({ playing: false })), addFreshListener: vi.fn(), removeFreshListener: vi.fn() },
+      coarseTimelineInfo: { get: vi.fn(async () => null) },
+    },
     experimentalSetupAlg: '',
     experimentalSetupAnchor: 'start' as 'start' | 'end',
     alg: '',
@@ -128,10 +139,12 @@ describe('Kilominx simulator controls', () => {
           setSetup(nextSetup);
           setAlg(nextAlg);
         },
-        order: 3, onOrderChange: setKind,
-        puzzleKind: kind, onPuzzleChange: setKind,
+        order: 3,
+        puzzleKind: kind,
         // Bare simulator URLs default to group, but Kilominx has no local engine.
         renderer: 'group', twistyPlayerRef: playerRef, userMoveRef,
+        twistyPlaybackPlayer: kind === 'kilominx' ? player as unknown as TwistyPlaybackPlayer : null,
+        toPlaybackText: (text) => toCubingKilominx(text, notation),
         settings, onSettingsChange: (next) => { settingsChanges(next); setSettings(next); }, canUseCustomLogo: false,
         keymap: DEFAULT_KEYMAP, onKeymapChange: () => {}, onResetKeymap: () => {},
       });
@@ -177,10 +190,23 @@ describe('Kilominx simulator controls', () => {
   }
 
   function anchorSelect() {
-    const select = host.querySelector<HTMLSelectElement>('select[aria-label="Anchor: keep the scramble start or the solve end fixed"]');
+    const select = host.querySelector<HTMLButtonElement>('button[aria-label="Anchor: keep the scramble start or the solve end fixed"]');
     expect(select).not.toBeNull();
     return select!;
   }
+
+  it('changes the anchor through the shared custom menu', async () => {
+    await mount(false, 'U R2', 'algorithm');
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Playback settings"]')!.click());
+    await act(async () => anchorSelect().click());
+    const options = [...document.querySelectorAll<HTMLButtonElement>('.sim-anchor-menu [role="option"]')];
+    expect(options.map(option => option.textContent)).toEqual(['Start', 'End']);
+    expect(options[1].getAttribute('aria-selected')).toBe('true');
+    await act(async () => options[0].click());
+    expect(anchorSelect().textContent).toBe('Start');
+    expect(settingsChanges).toHaveBeenLastCalledWith(expect.objectContaining({ playbackMode: 'moves' }));
+    expect(document.querySelector('.sim-anchor-menu')).toBeNull();
+  });
 
   function expectNxnState(algorithm: string) {
     const expected = new Cube(3);
@@ -196,8 +222,9 @@ describe('Kilominx simulator controls', () => {
       resolveScramble = resolve;
     }));
     await mount(false, 'U R2', 'algorithm');
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Playback settings"]')!.click());
     expect(world).toBeNull();
-    expect(anchorSelect().value).toBe('algorithm');
+    expect(anchorSelect().textContent).toBe('End');
     expect(player.experimentalSetupAnchor).toBe('end');
     await act(async () => button('Random scramble').click());
     expect(tnoodleRandomScramble).toHaveBeenCalledExactlyOnceWith('kilominx');
@@ -210,27 +237,30 @@ describe('Kilominx simulator controls', () => {
     expect(player.jumpToEnd).toHaveBeenCalledWith({ flash: false });
     expect(player.jumpToStart).not.toHaveBeenCalled();
     expect(settingsChanges).not.toHaveBeenCalled();
-    expect(anchorSelect().value).toBe('algorithm');
+    expect(anchorSelect().textContent).toBe('End');
     expect(seekAnchors).toHaveBeenCalledWith('end');
     expect(player.experimentalSetupAnchor).toBe('end');
     expect(player.play).not.toHaveBeenCalled();
     await nextAnimationFrame();
     await nextAnimationFrame();
 
-    // Animation must switch to start anchoring; otherwise it plays the inverse
-    // into solved instead of applying the scramble forward from solved.
+    // The preview borrows the player with start anchoring without changing
+    // the editor fields or the user's selected anchor.
     player.jumpToStart.mockClear();
     await act(async () => button('Animate scramble').click());
-    expect(settingsChanges).toHaveBeenLastCalledWith(expect.objectContaining({ playbackMode: 'moves' }));
-    expect(anchorSelect().value).toBe('moves');
-    expect(text('Scramble')).toBe('');
-    expect(text('Solution')).toBe(EDITOR_SCRAMBLE);
-    expect(player.play).not.toHaveBeenCalled();
+    expect(settingsChanges).not.toHaveBeenCalled();
+    expect(anchorSelect().textContent).toBe('End');
+    expect(text('Scramble')).toBe(EDITOR_SCRAMBLE);
+    expect(text('Solution')).toBe('U R2');
     await nextAnimationFrame();
     await nextAnimationFrame();
     expect(player.jumpToStart).toHaveBeenCalledExactlyOnceWith({ flash: false });
     expect(player.play).toHaveBeenCalledTimes(1);
     expect(playStates).toHaveBeenCalledExactlyOnceWith({ setup: '', alg: SCRAMBLE, anchor: 'start' });
+    await act(async () => button('Return to algorithm').click());
+    expect(player.experimentalSetupAlg).toBe(SCRAMBLE);
+    expect(player.alg).toBe('U R2');
+    expect(player.experimentalSetupAnchor).toBe('end');
   });
 
   it('switches notation from current drafts atomically and keeps multi-letter moves intact while typing', async () => {
@@ -323,6 +353,10 @@ describe('Kilominx simulator controls', () => {
     finally { vi.stubGlobal('document', dom); }
     await act(async () => switchToNxn(world!));
     expectNxnState('F');
+    // Disposing the shared playback adapter pauses the old player once. The
+    // subsequently resolved scramble must not touch either player again.
+    expect(player.pause).toHaveBeenCalledOnce();
+    player.pause.mockClear();
     await act(async () => resolveScramble(SCRAMBLE));
     await nextAnimationFrame();
     await nextAnimationFrame();

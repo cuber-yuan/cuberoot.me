@@ -1,3 +1,4 @@
+import { ALL_NEWS } from './[lang]/regulation/_data/news-catalog';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { MetadataRoute } from 'next';
@@ -8,6 +9,7 @@ import { STACK_TOOLS_META } from './[lang]/dev/stack/_lib/stack_meta';
 import { LLM_TOOLS_META } from './[lang]/dev/llm/_lib/llm_meta';
 import { ABOUT_REGISTRY } from './[lang]/wca/about/[id]/_lib/registry';
 import { PLATFORM_ROUTES } from '@/lib/platform-routes';
+import { isRetiredAlgTrainer } from '@/lib/timer-training-catalog';
 
 // Static-routes sitemap. The fs scan below runs during `next build` (where app/
 // source exists) and the result is baked into the static /sitemap.xml served by
@@ -25,7 +27,7 @@ export const dynamic = 'force-static';
 const BASE = 'https://cuberoot.me';
 
 // Kept OUT (dev/poc/internal pages, no SEO value). Locale-stripped path, exact.
-const EXCLUDE = new Set(['competition-verify', 'ffmpeg-poc', 'jsonEditor', 'courses', 'search', 'partnership', 'bp', 'admin/disk', 'admin/interview', 'account/mcp']);
+const EXCLUDE = new Set(['sim/embed', 'workspace', 'competition-verify', 'ffmpeg-poc', 'jsonEditor', 'courses', 'search', 'partnership', 'bp', 'admin/disk', 'admin/interview', 'account/mcp']);
 
 // Dynamic-segment pages worth indexing at a specific value (the scan skips
 // [param] dirs since it can't know which values are valid).
@@ -66,6 +68,7 @@ export const PLATFORM_SITEMAP_PATHS = PLATFORM_ROUTES
   .map((route) => `platform/${route.pattern}`);
 
 const EXTRA = [
+  ...ALL_NEWS.map(({id}) => `regulation/post/${id}`),
   ...(ALG_PUZZLES as readonly string[]).map((puzzle) => `alg/${puzzle}`),
   ...Object.entries(ALG_CATALOG).flatMap(([puzzle, sets]) =>
     sets.map((s) => `alg/${puzzle}/${s.slug}`),
@@ -109,7 +112,7 @@ function scanRoutes(): string[] {
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const routes = [...new Set([...scanRoutes(), ...EXTRA])]
-    .filter((r) => !EXCLUDE.has(r) && !r.startsWith('partnership/') && !r.startsWith('bp/'))
+    .filter((r) => !EXCLUDE.has(r) && !r.startsWith('partnership/') && !r.startsWith('bp/') && !isRetiredAlgTrainer(`/${r}`))
     .sort();
   // Pattern B: English is the BARE URL (no /en prefix); Chinese is /zh/….
   const en = (path: string) => (path ? `${BASE}/${path}` : `${BASE}/`);

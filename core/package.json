@@ -3,6 +3,9 @@
   "private": true,
   "packageManager": "pnpm@12.6.0",
   "scripts": {
+    "recon:intake": "tsx scripts/recon-intake.mts",
+    "recon:intake:dev": "tsx apps/api/scripts/dev-recon-intake.ts",
+    "prepare": "node scripts/recon-ground-truth-gate.mjs install",
     "setup:local": "pnpm --filter @cuberoot/client build:deps && node scripts/setup-local.ts",
     "audit:boundaries": "node scripts/check-architecture-boundaries.mjs",
     "solver:build-wasm": "tsx ../solver/scripts/build_wasm.mts",
@@ -16,17 +19,19 @@
     "music:prepare": "tsx ../scripts/music/prepare-music.ts",
     "music:publish": "tsx ../scripts/music/publish-music.ts",
     "stats:progress:sq1": "tsx ../scripts/progress/sq1-exact.ts",
-    "stats:scramble": "tsx ../scripts/stats/update-published.ts --publish --push",
+    "stats:scramble": "tsx ../scripts/stats/update-published.ts --publish",
     "stats:scramble:local": "tsx ../scripts/stats/update-local.ts",
     "stats:scramble:publish": "tsx ../scripts/stats/update-published.ts",
     "build:cubing-worker": "node scripts/build-cubing-worker.mjs packages/client/public/cubing-chunks",
-    "dev:next": "turbo dev --filter=@cuberoot/client",
+    "dev:next": "pnpm --filter @cuberoot/client dev",
     "dev:server": "turbo dev --filter=@cuberoot/server",
     "build": "turbo build",
     "typecheck": "turbo typecheck",
     "lint": "turbo lint",
     "android:release": "node scripts/android-release/release.ts",
-    "android:release:test": "node --test scripts/android-release/*.test.ts"
+    "android:release:test": "node --test scripts/android-release/*.test.ts",
+    "stats:hydrate": "node ../scripts/wca-data/snapshot-cli.ts hydrate ../stats",
+    "stats:publish": "node ../scripts/wca-data/snapshot-cli.ts submit"
   },
   "devDependencies": {
     "ajv": "^8.20.0",

@@ -4,6 +4,10 @@
 
 pub use crate::cube::Cube;
 
+#[cfg(target_arch = "x86_64")]
+#[path = "coord_x86.rs"]
+mod x86;
+
 pub const SNAPSHOT_BYTES: usize = 816_856;
 pub const CORNER_RAW_COUNT: usize = 70 * 2187;
 pub const CORNER_CLASSES: u32 = 3393;
@@ -56,25 +60,84 @@ pub(crate) struct Opt9TernaryRanks {
 /// the EO projection once; callers cannot supply an Opt9 table by accident.
 pub struct Opt8CoordTables(CoordTables);
 
+#[cfg(all(test, feature = "opt8-native-specialized", not(target_family = "wasm")))]
+mod opt8_specialized_checks {
+    use super::*;
+
+    #[test]
+    #[ignore = "reads only the local 818008-byte small snapshot, never a PDB"]
+    fn opt8_fixed_packing_matches_scalar_generic_and_wasm_wrapper() {
+        let bytes = std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../.tmp/cubeopt-reverse/opt9-generated/small-memory.bin")).unwrap();
+        assert_eq!(bytes.len(), 818008);
+        let tables = CoordTables::from_variant_bytes(&bytes, 8).unwrap();
+        let wrapper = Opt8CoordTables::from_bytes(&bytes).unwrap();
+        let mut cube = Cube::SOLVED;
+        let mut seed = 0x4839_e019_3b76_5931u64;
+        let mut checked = 0;
+        let mut wide = 0;
+        let mut max_index = 0;
+        for _ in 0..1024 {
+            for symmetry in 0..48 {
+                let normal = tables.conjugate(&cube, symmetry);
+                for state in [normal, normal.inverse()] {
+                    let expected = tables.index64_slow(&state);
+                    assert_eq!(tables.index64(&state), expected);
+                    assert_eq!(tables.index8(&state), expected);
+                    assert_eq!(tables.index64_specialized(&state), expected);
+                    assert_eq!(wrapper.index(&state), expected);
+                    assert!(expected < tables.coordinate_count());
+                    wide += usize::from(expected > u64::from(u32::MAX));
+                    max_index = max_index.max(expected);
+                    checked += 1;
+                }
+            }
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            cube = cube.moved((seed % 18) as u8);
+        }
+        assert_eq!(checked, 98304);
+        assert!(wide > 0, "Opt8 coordinates must exercise bits above u32");
+        println!("Opt8 fixed packing: checks={checked}, wide={wide}, max_index={max_index}, pdbBytes=0");
+    }
+}
+
 impl Opt8CoordTables {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, String> {
         CoordTables::from_variant_bytes(bytes, 8).map(Self)
     }
     #[inline(always)]
     pub fn index(&self, cube: &Cube) -> u64 {
-        #[cfg(target_arch = "aarch64")]
-        let (orbit, eo) = unsafe { self.0.coordinate_parts_neon::<true>(cube) };
-        #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
-        let (orbit, eo) = unsafe { self.0.coordinate_parts_wasm::<true>(cube) };
-        #[cfg(not(any(target_arch = "aarch64", all(target_family = "wasm", target_feature = "simd128"))))]
-        let (orbit, eo) = self.0.coordinate_parts_slow::<true>(cube);
-        ((u64::from(orbit) & !511) << 8) | (u64::from(eo >> 3) << 9) | u64::from(orbit & 511)
+        self.0.index8(cube)
     }
     pub fn conjugate(&self, cube: &Cube, symmetry: u8) -> Cube { self.0.conjugate(cube, symmetry) }
     pub fn index_scalar(&self, cube: &Cube) -> u64 { self.0.index64_slow(cube) }
 }
 
+/// Fixed Opt9 packing for the isolated shared-WASM candidate. Construction
+/// binds the snapshot layout once; the hot path reuses the native index9 math.
+pub struct Opt9CoordTables(CoordTables);
+
+impl Opt9CoordTables {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, String> {
+        CoordTables::from_variant_bytes(bytes, 9).map(Self)
+    }
+    #[inline(always)]
+    pub fn index(&self, cube: &Cube) -> u64 { self.0.index9(cube) }
+    pub fn conjugate(&self, cube: &Cube, symmetry: u8) -> Cube { self.0.conjugate(cube, symmetry) }
+    pub fn index_scalar(&self, cube: &Cube) -> u64 { self.0.index64_slow(cube) }
+}
+
 impl CoordTables {
+    /// Research geometry only. These are spatial rotations, not legal fixed-
+    /// centre cube states; their cubie permutations can have opposite parity.
+    #[cfg(feature = "corner-research")]
+    pub(crate) fn proper_rotations(&self) -> Vec<Cube> {
+        self.symmetries.iter().filter(|s| s[..8].iter().all(|&c| c < 24))
+            .map(|s| Cube { corners: s[..8].try_into().unwrap(), edges: s[8..].try_into().unwrap() })
+            .collect()
+    }
+
     pub(crate) fn corner_entry(&self, cube: &Cube) -> u32 {
         self.corner_class[self.raw_corner(cube)]
     }
@@ -122,7 +185,9 @@ impl CoordTables {
         } else {
             #[cfg(target_arch = "aarch64")]
             { unsafe { self.coordinate_parts_neon::<true>(cube) } }
-            #[cfg(not(target_arch = "aarch64"))]
+            #[cfg(target_arch = "x86_64")]
+            { self.coordinate_parts_x86::<true>(cube) }
+            #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
             { self.coordinate_parts_slow::<true>(cube) }
         };
         ((u64::from(orbit) & !511) << 10)
@@ -306,7 +371,9 @@ impl CoordTables {
         let (orbit, eo) = unsafe { self.coordinate_parts_neon::<true>(cube) };
         #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
         let (orbit, eo) = unsafe { self.coordinate_parts_wasm::<true>(cube) };
-        #[cfg(not(any(target_arch = "aarch64", all(target_family = "wasm", target_feature = "simd128"))))]
+        #[cfg(target_arch = "x86_64")]
+        let (orbit, eo) = self.coordinate_parts_x86::<true>(cube);
+        #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64", all(target_family = "wasm", target_feature = "simd128"))))]
         let (orbit, eo) = self.coordinate_parts_slow::<true>(cube);
         self.pack_index(orbit, eo)
     }
@@ -321,7 +388,27 @@ impl CoordTables {
     /// The search oracle dispatches once per solve instead of per query.
     #[inline(always)]
     pub fn index64_specialized(&self, cube: &Cube) -> u64 {
+        #[cfg(all(feature = "opt8-native-specialized", not(target_family = "wasm")))]
+        if self.variant == 8 { return self.index8(cube); }
         if self.variant == 9 { self.index9(cube) } else { self.index64(cube) }
+    }
+
+    /// The established Opt8 WASM packing, also available to the private native
+    /// Opt8 oracle after one validated dispatch. Same coordinate and table.
+    #[inline(always)]
+    pub(crate) fn index8(&self, cube: &Cube) -> u64 {
+        debug_assert_eq!(self.variant, 8);
+        #[cfg(target_arch = "aarch64")]
+        let (orbit, eo) = unsafe { self.coordinate_parts_neon::<true>(cube) };
+        #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
+        let (orbit, eo) = unsafe { self.coordinate_parts_wasm::<true>(cube) };
+        #[cfg(target_arch = "x86_64")]
+        let (orbit, eo) = self.coordinate_parts_x86::<true>(cube);
+        #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64", all(target_family = "wasm", target_feature = "simd128"))))]
+        let (orbit, eo) = self.coordinate_parts_slow::<true>(cube);
+        ((u64::from(orbit) & !511) << 8)
+            | (u64::from(eo >> 3) << 9)
+            | u64::from(orbit & 511)
     }
 
     /// Only the private Opt9 oracle calls this after its entry-point dispatch.
@@ -334,7 +421,9 @@ impl CoordTables {
         let (orbit, eo) = unsafe { self.coordinate_parts_neon::<true>(cube) };
         #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
         let (orbit, eo) = unsafe { self.coordinate_parts_wasm::<true>(cube) };
-        #[cfg(not(any(target_arch = "aarch64", all(target_family = "wasm", target_feature = "simd128"))))]
+        #[cfg(target_arch = "x86_64")]
+        let (orbit, eo) = self.coordinate_parts_x86::<true>(cube);
+        #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64", all(target_family = "wasm", target_feature = "simd128"))))]
         let (orbit, eo) = self.coordinate_parts_slow::<true>(cube);
         ((u64::from(orbit) & !511) << 9)
             | (u64::from(eo >> 2) << 9)
@@ -445,7 +534,9 @@ impl CoordTables {
         unsafe {
             self.coordinate_parts_wasm::<false>(cube).0
         }
-        #[cfg(not(any(target_arch = "aarch64", all(target_family = "wasm", target_feature = "simd128"))))]
+        #[cfg(target_arch = "x86_64")]
+        { self.coordinate_parts_x86::<false>(cube).0 }
+        #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64", all(target_family = "wasm", target_feature = "simd128"))))]
         self.index_slow(cube)
     }
 

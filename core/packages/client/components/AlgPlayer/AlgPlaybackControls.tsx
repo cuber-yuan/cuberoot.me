@@ -1,6 +1,6 @@
 'use client';
 
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw } from '@app-foundation/icons/lucide';
 import PlaybackBar from '@/components/PlaybackBar';
 import { useT } from '@/hooks/useT';
 
@@ -9,6 +9,7 @@ type FullControlsProps = {
   step: number;
   count: number;
   playing: boolean;
+  stepMarkers?: readonly number[];
   onScrub: (step: number) => void;
   onStepBack: () => void;
   onTogglePlay: () => void;
@@ -53,6 +54,7 @@ export default function AlgPlaybackControls(props: (FullControlsProps | ReplayCo
       step={props.step}
       total={props.count}
       playing={props.playing}
+      stepMarkers={props.stepMarkers}
       onScrub={props.onScrub}
       onSkipStart={() => props.onScrub(0)}
       onStepBack={props.onStepBack}

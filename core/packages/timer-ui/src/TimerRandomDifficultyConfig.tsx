@@ -1,4 +1,5 @@
 'use client';
+import { MethodStagePicker } from './TimerPuzzlePicker';
 
 /**
  * GenDiffConfig — 随机状态来源的「难度」子面板(3×3 族项目)。
@@ -16,16 +17,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   dataVariantOfStage,
-  stageLabel,
   TIMER_RANDOM_DIFFICULTY_BEST_SLOT,
   uiStagesOf,
   uiVariantOf,
   uiVariantOptions,
-  variantLabel,
   type TimerRandomDifficultySettings,
 } from '@cuberoot/shared/timer';
 import {
   canTrain,
+  EO_AXIS_LABELS,
   facesOfSubset,
   trainerCaps,
   trainerSlotOptions,
@@ -88,6 +88,9 @@ const COPY = {
   },
   bestBlock: { en: 'Best block', zh: '最优块' },
   bestSlot: { en: 'Best slot', zh: '最优槽' },
+  bestAxis: { en: 'Best axis for colours', zh: '按底色取最优轴' },
+  eoAxis: { en: 'EO axis', zh: 'EO 轴' },
+  fixedAxis: { en: 'Fixed {axis} axis', zh: '固定 {axis} 轴' },
   block: { en: 'Block', zh: '块' },
   difficulty: { en: 'Difficulty', zh: '难度' },
   difficultyAria: { en: 'Generate by difficulty', zh: '按难度生成' },
@@ -108,6 +111,7 @@ export function TimerRandomDifficultyConfig({
   toggleSlot,
 }: TimerRandomDifficultyConfigProps) {
   const [draft, setDraft] = useState<Partial<TimerRandomDifficultySettings> | null>(null);
+  const difficultyTriggerRef = useRef<HTMLButtonElement>(null);
   const settings = { ...savedSettings, ...draft };
   const onChange = (patch: Partial<TimerRandomDifficultySettings>) => {
     if (draft !== null) setDraft(current => current === null ? null : { ...current, ...patch });
@@ -125,6 +129,8 @@ export function TimerRandomDifficultyConfig({
   const stage = stages.includes(settings.genDiffStage) ? settings.genDiffStage : stages[0];
   const variant = dataVariantOfStage(method, stage);
   const caps = trainerCaps(variant, stage);
+  const pureEo = variant === 'eoline' && stage === 'eo';
+  const eoAxis = settings.genDiffEoAxis ?? 'best';
 
   // 底色子集:与真题难度筛共用同一个选择器(sel.subsetKey 是过滤性质,变了就写回)。
   const sel = useSubsetSelection('cn', settings.genDiffColors);
@@ -195,9 +201,9 @@ export function TimerRandomDifficultyConfig({
   }, [settings.genDiffOn, variant, stage, mMin, mMax, allowed.length]);
 
   const diffToggle = (
-    <button type="button" className="timer-difficulty-trigger" aria-haspopup="dialog"
+    <button ref={difficultyTriggerRef} type="button" className="timer-difficulty-trigger" aria-haspopup="dialog"
       aria-expanded={draft !== null} data-active={savedSettings.genDiffOn || undefined}
-      onClick={() => setDraft({ genDiffOn: true })} disabled={disabled}>
+      onClick={() => setDraft(draft ? null : { genDiffOn: true })} disabled={disabled}>
       {text(COPY.difficulty)}
     </button>
   );
@@ -214,48 +220,35 @@ export function TimerRandomDifficultyConfig({
       {toggleSlot && createPortal(diffToggle, toggleSlot)}
       {!toggleSlot && diffToggle}
       {draft !== null && (
-        <TimerDifficultyDialog language={language} disabled={disabled} onClose={() => setDraft(null)}
+        <TimerDifficultyDialog anchorRef={difficultyTriggerRef} language={language} disabled={disabled} onClose={() => setDraft(null)}
           onApply={() => { persist(draft); setDraft(null); }}
           onClear={() => { persist({ genDiffOn: false }); setDraft(null); }}>
           <div className="timer-random-difficulty-config">
             {body && (
               <div className="timer-random-difficulty-body">
                 <div className="timer-random-difficulty-options">
-                  <SubsetColorPicker disabled={disabled} sel={sel} language={language} />
-                  {methods.length > 1 && (
-                    <select
-                      aria-label={text(COPY.method)}
-                      className="timer-random-difficulty-select"
-                      disabled={disabled}
-                      value={method}
-                      onChange={(event) => {
-                        const m = event.target.value;
-                        const first = stagesOfMethod(m)[0];
-                        onChange({
-                          genDiffVariant: dataVariantOfStage(m, first), genDiffStage: first, ...RESET,
-                        });
-                      }}
-                    >
-                      {methods.map((option) => (
-                        <option key={option} value={option}>{variantLabel(option, language === 'zh')}</option>
+                  {(!pureEo || eoAxis === 'best') && (
+                    <SubsetColorPicker disabled={disabled} sel={sel} language={language} />
+                  )}
+                  <MethodStagePicker
+                    disabled={disabled} isZh={language === 'zh'} method={method} stage={stage}
+                    methods={methods} stagesOf={stagesOfMethod}
+                    onSelect={(m, s) => onChange({ genDiffVariant: dataVariantOfStage(m, s), genDiffStage: s, ...RESET })}
+                  />
+                  {pureEo && (
+                    <select className="timer-random-difficulty-select" disabled={disabled}
+                      aria-label={text(COPY.eoAxis)} value={eoAxis}
+                      onChange={(event) => onChange({
+                        genDiffEoAxis: event.target.value === 'best' ? 'best' : Number(event.target.value) as 0 | 1 | 2,
+                      })}>
+                      <option value="best">{text(COPY.bestAxis)}</option>
+                      {([2, 1, 0] as const).map(axis => (
+                        <option key={axis} value={axis}>
+                          {text(COPY.fixedAxis).replace('{axis}', EO_AXIS_LABELS[axis])}
+                        </option>
                       ))}
                     </select>
                   )}
-                  <select
-                    aria-label={text(COPY.stage)}
-                    className="timer-random-difficulty-select"
-                    disabled={disabled}
-                    value={stage}
-                    onChange={(event) => onChange({
-                      genDiffVariant: dataVariantOfStage(method, event.target.value),
-                      genDiffStage: event.target.value,
-                      ...RESET,
-                    })}
-                  >
-                    {stages.map((option) => (
-                      <option key={option} value={option}>{stageLabel(option, language === 'zh')}</option>
-                    ))}
-                  </select>
                   {showSlots && (
                     <select
                       className="timer-random-difficulty-select"

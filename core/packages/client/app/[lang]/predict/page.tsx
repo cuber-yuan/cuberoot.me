@@ -29,7 +29,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import dynamic from 'next/dynamic';
 import { parseAsStringEnum, parseAsInteger, parseAsString, parseAsBoolean } from 'nuqs';
 import { useTrainingQueryState as useQueryState, useTrainingSearchParams } from '@/lib/training-host';
-import { Check, ExternalLink } from 'lucide-react';
+import { Check, ExternalLink } from '@app-foundation/icons/lucide';
 import AlgInput from '@/components/AlgInput';
 import BackHome from '@/components/BackHome';
 import HeaderToggles from '@/components/HeaderToggles';
@@ -69,13 +69,14 @@ import {
   type PredictPuzzle, type PredictPuzzleId,
 } from './_lib/puzzles';
 import './predict.css';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 /** 还没出题时:遮罩为空 = 不压暗。 */
 const EMPTY_FACELETS: readonly number[] = [];
 
 const PredictBoard = dynamic(() => import('./_components/PredictBoard'), {
   ssr: false,
-  loading: () => <div className="predict-board" aria-hidden="true" />,
+  loading: () => <div className="predict-board"><LoadingIndicator /></div>,
 });
 
 /** 站内那块公式键盘。只有「自己输入」这一档用得上,所以别让它进首包 —— 手机上
@@ -792,7 +793,7 @@ function PredictPageInner() {
 
 export default function PredictPage() {
   return (
-    <Suspense fallback={<div className="predict-page" />}>
+    <Suspense fallback={<div className="predict-page"><LoadingIndicator /></div>}>
       <PredictPageInner />
     </Suspense>
   );

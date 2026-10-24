@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import type { RollingStatKey, Solve } from '@cuberoot/shared/timer';
+import { CompactSelect } from '@cuberoot/timer-ui/compact-select';
 import {
   TimerRollingStatsPicker,
   TimerStatsPanel,
@@ -50,6 +51,18 @@ function solve(id: string, timeMs: number, overrides: Partial<Solve> = {}): Solv
 describe('shared compact TimerStatsPanel', () => {
   let container: HTMLDivElement;
   let root: Root;
+
+  it('shows fixed current/best rows through ao100 without extra controls', async () => {
+    await act(async () => root.render(createElement(TimerStatsPanel, {
+      summaryOnly: true, event: '333', solves: [], labels,
+      rollingColumns: ['ao5', 'ao25'], onRollingColumnsChange: vi.fn(),
+    })));
+    expect([...container.querySelectorAll<HTMLElement>('[data-stat-row]')].map(row => row.dataset.statRow))
+      .toEqual(['time', 'mo3', 'ao5', 'ao12', 'ao25', 'ao50', 'ao100']);
+    expect(container.querySelector('button')).toBeNull();
+    expect(container.querySelector('.stats-foot')).toBeNull();
+    expect(container.querySelector('.subx-section')).toBeNull();
+  });
 
   beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -233,6 +246,34 @@ describe('shared TimerRollingStatsPicker interaction and viewport contract', () 
     } finally { css.remove(); }
   });
 
+  it('keeps a sidebar menu to the right on a narrow viewport across reopen and remount', async () => {
+    const measure = vi.mocked(HTMLElement.prototype.getBoundingClientRect);
+    measure.mockImplementation(function (this: HTMLElement) {
+      const trigger = this.classList.contains('compact-select-trigger');
+      return { x: trigger ? 12 : 62, y: 8, left: trigger ? 12 : 62, top: 8,
+        right: trigger ? 56 : 312, bottom: trigger ? 62 : 492,
+        width: trigger ? 44 : 250, height: trigger ? 54 : 484, toJSON: () => ({}) } as DOMRect;
+    });
+    const mount = () => act(async () => root.render(createElement(CompactSelect<string>, {
+      side: 'right', label: 'Pet', ariaLabel: 'Pet', items: [{ value: 'pet', label: 'Pet' }], onChange: vi.fn(),
+    })));
+    for (let cycle = 0; cycle < 2; cycle++) {
+      await mount();
+      for (let reopen = 0; reopen < 2; reopen++) {
+        const { panel, trigger } = await openFirst();
+        expect(panel.style.left).toBe('62px');
+        expect(panel.style.maxWidth).toBe('250px');
+        expect(panel.style.top).toBe('8px');
+        expect(panel.style.maxHeight).toBe('484px');
+        await act(async () => window.dispatchEvent(new Event('resize')));
+        await act(async () => trigger.click());
+        expect(document.querySelector('.compact-select-popup')).toBeNull();
+      }
+      await act(async () => root.render(null));
+    }
+    expect(measure.mock.calls.length).toBeLessThan(40);
+  });
+
   it('validates custom aoN, supports Enter, and restores Escape focus', async () => {
     const onColumnsChange = vi.fn();
     await render(onColumnsChange, ['ao5']);
@@ -273,7 +314,8 @@ describe('Web statistics adapters', () => {
     expect(solo).toContain('onRollingColumnsChange={statsRollingColumns => updateSettings({statsRollingColumns})}');
     expect(solo).not.toContain('<TimerStatsPanel');
     expect(solo).not.toContain('<TimerRollingStatsPicker');
-    expect(workspace).toContain('<TimerStatsPanel renderPrBadge={() => <RecordBadge record="PR" variant="inline" />} {...stats}');
+    expect(workspace).toContain('summaryOnly={compact}');
+    expect(workspace).toContain('<RecordBadge record="PR" variant="inline" />');
     expect(workspace).not.toContain('bestSingle(');
     expect(stats).toContain("from './TimerRollingStatsPicker'");
     expect(stats).toContain('<TimerRollingStatsPicker');

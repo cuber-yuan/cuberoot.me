@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, createElement } from 'react';
+import { readFileSync } from 'node:fs';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import PuzzlePicker, { type PuzzlePickerGroup } from '@/components/PuzzlePicker/PuzzlePicker';
@@ -20,6 +21,24 @@ const groups: PuzzlePickerGroup[] = [
 
 let host: HTMLDivElement;
 let root: Root;
+it('keeps flat menus visible while top-layer menus wait for positioning', () => {
+  const style = document.createElement('style');
+  style.textContent = readFileSync(new URL(import.meta.resolve('@cuberoot/timer-ui/puzzle-picker.css')), 'utf8');
+  document.head.appendChild(style);
+  try {
+    act(() => root.render(createElement(PuzzlePicker, {
+      groups: groups.slice(0, 1), selectedEvent: 'nxn', onSelect: vi.fn(),
+    })));
+    act(() => host.querySelector<HTMLButtonElement>('.pp-trigger')!.click());
+    const panel = host.querySelector<HTMLElement>('.pp-popup')!;
+    expect(getComputedStyle(panel).visibility).toBe('visible');
+    panel.setAttribute('popover', 'manual');
+    expect(getComputedStyle(panel).visibility).toBe('hidden');
+  } finally {
+    style.remove();
+  }
+});
+
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { callback(0); return 1; });
@@ -78,4 +97,35 @@ it('preserves a text-only trigger when the caller disables item icons', () => {
   const trigger = host.querySelector<HTMLButtonElement>('.pp-trigger')!;
   expect(trigger.querySelector('.pp-trigger-label')?.textContent).toBe('Kilominx');
   expect(trigger.querySelector('.pp-trigger-icon')).toBeNull();
+});
+
+it('searches bilingual leaves without changing IDs and keeps shortcuts after WCA', () => {
+  const onSelect = vi.fn();
+  const discovery = {
+    storageKey: 'test.picker-discovery', searchLabel: 'Search puzzles', clearLabel: 'Clear search',
+    emptyLabel: 'No results', resultsLabel: 'Results', recentLabel: 'Recent', favoritesLabel: 'Favorites',
+    favoriteLabel: 'Favorite current puzzle', unfavoriteLabel: 'Unfavorite current puzzle',
+  };
+  localStorage.removeItem(discovery.storageKey);
+  const bilingual = groups.map(group => ({ ...group, items: group.items.map(item => ({ ...item,
+    children: item.children?.map(child => ({ ...child, searchText: child.id === 'gigaminx' ? '五阶五魔 Gigaminx' : '二阶五魔 Kilominx' })),
+  })) }));
+  act(() => root.render(createElement(PuzzlePicker, { groups: bilingual, selectedEvent: 'gigaminx', onSelect, discovery })));
+  act(() => host.querySelector<HTMLButtonElement>('.pp-trigger')!.click());
+  act(() => host.querySelector<HTMLButtonElement>('.pp-favorite')!.click());
+  expect([...host.querySelectorAll('.pp-group-title')].map(el => el.textContent)).toEqual(['WCA events', 'Favorites', 'Series']);
+  expect(JSON.parse(localStorage.getItem(discovery.storageKey)!).favorites).toEqual(['gigaminx']);
+  const input = host.querySelector<HTMLInputElement>('input')!;
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '五阶');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  expect([...host.querySelectorAll('.pp-item-label')].map(el => el.textContent)).toEqual(['GigaminxSeries / Minx family']);
+  act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })));
+  expect(document.activeElement).toBe(host.querySelector('.pp-item'));
+  act(() => host.querySelector<HTMLButtonElement>('.pp-item')!.click());
+  expect(onSelect).toHaveBeenCalledExactlyOnceWith('gigaminx');
+  expect(JSON.parse(localStorage.getItem(discovery.storageKey)!).recent).toEqual(['gigaminx']);
+  expect(document.activeElement).toBe(host.querySelector('.pp-trigger'));
+  localStorage.removeItem(discovery.storageKey);
 });

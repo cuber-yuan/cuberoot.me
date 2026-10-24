@@ -16,7 +16,7 @@ import Link from '@/components/AppLink';
 import BoolToggle from '@/components/BoolToggle';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
-import { RotateCw, Play, Pause, X, Moon, Sun, Satellite, Plus, Minus, Compass, Ruler, Undo2, Search, ArrowLeft, ChevronLeft, ChevronRight, Layers, Flame, Globe, Map as MapIcon, Globe2, HelpCircle, Download, LocateFixed } from 'lucide-react';
+import { RotateCw, Play, Pause, X, Moon, Sun, Satellite, Plus, Minus, Compass, Ruler, Undo2, Search, ArrowLeft, ChevronLeft, ChevronRight, Layers, Flame, Globe, Map as MapIcon, Globe2, HelpCircle, Download, LocateFixed } from '@app-foundation/icons/lucide';
 import * as maplibregl from 'maplibre-gl';
 import type { GeoJSONSource, MapMouseEvent, MapGeoJSONFeature } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -57,6 +57,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { exportTrailVideo, isVideoExportSupported } from './_lib/trail_video';
 import './globe.css';
 import { tr } from '@/i18n/tr';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 type Mode = 'upcoming' | 'cuber' | 'wr';
 type Speed = 0.5 | 1 | 2;
@@ -3212,7 +3213,7 @@ export default function GlobeMapClient({ embedded = false }: { embedded?: boolea
                       <span className={`globe-search-item-tag globe-search-item-tag-${c.tag}`}>{c.tag === 'upcoming' ? tr({ zh: '近期', en: 'upcoming' }) : tr({ zh: '历史', en: 'past'
                                                 })}</span>
                     </span>
-                    <span className="globe-search-item-sub">{localizeCity(c.city, isZh, c.country)}, {countryName(c.country, isZh)} · {c.date}</span>
+                    <span className="globe-search-item-sub">{localizeCity(c.city, isZh, c.country)}{tr({ zh: '，', en: ', ' })}{countryName(c.country, isZh)} · {c.date}</span>
                   </button>
                 ))}
                 {personResults.length > 0 && (
@@ -3596,7 +3597,7 @@ export default function GlobeMapClient({ embedded = false }: { embedded?: boolea
             {currentComp.country_iso2 && <Flag iso2={currentComp.country_iso2} className="cuber-step-flag" />}
             <span>{localizeCompName(currentComp.id, currentComp.name)}</span>
           </div>
-          <div className="cuber-step-meta is-selectable">{(nameZhMap?.get(currentComp.id)?.city_zh && isZh) ? nameZhMap.get(currentComp.id)!.city_zh : localizeCity(currentComp.city, isZh, currentComp.country_iso2)}, {countryName(currentComp.country_iso2, isZh)} · {currentComp.start_date}</div>
+          <div className="cuber-step-meta is-selectable">{(nameZhMap?.get(currentComp.id)?.city_zh && isZh) ? nameZhMap.get(currentComp.id)!.city_zh : localizeCity(currentComp.city, isZh, currentComp.country_iso2)}{tr({ zh: '，', en: ', ' })}{countryName(currentComp.country_iso2, isZh)} · {currentComp.start_date}</div>
           {prevComp && (
             <div className="cuber-step-leg is-selectable">
               {fmtDistance(legKm, isZh)} · {(isZh ? `距上场 ${legDays} 天` : `${legDays}d since prev`)}
@@ -3753,8 +3754,8 @@ export default function GlobeMapClient({ embedded = false }: { embedded?: boolea
                 <>
                   <span className="globe-statusbar-stats-sep">·</span>
                   {pastLoading && !pastComps
-                    ? <span>{tr({ zh: '加载往期…', en: 'loading past…'
-                    })}</span>
+                    ? <span><LoadingIndicator>{tr({ zh: '加载往期…', en: 'loading past…'
+                    })}</LoadingIndicator></span>
                     : <span>{pastStats.comps} {tr({ zh: '往期', en: 'past' })}</span>}
                 </>
               )}

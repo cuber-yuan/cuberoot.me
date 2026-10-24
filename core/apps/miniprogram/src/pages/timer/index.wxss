@@ -1,0 +1,49 @@
+.native-timer { padding: 16rpx 28rpx calc(32rpx + env(safe-area-inset-bottom)); min-height: 100vh; display: flex; flex-direction: column; box-sizing: border-box; background: var(--cr-bg); color: var(--cr-text); }
+.nt-toolbar, .nt-footer, .nt-stats, .nt-sheet-header, .nt-setting { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
+.nt-toolbar { justify-content: center; gap: 4rpx; flex-wrap: wrap; }
+.nt-control { min-height: 88rpx; min-width: 88rpx; padding: 0 18rpx; display: flex; align-items: center; justify-content: center; box-sizing: border-box; color: var(--cr-accent); }
+.nt-event { font-weight: 650; color: var(--cr-text); }
+.nt-icon { width: 42rpx; height: 42rpx; }
+.nt-scramble { display: block; padding: 24rpx 8rpx; min-height: 88rpx; font-size: 36rpx; line-height: 1.5; overflow-wrap: break-word; }
+.nt-clock { display: flex; flex: 1; min-height: 240rpx; flex-direction: column; align-items: center; justify-content: center; padding: 24rpx 0; width: 100%; touch-action: none; }
+.nt-time { font-size: 108rpx; font-variant-numeric: tabular-nums; font-weight: 500; white-space: nowrap; }
+.nt-hint, .nt-device { display: block; color: var(--cr-muted); font-size: 26rpx; line-height: 1.5; }
+.nt-device, .nt-cube-hint { text-align: center; }
+.nt-clock--ready .nt-time { color: var(--cr-ready); }
+.nt-clock--holding .nt-time, .nt-error { color: var(--cr-danger); }
+.nt-error { display: block; line-height: 1.5; }
+.nt-stats { font-size: 25rpx; flex-wrap: wrap; color: var(--cr-muted); justify-content: center; }
+.nt-backdrop { position: fixed; inset: 0; background: color-mix(in srgb, var(--cr-text) 35%, transparent); z-index: 100; display: flex; align-items: flex-end; }
+.nt-sheet { width: 100%; background: var(--cr-surface); color: var(--cr-text); padding: 24rpx 32rpx calc(36rpx + env(safe-area-inset-bottom)); border-radius: 28rpx 28rpx 0 0; box-sizing: border-box; }
+.nt-sheet-header { font-size: 36rpx; font-weight: 650; }
+.nt-setting { border-bottom: 1rpx solid var(--cr-line); min-height: 100rpx; }
+/* Native scroll-view needs an explicit viewport height to scroll on device. */
+.nt-sheet-content { height: 65vh; }
+/* Keep native input geometry stable when the first character reveals Clear. */
+.nt-search input { flex: 1; min-width: 0; }
+.nt-search .nt-control { flex-shrink: 0; }
+.nt-clear-empty { visibility: hidden; }
+.nt-result { display: block; min-height: 88rpx; padding: 12rpx 8rpx; border-bottom: 1rpx solid var(--cr-line); font-variant-numeric: tabular-nums; }
+.nt-result-title, .nt-actions { display: flex; justify-content: space-between; flex-wrap: wrap; }
+.nt-result-scramble { display: block; color: var(--cr-muted); font-size: 24rpx; text-align: left; line-height: 1.5; overflow-wrap: break-word; }
+.nt-previews { display: flex; justify-content: center; gap: 24rpx; padding: 16rpx 0; }
+.nt-preview { width: 270rpx; max-width: 45%; text-align: center; }
+.nt-preview image { display: block; width: 100%; height: 210rpx; }
+.nt-draft { box-sizing: border-box; width: 100%; height: 260rpx; padding: 20rpx; color: var(--cr-text); background: var(--cr-surface); border: 1rpx solid var(--cr-line); }
+.nt-rank { display: block; text-align: center; font-size: 22rpx; white-space: nowrap; overflow-x: auto; color: var(--cr-accent); }
+.nt-source { text-align: center; }
+.native-timer [hidden] { display: none !important; }
+.nt-scramble--compact { padding-top: 12rpx; padding-bottom: 12rpx; line-height: 1.25; }
+.nt-category { min-height: 88rpx; display: flex; align-items: center; font-weight: 650; }
+.nt-setting > text { flex: 1; min-width: 0; overflow-wrap: break-word; }
+.nt-setting > switch, .nt-setting > picker { flex-shrink: 0; }
+.nt-stat-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 16rpx; padding: 20rpx 0; font-variant-numeric: tabular-nums; }
+.nt-stat-row > text:not(:first-child), .nt-setting > text:last-child:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.nt-histogram { height: 220rpx; display: flex; gap: 6rpx; padding-top: 36rpx; }
+.nt-histogram-column { flex: 1; min-width: 0; height: 100%; display: flex; align-items: flex-end; }
+.nt-histogram-bar { width: 100%; min-height: 2rpx; background: var(--cr-accent); position: relative; }
+.nt-histogram-bar text { position: absolute; bottom: 100%; width: 100%; text-align: center; font-size: 20rpx; color: var(--cr-muted); font-variant-numeric: tabular-nums; }
+.nt-chart-axis { display: flex; justify-content: space-between; }
+.nt-detail-time { display: block; font-size: 64rpx; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.nt-comment { display: block; white-space: pre-wrap; overflow-wrap: anywhere; padding: 16rpx 0; }
+.nt-manual-entry { font-size: 40rpx; color: var(--cr-accent); }

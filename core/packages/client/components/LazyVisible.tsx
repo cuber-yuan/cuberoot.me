@@ -10,7 +10,7 @@
  * SSR/SSG:服务端与首帧都渲染占位(min-height 撑住),不依赖 window;mount 后才接 IO。
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 export default function LazyVisible({
   children,
@@ -19,6 +19,10 @@ export default function LazyVisible({
   className,
   unwrapWhenVisible = false,
   unmountWhenHidden = false,
+  inline = false,
+  style,
+  initiallyVisible = false,
+  onVisible,
 }: {
   children: ReactNode;
   /** 提前量:容器距视口多远就预挂(默认提前 300px,滚到时已就绪) */
@@ -30,36 +34,56 @@ export default function LazyVisible({
   unwrapWhenVisible?: boolean;
   /** 离屏卸载动画等持续占用资源的内容;此时保留 wrapper 供持续观察。 */
   unmountWhenHidden?: boolean;
+  /** Inline diagrams reserve their exact dimensions without inserting a block wrapper. */
+  inline?: boolean;
+  style?: CSSProperties;
+  /** Restore an already visited section on a client-side route return. */
+  initiallyVisible?: boolean;
+  onVisible?: () => void;
 }) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [show, setShow] = useState(false);
+  const ref = useRef<HTMLDivElement & HTMLSpanElement>(null);
+  const [show, setShow] = useState(initiallyVisible);
+  const revealed = useRef(initiallyVisible);
+  const onVisibleRef = useRef(onVisible);
+  useEffect(() => { onVisibleRef.current = onVisible; }, [onVisible]);
 
   useEffect(() => {
+    if (revealed.current && !unmountWhenHidden) return;
     const el = ref.current;
     if (!el) return;
     // 老浏览器无 IntersectionObserver:直接挂载(失去懒加载但功能不丢)。
-    if (typeof IntersectionObserver === 'undefined') { setShow(true); return; }
+    if (typeof IntersectionObserver === 'undefined') { revealed.current = true; setShow(true); onVisibleRef.current?.(); return; }
+    let disconnected = false;
+    const disconnect = () => {
+      if (disconnected) return;
+      disconnected = true;
+      io.disconnect();
+    };
     const io = new IntersectionObserver(
       (entries) => {
+        if (disconnected) return;
         const visible = entries.some((e) => e.isIntersecting);
         if (unmountWhenHidden) {
           setShow(visible);
         } else if (visible) {
+          revealed.current = true;
           setShow(true);
-          io.disconnect();
+          onVisibleRef.current?.();
+          disconnect();
         }
       },
       { rootMargin },
     );
     io.observe(el);
-    return () => io.disconnect();
+    return disconnect;
   }, [rootMargin, unmountWhenHidden]);
 
   if (show && unwrapWhenVisible && !unmountWhenHidden) return children;
 
+  const Container = inline ? 'span' : 'div';
   return (
-    <div ref={ref} className={className} style={show ? undefined : { minHeight }}>
+    <Container ref={ref} className={className} data-lazy-visible={show} style={{ ...(!show ? { minHeight } : {}), ...style }}>
       {show ? children : null}
-    </div>
+    </Container>
   );
 }

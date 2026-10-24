@@ -125,10 +125,15 @@
       "./engine/coreOpacity": "mixed",
       "./engine/backView": "react-dom",
       "./support/three": "runtime-neutral",
+      "./ivy-svg": "runtime-neutral",
       "./magic-svg": "runtime-neutral",
       "./engine/magic/MagicCube": "mixed",
       "./engine/magic/magicDrag": "mixed",
-      "./native-puzzle-svg": "runtime-neutral"
+      "./native-puzzle-svg": "runtime-neutral",
+      "./clock-svg": "runtime-neutral",
+      "./pyraminx-svg": "runtime-neutral",
+      "./skewb-svg": "runtime-neutral",
+      "./wca-preview-svg": "runtime-neutral"
     }
   },
   "sideEffects": false,
@@ -149,6 +154,7 @@
       "node": "./dist/sphere-svg.js",
       "default": "./src/sphere-svg.ts"
     },
+    "./ivy-svg": "./src/ivy-svg.ts",
     "./mega-svg": "./src/mega-svg.ts",
     "./sq1-svg": "./src/sq1-svg.ts",
     "./bsp": "./src/bsp.ts",
@@ -266,9 +272,14 @@
       "types": "./src/native-puzzle-svg.ts",
       "node": "./dist/native-puzzle-svg.js",
       "default": "./src/native-puzzle-svg.ts"
-    }
+    },
+    "./clock-svg": "./src/clock-svg.ts",
+    "./pyraminx-svg": "./src/pyraminx-svg.ts",
+    "./skewb-svg": "./src/skewb-svg.ts",
+    "./wca-preview-svg": "./src/wca-preview-svg.ts"
   },
   "scripts": {
+    "dev:build": "pnpm run build",
     "build": "tsc -b && esbuild src/iso-svg.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/iso-svg.js && esbuild src/magic-svg.ts --bundle --packages=external --platform=node --target=node20 --format=esm --outfile=dist/magic-svg.js && esbuild src/sphere-svg.ts --bundle --external:three --external:@cuberoot/stack-kernel --platform=node --target=node20 --format=esm --define:Worker=undefined --minify-syntax --outfile=dist/sphere-svg.js && esbuild src/native-puzzle-svg.ts --bundle --packages=external --platform=node --target=node20 --format=esm --outfile=dist/native-puzzle-svg.js",
     "typecheck": "tsc --noEmit"
   },

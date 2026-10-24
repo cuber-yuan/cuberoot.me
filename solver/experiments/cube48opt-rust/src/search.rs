@@ -8,6 +8,10 @@
 //! node totals need not be identical to the original pointer-based scheduler.
 
 use crate::cube::{Cube, MOVES};
+#[cfg(all(feature = "wasm-padded-state", any(target_family = "wasm", test)))]
+use crate::cube::{PaddedCube as FrameCube, moved_pair_padded as moved_frame_pair};
+#[cfg(not(all(feature = "wasm-padded-state", any(target_family = "wasm", test))))]
+use crate::cube::{Cube as FrameCube, moved_pair as moved_frame_pair};
 #[cfg(all(feature = "opt9-native-dynamic", not(target_family = "wasm")))]
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
@@ -34,6 +38,24 @@ pub trait PruningOracle {
     /// opposite-side half-turn invariance as a decoded table bound.
     fn prepare(&self, cube: &Cube, remaining: u8) -> Result<Self::Query, u8>;
     fn lookup(&self, query: Self::Query) -> u8;
+
+    /// Optional, separate certificate L <= D(cube). No half-turn invariance,
+    /// consistency, or relationship to max_bound is required. The caller may
+    /// supply the actual inverse state to avoid materializing a deferred normal
+    /// state; inversion preserves D. None means no additional certificate.
+    ///
+    /// Only L > remaining is consumed, through generic distance rejection.
+    /// This value is never stored in either subgroup bound/cache and never
+    /// enters the H-specific quarter, axis, backward-coset or coset-chain cuts.
+    #[cfg(feature = "corner-research")]
+    #[inline(always)]
+    fn distance_only_bound(&self, _cube: &Cube, _remaining: u8) -> Option<u8> { None }
+
+    /// Evaluate an independent distance certificate only after the ordinary
+    /// subgroup queries survive, retaining their stronger rejection margins.
+    #[cfg(feature = "corner-research")]
+    #[inline(always)]
+    fn distance_only_after_primary(&self) -> bool { false }
 
     /// Optional batched reads of the same immutable oracle. None slots must
     /// not issue a lookup; their result is unused. Returned bounds must equal
@@ -216,9 +238,9 @@ pub struct SearchStats {
     pub dual_parent_cuts: u64,
     /// Local parent masks strengthened by a child coset proof, and the actual
     /// inverse half-turn bits removed. These are not global subtree counts.
-    #[cfg(all(feature = "opt10-native-coset", not(target_family = "wasm")))]
+    #[cfg(any(all(feature = "wasm-coset-prune", any(target_family = "wasm", test)), all(feature = "opt10-native-coset", not(target_family = "wasm"))))]
     pub coset_parent_proofs: u64,
-    #[cfg(all(feature = "opt10-native-coset", not(target_family = "wasm")))]
+    #[cfg(any(all(feature = "wasm-coset-prune", any(target_family = "wasm", test)), all(feature = "opt10-native-coset", not(target_family = "wasm"))))]
     pub coset_half_prunes: u64,
     #[cfg(all(feature = "opt10-native-coset-chain", not(target_family = "wasm")))]
     pub coset_chain_proofs: u64,
@@ -237,7 +259,7 @@ pub struct SearchStats {
     pub exhausted_depth_nodes: u64,
     #[cfg(all(feature = "opt9-native-ranked", not(target_family = "wasm")))]
     pub solution_depth_nodes: u64,
-    #[cfg(all(feature = "opt9-native-quarter", not(target_family = "wasm")))]
+    #[cfg(any(feature = "wasm-quarter-fixed", all(feature = "opt9-native-quarter", not(target_family = "wasm"))))]
     pub quarter_siblings_removed: u64,
     #[cfg(all(feature = "opt9-native-quarter-cache", not(target_family = "wasm")))]
     pub quarter_cache_reuses: u64,
@@ -263,6 +285,14 @@ pub struct SearchProfile {
     pub cached_inverse: [u64; 21],
     pub inverse_rejected: [u64; 21],
     pub normal_rejected: [u64; 21],
+    /// Independent full-state certificate, separate from subgroup rejection.
+    pub distance_attempts: [u64; 21],
+    pub distance_queries: [u64; 21],
+    pub distance_rejected: [u64; 21],
+    /// Sample one hook call in 256 per remaining depth; Some results only.
+    /// Includes timing overhead. Diagnostic estimates, not benchmark timings.
+    pub distance_samples: [u64; 21],
+    pub distance_sample_ns: [u64; 21],
     /// Both bounds passed, before NISS/move-mask planning.
     pub survived: [u64; 21],
     /// Actual stage-4 children generated, indexed by their parent's budget.
@@ -285,7 +315,7 @@ impl SearchProfile {
                 + self.root_inverse_probes + self.root_normal_probes == stats.probes
             && self.cached_inverse.iter().sum::<u64>() == stats.cache_reuses
             && (0..=20).all(|r| self.visited[r] == self.inverse_rejected[r] + self.normal_rejected[r]
-                + self.survived[r] + self.pending[r] + self.leaf_solved[r] + self.leaf_rejected[r]
+                + self.distance_rejected[r] + self.survived[r] + self.pending[r] + self.leaf_solved[r] + self.leaf_rejected[r]
                 && self.inverse_fallback[r] <= self.inverse_probes[r]
                 && self.normal_fallback[r] <= self.normal_probes[r])
     }
@@ -300,6 +330,11 @@ impl SearchProfile {
             self.cached_inverse[r] += part.cached_inverse[r];
             self.inverse_rejected[r] += part.inverse_rejected[r];
             self.normal_rejected[r] += part.normal_rejected[r];
+            self.distance_attempts[r] += part.distance_attempts[r];
+            self.distance_queries[r] += part.distance_queries[r];
+            self.distance_rejected[r] += part.distance_rejected[r];
+            self.distance_samples[r] += part.distance_samples[r];
+            self.distance_sample_ns[r] += part.distance_sample_ns[r];
             self.survived[r] += part.survived[r];
             self.child_expansions[r] += part.child_expansions[r];
             self.pending[r] += part.pending[r];
@@ -312,11 +347,37 @@ impl SearchProfile {
     }
 
     pub fn json(&self) -> String {
-        format!("{{\"visited\":{:?},\"inverse_probes\":{:?},\"normal_probes\":{:?},\"inverse_fallback\":{:?},\"normal_fallback\":{:?},\"cached_inverse\":{:?},\"inverse_rejected\":{:?},\"normal_rejected\":{:?},\"survived\":{:?},\"child_expansions\":{:?},\"pending\":{:?},\"leaf_solved\":{:?},\"leaf_rejected\":{:?},\"root_nodes\":{},\"root_inverse_probes\":{},\"root_normal_probes\":{}}}",
+        format!("{{\"visited\":{:?},\"inverse_probes\":{:?},\"normal_probes\":{:?},\"inverse_fallback\":{:?},\"normal_fallback\":{:?},\"cached_inverse\":{:?},\"inverse_rejected\":{:?},\"normal_rejected\":{:?},\"distance_attempts\":{:?},\"distance_queries\":{:?},\"distance_rejected\":{:?},\"distance_samples\":{:?},\"distance_sample_ns\":{:?},\"survived\":{:?},\"child_expansions\":{:?},\"pending\":{:?},\"leaf_solved\":{:?},\"leaf_rejected\":{:?},\"root_nodes\":{},\"root_inverse_probes\":{},\"root_normal_probes\":{}}}",
             self.visited, self.inverse_probes, self.normal_probes, self.inverse_fallback, self.normal_fallback,
-            self.cached_inverse, self.inverse_rejected, self.normal_rejected, self.survived, self.child_expansions, self.pending,
+            self.cached_inverse, self.inverse_rejected, self.normal_rejected,
+            self.distance_attempts, self.distance_queries, self.distance_rejected, self.distance_samples, self.distance_sample_ns,
+            self.survived, self.child_expansions, self.pending,
             self.leaf_solved, self.leaf_rejected, self.root_nodes, self.root_inverse_probes, self.root_normal_probes)
     }
+}
+
+#[cfg(feature = "corner-research")]
+#[inline(always)]
+fn independent_distance<O: PruningOracle>(oracle: &O, cube: &Cube, remaining: u8,
+    _stats: &mut SearchStats) -> Option<u8> {
+    #[cfg(all(feature = "opt10-native-profile", not(target_family = "wasm")))]
+    if oracle.profile_search() {
+        let r = usize::from(remaining);
+        let profile = &mut _stats.profile;
+        profile.distance_attempts[r] += 1;
+        let started = (profile.distance_attempts[r] & 255 == 1).then(std::time::Instant::now);
+        let bound = oracle.distance_only_bound(cube, remaining);
+        if let Some(bound) = bound {
+            profile.distance_queries[r] += 1;
+            profile.distance_rejected[r] += u64::from(bound > remaining);
+            if let Some(started) = started {
+                profile.distance_samples[r] += 1;
+                profile.distance_sample_ns[r] += started.elapsed().as_nanos() as u64;
+            }
+        }
+        return bound;
+    }
+    oracle.distance_only_bound(cube, remaining)
 }
 
 #[derive(Debug)]
@@ -330,8 +391,8 @@ pub struct SearchOutcome {
 
 #[derive(Clone, Copy)]
 struct Frame {
-    cube: Cube,
-    inverse: Cube,
+    cube: FrameCube,
+    inverse: FrameCube,
     normal_mask: u32,
     inverse_mask: u32,
     normal_bound: u8,
@@ -341,6 +402,10 @@ struct Frame {
     side: bool,
     /// Edge leading to the next frame, expressed in this frame's current side.
     chosen_move: u8,
+    /// Deferred normal child is cube * move; inverse is always fully valid.
+    /// Prefix construction stays eager. 255 means cube is already materialized.
+    #[cfg(all(feature = "wasm-lazy-normal", any(target_family = "wasm", test)))]
+    pending_normal: u8,
     /// Upper nibble: face; lower nibble: accepted opposite-side bound.
     /// 0xff means absent, so a cached bound of zero remains distinguishable.
     #[cfg(all(feature = "opt9-native-quarter-cache", not(target_family = "wasm")))]
@@ -351,11 +416,22 @@ struct Frame {
     axis_quarter_cut: u8,
 }
 
+#[cfg(all(feature = "wasm-padded-state", any(target_family = "wasm", test)))]
+const _: [(); 64] = [(); std::mem::size_of::<Frame>()];
+
+/// Actual layouts used by the WASM fixture, packed into three byte fields.
+#[cfg(all(feature = "wasm-padded-state", any(target_family = "wasm", test)))]
+pub fn padded_state_layout() -> u32 {
+    std::mem::size_of::<Cube>() as u32
+        | (std::mem::size_of::<FrameCube>() as u32) << 8
+        | (std::mem::size_of::<Frame>() as u32) << 16
+}
+
 impl Frame {
     fn root(cube: Cube) -> Self {
         Self {
-            cube,
-            inverse: cube.inverse(),
+            cube: cube.into(),
+            inverse: cube.inverse().into(),
             normal_mask: ALL_MOVES,
             inverse_mask: ALL_MOVES,
             normal_bound: 0,
@@ -363,6 +439,8 @@ impl Frame {
             cached_inverse: false,
             side: false,
             chosen_move: 0,
+            #[cfg(all(feature = "wasm-lazy-normal", any(target_family = "wasm", test)))]
+            pending_normal: 255,
             #[cfg(all(feature = "opt9-native-quarter-cache", not(target_family = "wasm")))]
             quarter_cache: 0xff,
             #[cfg(all(feature = "opt9-native-axis", not(target_family = "wasm")))]
@@ -375,6 +453,8 @@ impl Frame {
     }
 
     fn plan_ordered<const INVERSE_TIE: bool>(&mut self, remaining: u8, max_bound: u8) {
+        #[cfg(all(feature = "wasm-lazy-normal", any(target_family = "wasm", test)))]
+        debug_assert_eq!(self.pending_normal, 255, "NISS requires the actual paired states");
         if self.inverse_bound == remaining {
             self.normal_mask &= NO_HALF_TURNS;
         }
@@ -410,11 +490,31 @@ impl Frame {
     }
 
     fn child_counted(&mut self, _stats: Option<&mut SearchStats>) -> Self {
+        self.child_counted_mode::<false>(_stats)
+    }
+
+    #[cfg(all(feature = "wasm-lazy-normal", any(target_family = "wasm", test)))]
+    #[inline(always)]
+    fn materialize_normal(&mut self) {
+        if self.pending_normal != 255 {
+            self.cube = crate::cube::moved_normal(&self.cube, self.pending_normal).into();
+            self.pending_normal = 255;
+        }
+    }
+
+    fn child_counted_mode<const DEFER: bool>(&mut self, _stats: Option<&mut SearchStats>) -> Self {
         debug_assert_ne!(self.normal_mask, 0);
+        #[cfg(all(feature = "wasm-lazy-normal", any(target_family = "wasm", test)))]
+        debug_assert_eq!(self.pending_normal, 255, "only materialized parents may expand");
         let movement = self.normal_mask.trailing_zeros() as u8;
         self.normal_mask &= self.normal_mask - 1;
         self.chosen_move = movement;
-        let (cube, inverse) = crate::cube::moved_pair(&self.cube, &self.inverse, movement);
+        #[cfg(all(feature = "wasm-lazy-normal", any(target_family = "wasm", test)))]
+        let (cube, inverse) = if DEFER {
+            (self.cube, crate::cube::moved_inverse(&self.inverse, movement).into())
+        } else { moved_frame_pair(&self.cube, &self.inverse, movement) };
+        #[cfg(not(all(feature = "wasm-lazy-normal", any(target_family = "wasm", test))))]
+        let (cube, inverse) = moved_frame_pair(&self.cube, &self.inverse, movement);
         let inverse_bound = if movement % 3 == 1 {
             self.inverse_bound
         } else {
@@ -445,6 +545,8 @@ impl Frame {
             cached_inverse,
             side: self.side,
             chosen_move: 0,
+            #[cfg(all(feature = "wasm-lazy-normal", any(target_family = "wasm", test)))]
+            pending_normal: if DEFER { movement } else { 255 },
             #[cfg(all(feature = "opt9-native-quarter-cache", not(target_family = "wasm")))]
             quarter_cache: 0xff,
             #[cfg(all(feature = "opt9-native-axis", not(target_family = "wasm")))]
@@ -500,7 +602,7 @@ impl Context {
     /// side; a split copies both bits and the chosen edge unchanged. We only
     /// clear a bit in this context's owned mask. Zero-mask prefix ancestors
     /// and sibling contexts/threads retain their separate ownership.
-    #[cfg(all(feature = "opt9-native-quarter", not(target_family = "wasm")))]
+    #[cfg(any(feature = "wasm-quarter-fixed", all(feature = "opt9-native-quarter", not(target_family = "wasm"))))]
     fn reject_equivalent_quarter(&mut self, inverse_rejected: bool, stats: &mut SearchStats) {
         let Some(parent_index) = self.stack.len().checked_sub(2) else { return; };
         let child_side = self.stack[parent_index + 1].side;
@@ -618,7 +720,7 @@ impl Context {
     /// swap preserves the certificate's identity via the saved side bits.
     /// Only our own pending branch mask is changed; no Frame bound, cache,
     /// other split context, prefix ownership, or ranking is modified.
-    #[cfg(all(feature = "opt10-native-coset", not(target_family = "wasm")))]
+    #[cfg(any(all(feature = "wasm-coset-prune", any(target_family = "wasm", test)), all(feature = "opt10-native-coset", not(target_family = "wasm"))))]
     fn reject_backward_coset(&mut self, inverse_rejected: bool, excess: u8, stats: &mut SearchStats) {
         if excess != 2 { return; }
         let Some(parent_index) = self.stack.len().checked_sub(2) else { return; };
@@ -1181,7 +1283,7 @@ fn search_depth<O: PruningOracle>(
     symmetries: &RootSymmetries,
     jobs: &mut PrefixQueue,
 ) -> DepthResult {
-    #[cfg(all(feature = "opt9-native-fixed-contexts", not(target_family = "wasm")))]
+    #[cfg(any(feature = "wasm-quarter-fixed", all(feature = "opt9-native-fixed-contexts", not(target_family = "wasm"))))]
     {
         match options.contexts {
             1 => search_depth_contexts::<O, 1>(start, oracle, options, depth, stats, symmetries, jobs),
@@ -1189,7 +1291,7 @@ fn search_depth<O: PruningOracle>(
             _ => unreachable!("context count is validated before depth search"),
         }
     }
-    #[cfg(not(all(feature = "opt9-native-fixed-contexts", not(target_family = "wasm"))))]
+    #[cfg(not(any(feature = "wasm-quarter-fixed", all(feature = "opt9-native-fixed-contexts", not(target_family = "wasm")))))]
     search_depth_contexts::<O, 0>(start, oracle, options, depth, stats, symmetries, jobs)
 }
 
@@ -1205,9 +1307,9 @@ fn search_depth_contexts<O: PruningOracle, const N: usize>(
     symmetries: &RootSymmetries,
     jobs: &mut PrefixQueue,
 ) -> DepthResult {
-    #[cfg(all(feature = "opt9-native-fixed-contexts", not(target_family = "wasm")))]
+    #[cfg(any(feature = "wasm-quarter-fixed", all(feature = "opt9-native-fixed-contexts", not(target_family = "wasm"))))]
     let mut contexts: [Context; N] = std::array::from_fn(|_| Context::empty());
-    #[cfg(not(all(feature = "opt9-native-fixed-contexts", not(target_family = "wasm"))))]
+    #[cfg(not(any(feature = "wasm-quarter-fixed", all(feature = "opt9-native-fixed-contexts", not(target_family = "wasm")))))]
     let mut contexts: Vec<Context> = (0..options.contexts).map(|_| Context::empty()).collect();
     let max_bound = oracle.max_bound();
     let parent_propagation = oracle.allow_parent_propagation();
@@ -1215,11 +1317,11 @@ fn search_depth_contexts<O: PruningOracle, const N: usize>(
     let profiling = oracle.profile_search();
     #[cfg(all(feature = "opt10-native-dual", not(target_family = "wasm")))]
     let dual_rejection = parent_propagation && oracle.allow_dual_rejection();
-    #[cfg(all(feature = "opt10-native-coset", not(target_family = "wasm")))]
+    #[cfg(any(all(feature = "wasm-coset-prune", any(target_family = "wasm", test)), all(feature = "opt10-native-coset", not(target_family = "wasm"))))]
     let backward_coset = oracle.allow_backward_coset();
     #[cfg(all(feature = "opt10-native-coset-chain", not(target_family = "wasm")))]
     let coset_chain = oracle.allow_coset_chain();
-    #[cfg(all(feature = "opt9-native-quarter", not(target_family = "wasm")))]
+    #[cfg(any(feature = "wasm-quarter-fixed", all(feature = "opt9-native-quarter", not(target_family = "wasm"))))]
     let quarter_pruning = oracle.allow_quarter_pruning();
     #[cfg(all(feature = "opt9-native-quarter-cache", not(target_family = "wasm")))]
     let quarter_cache = oracle.allow_quarter_cache();
@@ -1250,7 +1352,7 @@ fn search_depth_contexts<O: PruningOracle, const N: usize>(
         let mut excess = [0_u8; MAX_CONTEXTS];
         #[cfg(all(feature = "opt10-native-lookahead", not(target_family = "wasm")))]
         let mut lookahead_tightened = [false; MAX_CONTEXTS];
-        #[cfg(all(any(feature = "opt9-native-quarter", feature = "opt9-native-axis"), not(target_family = "wasm")))]
+        #[cfg(any(feature = "wasm-quarter-fixed", all(any(feature = "opt9-native-quarter", feature = "opt9-native-axis"), not(target_family = "wasm"))))]
         let mut inverse_rejected = [false; MAX_CONTEXTS];
 
         // stage 1a: compute all inverse coordinates before reading the large PDB.
@@ -1268,7 +1370,13 @@ fn search_depth_contexts<O: PruningOracle, const N: usize>(
             #[cfg(all(feature = "opt10-native-profile", not(target_family = "wasm")))]
             if profiling { stats.profile.visited[usize::from(remaining)] += 1; }
             if remaining == 0 {
-                if frame.cube.is_solved() {
+                // Inversion preserves identity. A rejected/solved leaf need
+                // never construct its pending normal state.
+                #[cfg(all(feature = "wasm-lazy-normal", any(target_family = "wasm", test)))]
+                let solved = frame.inverse.is_solved();
+                #[cfg(not(all(feature = "wasm-lazy-normal", any(target_family = "wasm", test))))]
+                let solved = frame.cube.is_solved();
+                if solved {
                     #[cfg(all(feature = "opt10-native-profile", not(target_family = "wasm")))]
                     if profiling { stats.profile.leaf_solved[0] += 1; }
                     return DepthResult::Found(context.solution());
@@ -1277,6 +1385,18 @@ fn search_depth_contexts<O: PruningOracle, const N: usize>(
                 if profiling { stats.profile.leaf_rejected[0] += 1; }
                 context.reject(1, stats);
                 continue;
+            }
+            #[cfg(feature = "corner-research")]
+            if let Some(bound) = (!oracle.distance_only_after_primary())
+                .then(|| independent_distance(oracle, &frame.inverse, remaining, stats)).flatten() {
+                if bound > remaining {
+                    // A pure distance certificate can use triangle-inequality
+                    // parent/same-face cuts, but none of stage 2's H-specific
+                    // consequences. Reject before setting live or pending so
+                    // this context cannot enter that pipeline or its caches.
+                    context.reject_bound(bound - remaining, parent_propagation, stats);
+                    continue;
+                }
             }
             #[cfg(all(feature = "opt10-native-profile", not(target_family = "wasm")))]
             if profiling { stats.profile.pending[usize::from(remaining)] += 1; }
@@ -1294,7 +1414,7 @@ fn search_depth_contexts<O: PruningOracle, const N: usize>(
                     Err(bound) => {
                         debug_assert!(bound > remaining);
                         excess[i] = bound - remaining;
-                        #[cfg(all(any(feature = "opt9-native-quarter", feature = "opt9-native-axis"), not(target_family = "wasm")))]
+                        #[cfg(any(feature = "wasm-quarter-fixed", all(any(feature = "opt9-native-quarter", feature = "opt9-native-axis"), not(target_family = "wasm"))))]
                         { inverse_rejected[i] = true; }
                     }
                 }
@@ -1327,7 +1447,7 @@ fn search_depth_contexts<O: PruningOracle, const N: usize>(
             }
             if frame.inverse_bound > remaining {
                 excess[i] = frame.inverse_bound - remaining;
-                #[cfg(all(any(feature = "opt9-native-quarter", feature = "opt9-native-axis"), not(target_family = "wasm")))]
+                #[cfg(any(feature = "wasm-quarter-fixed", all(any(feature = "opt9-native-quarter", feature = "opt9-native-axis"), not(target_family = "wasm"))))]
                 { inverse_rejected[i] = true; }
             } else {
                 #[cfg(all(feature = "opt9-native-quarter-cache", not(target_family = "wasm")))]
@@ -1336,6 +1456,8 @@ fn search_depth_contexts<O: PruningOracle, const N: usize>(
                 }
                 // The optional cache update borrows the parent as well.
                 let frame = context.stack.last_mut().unwrap();
+                #[cfg(all(feature = "wasm-lazy-normal", any(target_family = "wasm", test)))]
+                frame.materialize_normal();
                 match oracle.prepare(&frame.cube, remaining) {
                     Ok(query) => normal_coordinate[i] = Some(query),
                     Err(bound) => {
@@ -1464,7 +1586,7 @@ fn search_depth_contexts<O: PruningOracle, const N: usize>(
         if dual_rejection {
             if oracle.cancelled() { return DepthResult::Cancelled; }
             let mut dual_queries = [None; MAX_CONTEXTS];
-            for (i, context) in contexts.iter().enumerate() {
+            for (i, context) in contexts.iter_mut().enumerate() {
                 if !live[i] || !inverse_rejected[i] { continue; }
                 let remaining = context.remaining(depth);
                 if remaining.saturating_add(2) >= max_bound
@@ -1472,7 +1594,11 @@ fn search_depth_contexts<O: PruningOracle, const N: usize>(
                     continue;
                 }
                 stats.dual_attempts += 1;
-                let frame = context.stack.last().unwrap();
+                let frame = context.stack.last_mut().unwrap();
+                // Only relevant when unit tests combine the native dual
+                // experiment with lazy state; this block is absent in WASM.
+                #[cfg(all(feature = "wasm-lazy-normal", test))]
+                frame.materialize_normal();
                 match oracle.prepare(&frame.cube, remaining) {
                     Ok(query) => dual_queries[i] = Some(query),
                     Err(bound) => {
@@ -1511,14 +1637,14 @@ fn search_depth_contexts<O: PruningOracle, const N: usize>(
             if excess[i] != 0 {
                 #[cfg(all(feature = "opt10-native-coset-chain", not(target_family = "wasm")))]
                 let chain_proof = if coset_chain { context.coset_chain_proof(inverse_rejected[i], excess[i], stats) } else { None };
-                #[cfg(all(feature = "opt10-native-coset", not(target_family = "wasm")))]
+                #[cfg(any(all(feature = "wasm-coset-prune", any(target_family = "wasm", test)), all(feature = "opt10-native-coset", not(target_family = "wasm"))))]
                 if backward_coset {
                     context.reject_backward_coset(inverse_rejected[i], excess[i], stats);
                 }
                 // Larger excesses already trigger the existing same-face or
                 // whole-parent cut, so only the previously missed case needs
                 // the additional equivalence check.
-                #[cfg(all(feature = "opt9-native-quarter", not(target_family = "wasm")))]
+                #[cfg(any(feature = "wasm-quarter-fixed", all(feature = "opt9-native-quarter", not(target_family = "wasm"))))]
                 if quarter_pruning && excess[i] == 1 {
                     context.reject_equivalent_quarter(inverse_rejected[i], stats);
                 }
@@ -1531,6 +1657,20 @@ fn search_depth_contexts<O: PruningOracle, const N: usize>(
                 if let Some(proof) = chain_proof { context.apply_coset_chain(proof, stats); }
             } else {
                 let remaining = context.remaining(depth);
+                // Preserve primary failures and their full rejection margin.
+                // Distance-only rejection never enters the H-specific cuts;
+                // use this existing survivor pass instead of another scan.
+                #[cfg(feature = "corner-research")]
+                if oracle.distance_only_after_primary() {
+                    if let Some(bound) = independent_distance(oracle, &context.stack.last().unwrap().inverse, remaining, stats) {
+                        if bound > remaining {
+                            #[cfg(all(feature = "opt10-native-profile", not(target_family = "wasm")))]
+                            if profiling { stats.profile.survived[usize::from(remaining)] -= 1; }
+                            context.reject_bound(bound - remaining, parent_propagation, stats);
+                            continue;
+                        }
+                    }
+                }
                 let frame = context.stack.last_mut().unwrap();
                 #[cfg(all(feature = "opt10-native-lookahead", not(target_family = "wasm")))]
                 if lookahead_tightened[i] {
@@ -1589,9 +1729,11 @@ fn search_depth_contexts<O: PruningOracle, const N: usize>(
                     continue;
                 }
                 debug_assert_ne!(frame.normal_mask, 0);
-                #[cfg(all(feature = "opt9-native-axis", not(target_family = "wasm")))]
+                #[cfg(all(feature = "wasm-lazy-normal", any(target_family = "wasm", test)))]
+                let child = frame.child_counted_mode::<true>(Some(stats));
+                #[cfg(all(not(all(feature = "wasm-lazy-normal", any(target_family = "wasm", test))), feature = "opt9-native-axis", not(target_family = "wasm")))]
                 let child = frame.child_counted(Some(stats));
-                #[cfg(not(all(feature = "opt9-native-axis", not(target_family = "wasm"))))]
+                #[cfg(all(not(all(feature = "wasm-lazy-normal", any(target_family = "wasm", test))), not(all(feature = "opt9-native-axis", not(target_family = "wasm")))))]
                 let child = frame.child();
                 #[cfg(all(feature = "opt10-native-profile", not(target_family = "wasm")))]
                 if profiling { stats.profile.child_expansions[usize::from(parent_remaining)] += 1; }
@@ -1635,7 +1777,7 @@ impl DepthSearch {
     /// consecutively from any depth <=L preserves optimality. Querying with
     /// u8::MAX requires exact decoded values, never a depth-dependent shortcut.
     /// A native coordinator checks cancellation before and after construction.
-    #[cfg(all(feature = "opt9-native-root-bound", not(target_family = "wasm")))]
+    #[cfg(any(feature = "wasm-root-bound", all(feature = "opt9-native-root-bound", not(target_family = "wasm"))))]
     pub fn new_with_initial_depth<O: PruningOracle>(start: Cube, oracle: &O,
         shard: SearchShard, initial_depth: u8) -> Result<Self, String> {
         let mut search = Self::new(start, oracle, shard)?;
@@ -1736,6 +1878,178 @@ pub fn solve<O: PruningOracle>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "wasm-padded-state")]
+    #[test]
+    fn padded_state_preserves_frame_boundaries() {
+        assert_eq!(padded_state_layout(), 20 | (24 << 8) | (64 << 16));
+        for scramble in ["", "U", "R F U2", "R U R' F D2 B' L"] {
+            let start = Cube::from_scramble(scramble).unwrap();
+            assert!(crate::cube::verify_padded_move_products(&start));
+            for side in [false, true] {
+                for movement in 0..18 {
+                    let mut parent = Frame::root(start);
+                    if side {
+                        parent.normal_mask = ALL_MOVES;
+                        parent.inverse_mask = 1;
+                        parent.plan(6, 13);
+                    }
+                    assert_eq!(parent.side, side);
+                    let base = if side { start.inverse() } else { start };
+                    assert_eq!(parent.cube, base);
+                    assert_eq!(parent.inverse, base.inverse());
+                    parent.normal_mask = 1 << movement;
+                    parent.inverse_bound = 7;
+                    let child = parent.child();
+                    assert_eq!(child.cube, base.moved(movement));
+                    assert_eq!(child.inverse, base.inverse().premoved(movement));
+                    assert_eq!(child.inverse, child.cube.inverse());
+                    assert_eq!(child.cube.is_solved(), child.inverse.is_solved());
+                    assert_eq!((child.cached_inverse, child.inverse_bound),
+                        (movement % 3 == 1, if movement % 3 == 1 { 7 } else { 0 }));
+                    let mut context = Context::empty();
+                    context.stack = vec![parent, child];
+                    let copied = context.clone();
+                    for (a, b) in context.stack.iter().zip(&copied.stack) {
+                        assert_eq!((a.cube, a.inverse), (b.cube, b.inverse));
+                    }
+                    context.reject_bound(1, true, &mut SearchStats::default());
+                    assert!(context.stack.len() <= 1);
+                    for frame in &context.stack { assert_eq!(frame.inverse, frame.cube.inverse()); }
+                }
+            }
+        }
+
+        let start = Cube::from_scramble("R U F'").unwrap();
+        let mut queue = PrefixQueue::default();
+        queue.jobs.push(PrefixJob { moves: [0, 3, 6, 0], len: 3, weight: 0 });
+        let mut donor = Context::empty();
+        assert!(queue.fetch_into(start, &mut SearchStats::default(), &mut donor));
+        for (depth, frame) in donor.stack.iter().enumerate() {
+            assert_eq!(frame.cube, replay(start, &[0, 3, 6][..depth]));
+            assert_eq!(frame.inverse, frame.cube.inverse());
+        }
+        donor.needs_query = false;
+        let mut other = Context::empty();
+        assert!(donor.split_into(&mut other));
+        for frame in donor.stack.iter().chain(&other.stack) {
+            assert_eq!(frame.inverse, frame.cube.inverse());
+        }
+    }
+
+    #[cfg(feature = "wasm-lazy-normal")]
+    #[test]
+    fn deferred_normal_preserves_frame_boundaries() {
+        // The extra state byte consumes existing padding, not another cache
+        // line or a larger stack clone. Cube's 20-byte layout is also fixed.
+        assert_eq!(std::mem::size_of::<Cube>(), 20);
+        assert_eq!(std::mem::size_of::<Frame>(), if cfg!(feature = "wasm-padded-state") { 64 } else { 56 });
+        fn same_frame(a: &Frame, b: &Frame) {
+            assert_eq!((a.cube, a.inverse), (b.cube, b.inverse));
+            assert_eq!((a.normal_mask, a.inverse_mask), (b.normal_mask, b.inverse_mask));
+            assert_eq!((a.normal_bound, a.inverse_bound, a.cached_inverse),
+                (b.normal_bound, b.inverse_bound, b.cached_inverse));
+            assert_eq!((a.side, a.chosen_move, a.pending_normal),
+                (b.side, b.chosen_move, b.pending_normal));
+        }
+        for scramble in ["", "U", "R F U2", "R U R' F D2 B' L"] {
+            let start = Cube::from_scramble(scramble).unwrap();
+            assert!(crate::cube::verify_deferred_move_products(&start));
+            for movement in 0..18 {
+                let mut parent = Frame::root(start);
+                parent.normal_mask = 1 << movement;
+                parent.inverse_bound = 7;
+                let mut eager_parent = parent;
+                let eager = eager_parent.child();
+                let deferred = parent.child_counted_mode::<true>(None);
+                same_frame(&parent, &eager_parent);
+                assert_eq!(deferred.cube, start);
+                assert_eq!(deferred.inverse, eager.inverse);
+                assert_eq!(deferred.pending_normal, movement);
+                assert_eq!((deferred.cached_inverse, deferred.inverse_bound),
+                    (movement % 3 == 1, if movement % 3 == 1 { 7 } else { 0 }));
+                assert_eq!(deferred.inverse.is_solved(), eager.cube.is_solved());
+                let mut materialized = deferred;
+                materialized.materialize_normal();
+                same_frame(&materialized, &eager);
+                materialized.materialize_normal();
+                same_frame(&materialized, &eager);
+                // Both possible NISS choices see the same complete states.
+                for switch in [false, true] {
+                    let mut a = materialized;
+                    let mut b = eager;
+                    for frame in [&mut a, &mut b] {
+                        frame.normal_mask = if switch { ALL_MOVES } else { 1 };
+                        frame.inverse_mask = if switch { 1 } else { ALL_MOVES };
+                        frame.normal_bound = 2;
+                        frame.inverse_bound = 3;
+                        frame.plan(6, 13);
+                    }
+                    same_frame(&a, &b);
+                    assert_eq!(a.side, switch);
+                    assert_eq!(a.inverse, a.cube.inverse());
+                }
+            }
+        }
+
+        // A solved leaf may still hold an unsolved normal parent. Identity is
+        // instead tested on the exact inverse, requiring no materialization.
+        let mut leaf_parent = Frame::root(Cube::SOLVED.moved(2));
+        leaf_parent.normal_mask = 1;
+        let leaf = leaf_parent.child_counted_mode::<true>(None);
+        assert!(!leaf.cube.is_solved());
+        assert!(leaf.inverse.is_solved());
+
+        // Rejection can discard a pending state without ever reading its
+        // normal cube. It must leave identical parent ownership and stats.
+        let mut parent = Frame::root(Cube::from_scramble("R F").unwrap());
+        let mut eager_parent = parent;
+        let eager = eager_parent.child();
+        let deferred = parent.child_counted_mode::<true>(None);
+        for excess in [1, 2, 3] {
+            let mut a = Context::empty();
+            a.stack = vec![parent, deferred];
+            let mut b = Context::empty();
+            b.stack = vec![eager_parent, eager];
+            let mut a_stats = SearchStats::default();
+            let mut b_stats = SearchStats::default();
+            a.reject_bound(excess, true, &mut a_stats);
+            b.reject_bound(excess, true, &mut b_stats);
+            assert_eq!(a_stats, b_stats);
+            assert_eq!(a.stack.len(), b.stack.len());
+            for (a, b) in a.stack.iter().zip(&b.stack) { same_frame(a, b); }
+        }
+
+        // Prefixes bypass per-node queries, so every prefix edge must remain
+        // eager; otherwise a second move would use a stale parent cube.
+        let start = Cube::from_scramble("R U F'").unwrap();
+        let mut queue = PrefixQueue::default();
+        queue.jobs.push(PrefixJob { moves: [0, 3, 6, 0], len: 3, weight: 0 });
+        let mut context = Context::empty();
+        assert!(queue.fetch_into(start, &mut SearchStats::default(), &mut context));
+        assert_eq!(context.stack.len(), 4);
+        for (depth, frame) in context.stack.iter().enumerate() {
+            assert_eq!(frame.pending_normal, 255);
+            assert_eq!(frame.cube, replay(start, &[0, 3, 6][..depth]));
+            assert_eq!(frame.inverse, frame.cube.inverse());
+        }
+
+        // Pending contexts cannot be split. After the normal query and plan,
+        // a clone/split carries the same fully valid states on both owners.
+        let mut donor = Context::empty();
+        donor.stack = vec![parent, deferred];
+        let mut other = Context::empty();
+        assert!(!donor.split_into(&mut other));
+        donor.stack.last_mut().unwrap().materialize_normal();
+        donor.needs_query = false;
+        let clone = donor.clone();
+        for (a, b) in donor.stack.iter().zip(&clone.stack) { same_frame(a, b); }
+        assert!(donor.split_into(&mut other));
+        for frame in donor.stack.iter().chain(&other.stack) {
+            assert_eq!(frame.pending_normal, 255);
+            assert_eq!(frame.inverse, frame.cube.inverse());
+        }
+    }
 
     #[cfg(all(feature = "opt10-native-profile", not(target_family = "wasm")))]
     #[test]
@@ -1841,7 +2155,7 @@ mod tests {
                     assert_eq!(result.stats.profile, SearchProfile::default());
                     trace.replace(&format!("profile: {:?}, ", SearchProfile::default()), "")
                 };
-                #[cfg(all(feature = "opt9-native-quarter", not(target_family = "wasm")))]
+                #[cfg(any(feature = "wasm-quarter-fixed", all(feature = "opt9-native-quarter", not(target_family = "wasm"))))]
                 let trace = {
                     // This oracle has not opted in. Preserve the frozen
                     // baseline trace, including all its original statistics;
@@ -1878,7 +2192,7 @@ mod tests {
                         .replace(", dual_raised: 0", "")
                         .replace(", dual_parent_cuts: 0", "")
                 };
-                #[cfg(all(feature = "opt10-native-coset", not(target_family = "wasm")))]
+                #[cfg(any(all(feature = "wasm-coset-prune", any(target_family = "wasm", test)), all(feature = "opt10-native-coset", not(target_family = "wasm"))))]
                 let trace = {
                     assert_eq!((result.stats.coset_parent_proofs, result.stats.coset_half_prunes), (0, 0));
                     trace.replace(", coset_parent_proofs: 0", "").replace(", coset_half_prunes: 0", "")
@@ -2090,6 +2404,112 @@ mod tests {
         }
         fn lookup(&self, _: u64) -> u8 {
             0
+        }
+    }
+
+    #[cfg(feature = "corner-research")]
+    mod distance_only_tests {
+        use super::*;
+
+        // This is exactly min(D, 2): distance zero is identity, and distance
+        // one is one of the repository's 18 generators. It needs no PDB and
+        // is not H-invariant, since it assigns one to every face half turn.
+        fn clipped_distance(cube: &Cube) -> u8 {
+            if cube.is_solved() { 0 }
+            else if MOVES.iter().any(|movement| movement == cube) { 1 }
+            else { 2 }
+        }
+
+        struct SeparateBounds { late: bool }
+        impl PruningOracle for SeparateBounds {
+            type Query = u8;
+            fn prepare(&self, _: &Cube, _: u8) -> Result<u8, u8> { Ok(0) }
+            fn lookup(&self, _: u8) -> u8 { 0 }
+            fn distance_only_bound(&self, cube: &Cube, _: u8) -> Option<u8> {
+                Some(clipped_distance(cube))
+            }
+            fn distance_only_after_primary(&self) -> bool { self.late }
+            fn allow_parent_propagation(&self) -> bool { true }
+            fn profile_search(&self) -> bool { true }
+        }
+
+        #[test]
+        fn non_h_invariant_distance_bound_keeps_one_move_half_turn_solutions() {
+            for contexts in [1, 8] {
+              for late in [false, true] {
+                for movement in [1_u8, 4, 7, 10, 13, 16] {
+                    let start = MOVES[usize::from(movement)];
+                    let result = solve(start, &SeparateBounds { late }, SearchOptions {
+                        max_depth: 1, max_nodes: 1000, contexts,
+                    }).unwrap();
+                    assert!(!result.cancelled);
+                    let solution = result.solution.expect("distance-only bounds must retain half turns");
+                    assert_eq!(solution.len(), 1);
+                    assert!(replay(start, &solution).is_solved());
+                }
+              }
+            }
+        }
+
+        struct PrimaryReject;
+        impl PruningOracle for PrimaryReject {
+            type Query = u8;
+            fn prepare(&self, _: &Cube, _: u8) -> Result<u8, u8> { Err(2) }
+            fn lookup(&self, _: u8) -> u8 { unreachable!() }
+            fn distance_only_after_primary(&self) -> bool { true }
+            fn distance_only_bound(&self, _: &Cube, _: u8) -> Option<u8> {
+                panic!("an existing primary rejection must retain its margin without an auxiliary query")
+            }
+        }
+
+        #[test]
+        fn late_distance_checks_only_primary_survivors() {
+            let options = SearchOptions { max_depth: 1, max_nodes: 1000, contexts: 1 };
+            let start = MOVES[0].multiplied(&MOVES[3]);
+            let rejected = solve(start, &PrimaryReject, options).unwrap();
+            assert_eq!(rejected.solution, None);
+            assert_eq!(rejected.stats.nodes, 2);
+            assert_eq!(rejected.stats.probes, 0);
+            for late in [false, true] {
+                let survived = solve(start, &SeparateBounds { late }, options).unwrap();
+                assert_eq!(survived.solution, None);
+                assert_eq!(survived.stats.nodes, 2);
+                assert_eq!(survived.stats.probes, if late { 2 } else { 0 });
+                #[cfg(all(feature = "opt10-native-profile", not(target_family = "wasm")))]
+                {
+                    assert!(survived.stats.profile.matches_totals(&survived.stats));
+                    assert_eq!(survived.stats.profile.distance_queries[1], 1);
+                    assert_eq!(survived.stats.profile.distance_rejected[1], 1);
+                }
+            }
+        }
+
+        struct RejectBeforeSubgroupQuery;
+        impl PruningOracle for RejectBeforeSubgroupQuery {
+            type Query = u8;
+            fn prepare(&self, _: &Cube, _: u8) -> Result<u8, u8> {
+                panic!("a distance-rejected state must not enter subgroup preparation")
+            }
+            fn lookup(&self, _: u8) -> u8 { unreachable!("no subgroup query was prepared") }
+            fn distance_only_bound(&self, cube: &Cube, remaining: u8) -> Option<u8> {
+                assert!(remaining > 0, "zero-budget leaves must precede this hook");
+                Some(clipped_distance(cube))
+            }
+        }
+
+        #[test]
+        fn distance_rejection_and_zero_budget_leaves_bypass_subgroup_queries() {
+            let options = SearchOptions { max_depth: 1, max_nodes: 1000, contexts: 1 };
+            let solved = solve(Cube::SOLVED, &RejectBeforeSubgroupQuery, options).unwrap();
+            assert_eq!(solved.solution, Some(Vec::new()));
+            let start = MOVES[0].multiplied(&MOVES[3]);
+            assert_eq!(clipped_distance(&start), 2);
+            let result = solve(start, &RejectBeforeSubgroupQuery, options).unwrap();
+            assert!(!result.cancelled);
+            assert!(result.solution.is_none());
+            assert_eq!(result.completed_depth, Some(1));
+            assert_eq!(result.stats.nodes, 2);
+            assert_eq!(result.stats.probes, 0);
         }
     }
 

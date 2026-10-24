@@ -6,12 +6,13 @@
  * NOTE: 迁移自 PHP recon/api/index.php → Hono
  */
 import { Hono, type Context } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { getIp } from '../utils/analytics_helpers.js';
-import { query } from '../db/connection.js';
+import { query, withTransaction } from '../db/connection.js';
 import {
-  rowToJson, jsonToRow, validateRow, assertReconTextLengths,
+  rowToJson, jsonToRow, validateRow, assertReconTextLengths, normalizeReconCompetitionCountry,
   requireAuth, requireAdmin, optionalAuth, checkRateLimit,
   visibilityDiscoverFilter, visibilityOwnerFilter,
   buildInsert, buildUpdate, buildDuplicateQuery, buildSameScrambleQuery, DUP_REASONS,
@@ -662,19 +663,23 @@ reconRoutes.put('/recon/comments/:id/pin', async (c) => {
   const body = await c.req.json<{ pinned?: boolean }>();
   const pin = !!body.pinned;
 
-  const target = await query<{ recon_id: number }>('SELECT recon_id FROM comments WHERE id = ?', [id]);
-  if (target.length === 0) {
-    return c.json({ error: 'Comment not found' }, 404);
-  }
-
-  if (pin) {
-    // NOTE: 同一 recon 同时只允许一条置顶——先取消其他置顶
-    await query(
-      'UPDATE comments SET pinned = 0 WHERE recon_id = ? AND pinned = 1 AND id != ?',
-      [target[0].recon_id, id]
+  await withTransaction(async run => {
+    // Lock the parent even when no comment is pinned yet. Locking only existing
+    // pins leaves concurrent requests free to pin two different comments.
+    const target = await run<{ recon_id: number }>(
+      'SELECT r.id AS recon_id FROM recons r JOIN comments c ON c.recon_id = r.id WHERE c.id = ? FOR UPDATE OF r',
+      [id],
     );
-  }
-  await query('UPDATE comments SET pinned = ? WHERE id = ?', [pin ? 1 : 0, id]);
+    if (!target.length) throw new HTTPException(404, { message: 'Comment not found' });
+    if (pin) {
+      await run(
+        'UPDATE comments SET pinned = 0 WHERE recon_id = ? AND pinned = 1 AND id != ?',
+        [target[0].recon_id, id],
+      );
+    }
+    const updated = await run('UPDATE comments SET pinned = ? WHERE id = ? RETURNING id', [pin ? 1 : 0, id]);
+    if (!updated.length) throw new HTTPException(404, { message: 'Comment not found' });
+  });
   return c.json({ ok: true });
 });
 
@@ -727,6 +732,9 @@ reconRoutes.post('/recon/save-edit', async (c) => {
   if (!current.length) return c.json({ error: 'Not found' }, 404);
   const validationErrors = validateRow(jsonToRow(normalizedFields), current[0]);
   if (validationErrors.length) return c.json({ error: 'Validation failed', fields: validationErrors }, 400);
+  const competitionRow = jsonToRow(normalizedFields);
+  await normalizeReconCompetitionCountry(competitionRow, current[0]);
+  if ('country' in competitionRow) normalizedFields.country = competitionRow.country;
   const enriched = { ...normalizedFields, _editedAt: now };
 
   // 字段级合并:PG jsonb || 是浅合并,右覆盖左(等价 MariaDB JSON_MERGE_PATCH 的扁平场景)
@@ -982,6 +990,7 @@ reconRoutes.get('/recon/wca-results', async (c) => {
 
 // GET /v1/recon/bili-cover?bvid=xxx
 reconRoutes.get('/recon/bili-cover', async (c) => {
+  c.header('Cache-Control', 'no-store');
   const bvid = c.req.query('bvid') ?? '';
   if (!bvid || !/^BV[A-Za-z0-9]+$/.test(bvid)) {
     return c.json({ error: 'Invalid bvid' }, 400);
@@ -990,22 +999,22 @@ reconRoutes.get('/recon/bili-cover', async (c) => {
   try {
     const biliUrl = `https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`;
     const res = await fetch(biliUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.bilibili.com/' },
+      // The old generic browser UA + Referer combination triggers upstream 412s.
       signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) {
       return c.json({ error: 'Bilibili API unavailable' }, 502);
     }
 
-    const data = await res.json() as { data: { pic: string } };
+    const data = await res.json() as { data?: { pic?: string; title?: string } };
     const pic = data?.data?.pic;
     if (!pic) {
       return c.json({ error: 'Cover not found' }, 404);
     }
 
     // NOTE: 升级 http → https
-    c.header('Cache-Control', 'public, max-age=86400');
-    return c.json({ pic: pic.replace('http://', 'https://') });
+    c.header('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+    return c.json({ pic: pic.replace('http://', 'https://'), title: data.data?.title ?? '' });
   } catch {
     return c.json({ error: 'Bilibili API unavailable' }, 502);
   }
@@ -1294,6 +1303,8 @@ reconRoutes.post('/recon', async (c) => {
     }
   }
 
+  await normalizeReconCompetitionCountry(row);
+  if ('country' in row) body.country = row.country;
   const { sql, values } = buildInsert('recons', row);
   const inserted = await query<{ id: number }>(sql + ' RETURNING id', values);
   body.id = Number(inserted[0].id);
@@ -1322,6 +1333,9 @@ reconRoutes.put('/recon/:id', async (c) => {
   }
 
   const row = jsonToRow(body);
+  // The full edit form contains the alternatives snapshot it loaded. Only the
+  // dedicated locked/CAS endpoints may mutate this independently edited array.
+  delete row.alternatives;
   assertReconTextLengths(row);
   normalizeReconScrambleRow(row, existing[0].event);
   normalizeReconSolutionRow(row);
@@ -1365,6 +1379,7 @@ reconRoutes.put('/recon/:id', async (c) => {
     }
   }
 
+  await normalizeReconCompetitionCountry(row, existing[0]);
   const { sql, values } = buildUpdate('recons', row, 'id', id);
   await query(sql, values);
   await revalidateReconPages(id);
@@ -1407,6 +1422,17 @@ interface AlternativeEntry {
   createdAt: number;
 }
 
+function assertExpectedAlternative(current: AlternativeEntry | undefined, expected: unknown): void {
+  const prior = expected as Partial<AlternativeEntry> | null | undefined;
+  // Array indexes can move when another tab deletes an earlier entry. Compare
+  // the raw version the caller saw before authorizing an edit or deletion.
+  if (!current || !prior || typeof prior !== 'object'
+    || prior.solution !== current.solution || prior.addedById !== current.addedById
+    || prior.createdAt !== current.createdAt) {
+    throw new HTTPException(409, { message: 'Alternative changed; refresh and try again' });
+  }
+}
+
 async function alternativesToJson(alts: AlternativeEntry[]) {
   const userIds = await publicUserIdsForOwnerKeys(alts.map((alternative) => alternative.addedById));
   return alts.map((alternative) => ({
@@ -1415,22 +1441,24 @@ async function alternativesToJson(alts: AlternativeEntry[]) {
   }));
 }
 
-async function loadAlternatives(id: string): Promise<AlternativeEntry[] | null> {
-  const rows = await query<{ alternatives: string | null }>(
-    'SELECT alternatives FROM recons WHERE id = ?', [id]
-  );
-  if (rows.length === 0) return null;
-  const raw = rows[0].alternatives;
-  if (raw == null) return [];
-  if (typeof raw === 'string') {
-    try { return JSON.parse(raw) as AlternativeEntry[]; } catch { return []; }
-  }
-  return Array.isArray(raw) ? raw as AlternativeEntry[] : [];
-}
-
-async function saveAlternatives(id: string, alts: AlternativeEntry[]): Promise<void> {
-  await query('UPDATE recons SET alternatives = ? WHERE id = ?', [JSON.stringify(alts), id]);
+async function updateAlternatives(id: string, update: (alts: AlternativeEntry[]) => void): Promise<AlternativeEntry[]> {
+  const alts = await withTransaction(async run => {
+    const rows = await run<{ alternatives: string | null }>(
+      'SELECT alternatives FROM recons WHERE id = ? FOR UPDATE', [id],
+    );
+    if (!rows.length) throw new HTTPException(404, { message: 'Not found' });
+    const raw = rows[0].alternatives;
+    let current: AlternativeEntry[] = [];
+    if (typeof raw === 'string') {
+      try { const parsed: unknown = JSON.parse(raw); if (Array.isArray(parsed)) current = parsed; } catch { /* legacy empty data */ }
+    } else if (Array.isArray(raw)) current = raw;
+    update(current);
+    await run('UPDATE recons SET alternatives = ? WHERE id = ?', [JSON.stringify(current), id]);
+    return current;
+  });
+  // Cache invalidation must observe the committed value and not prolong the row lock.
   await revalidateReconPages(id);
+  return alts;
 }
 
 // POST /v1/recon/:id/alternatives — 追加一条另解
@@ -1445,16 +1473,14 @@ reconRoutes.post('/recon/:id/alternatives', async (c) => {
   if (!solution) return c.json({ error: 'solution required' }, 400);
   if (Buffer.byteLength(solution, 'utf8') > 65535) return c.json({ error: 'solution too long' }, 400);
 
-  const alts = await loadAlternatives(id);
-  if (alts == null) return c.json({ error: 'Not found' }, 404);
-
-  alts.push({
-    solution,
-    addedById: authUser.wcaId,
-    addedBy: authUser.name,
-    createdAt: Math.floor(Date.now() / 1000),
+  const alts = await updateAlternatives(id, current => {
+    current.push({
+      solution,
+      addedById: authUser.wcaId,
+      addedBy: authUser.name,
+      createdAt: Math.floor(Date.now() / 1000),
+    });
   });
-  await saveAlternatives(id, alts);
 
   // 另解没有「被回复者」,只通知管理员。best-effort,不连累已保存的另解。
   try {
@@ -1482,23 +1508,20 @@ reconRoutes.put('/recon/:id/alternatives/:idx', async (c) => {
   const authUser = await requireAuth(c);
   const id = c.req.param('id');
   const idx = Number(c.req.param('idx'));
-  const body = await c.req.json<{ solution?: string }>();
+  const body = await c.req.json<{ solution?: string; expected?: unknown }>();
   assertReconTextLengths(body);
   const solution = normalizeReconSolution(body.solution ?? '').trim();
   if (!solution) return c.json({ error: 'solution required' }, 400);
   if (Buffer.byteLength(solution, 'utf8') > 65535) return c.json({ error: 'solution too long' }, 400);
+  if (!Number.isInteger(idx) || idx < 0) return c.json({ error: 'Invalid alternative index' }, 400);
 
-  const alts = await loadAlternatives(id);
-  if (alts == null) return c.json({ error: 'Not found' }, 404);
-  if (!Number.isInteger(idx) || idx < 0 || idx >= alts.length) {
-    return c.json({ error: 'Invalid alternative index' }, 400);
-  }
-  if (!authUser.isAdmin && alts[idx].addedById !== authUser.wcaId) {
-    return c.json({ error: 'Cannot edit others alternative' }, 403);
-  }
-
-  alts[idx] = { ...alts[idx], solution };
-  await saveAlternatives(id, alts);
+  const alts = await updateAlternatives(id, current => {
+    assertExpectedAlternative(current[idx], body.expected);
+    if (!authUser.isAdmin && current[idx].addedById !== authUser.wcaId) {
+      throw new HTTPException(403, { message: 'Cannot edit others alternative' });
+    }
+    current[idx] = { ...current[idx], solution };
+  });
   return c.json({ alternatives: await alternativesToJson(alts) });
 });
 
@@ -1509,17 +1532,15 @@ reconRoutes.delete('/recon/:id/alternatives/:idx', async (c) => {
   const authUser = await requireAuth(c);
   const id = c.req.param('id');
   const idx = Number(c.req.param('idx'));
+  if (!Number.isInteger(idx) || idx < 0) return c.json({ error: 'Invalid alternative index' }, 400);
+  const body = await c.req.json<{ expected?: unknown }>().catch(() => ({} as { expected?: unknown }));
 
-  const alts = await loadAlternatives(id);
-  if (alts == null) return c.json({ error: 'Not found' }, 404);
-  if (!Number.isInteger(idx) || idx < 0 || idx >= alts.length) {
-    return c.json({ error: 'Invalid alternative index' }, 400);
-  }
-  if (!authUser.isAdmin && alts[idx].addedById !== authUser.wcaId) {
-    return c.json({ error: 'Cannot delete others alternative' }, 403);
-  }
-
-  alts.splice(idx, 1);
-  await saveAlternatives(id, alts);
+  const alts = await updateAlternatives(id, current => {
+    assertExpectedAlternative(current[idx], body.expected);
+    if (!authUser.isAdmin && current[idx].addedById !== authUser.wcaId) {
+      throw new HTTPException(403, { message: 'Cannot delete others alternative' });
+    }
+    current.splice(idx, 1);
+  });
   return c.json({ alternatives: await alternativesToJson(alts) });
 });

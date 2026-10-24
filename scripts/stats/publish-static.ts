@@ -1,11 +1,16 @@
 /** Incremental static publisher. A successful remote update is the only point that advances the baseline. */
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { copyFile, mkdtemp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, posix, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildManifest } from '../../core/jobs/scramble-stats-build/scramble_manifest.mjs';
 import { exists, repoRoot, taskProgress, wcaDir } from './common.js';
+import { managed } from '../wca-data/snapshot.ts';
+import { withLocalLock } from '../wca-data/local-lock.ts';
+import type { StaticChange } from './apply-static.ts';
+const unmanaged = (name: string) => !managed(`scramble/${name.slice(2)}`);
 
 export type PublishOptions = {
   root?: string; manifest?: string; host?: string; destination?: string;
@@ -38,6 +43,12 @@ export function parseManifest(text: string): Map<string, string> {
 }
 
 export async function publishScrambleIncremental(options: PublishOptions = {}): Promise<{ changed: string[]; deleted: string[] }> {
+  if (options.dryRun) return publishUnlocked(options);
+  const manifest = resolve(options.manifest ?? join(wcaDir, 'incremental', 'publish_manifest.sha1'));
+  return withLocalLock(`${manifest}.lock`, () => publishUnlocked(options));
+}
+
+async function publishUnlocked(options: PublishOptions): Promise<{ changed: string[]; deleted: string[] }> {
   const root = resolve(options.root ?? join(repoRoot, 'stats', 'scramble'));
   const manifest = resolve(options.manifest ?? join(wcaDir, 'incremental', 'publish_manifest.sha1'));
   const host = options.host ?? process.env.CUBEROOT_STATIC_HOST ?? 'root@cuberoot';
@@ -56,8 +67,8 @@ export async function publishScrambleIncremental(options: PublishOptions = {}): 
           taskProgress('static:manifest', state.checked, state.total);
       },
     });
-    const currentText = await readFile(current, 'utf8');
-    const now = parseManifest(currentText);
+    const now = new Map([...parseManifest(await readFile(current, 'utf8'))].filter(([name]) => unmanaged(name)));
+    const currentText = [...now].map(([name, hash]) => `${hash}  ${name}\n`).join('');
     const save = async () => {
       await mkdir(dirname(manifest), { recursive: true });
       const temp = `${manifest}.${process.pid}.tmp`;
@@ -69,42 +80,36 @@ export async function publishScrambleIncremental(options: PublishOptions = {}): 
       console.log(`[baseline] ${now.size} files${options.dryRun ? ' (dry-run)' : ''}`);
       return { changed: [...now.keys()], deleted: [] };
     }
-    const previous = await exists(manifest) ? parseManifest(await readFile(manifest, 'utf8')) : null;
+    const previous = await exists(manifest) ? new Map([...parseManifest(await readFile(manifest, 'utf8'))].filter(([name]) => unmanaged(name))) : null;
     const changed = [...now].filter(([name, hash]) => previous?.get(name) !== hash).map(([name]) => name);
     const deleted = previous ? [...previous.keys()].filter(name => !now.has(name)) : [];
     console.log(`[publish] changed ${changed.length}, deleted ${deleted.length}, baseline ${previous ? 'present' : 'missing'}`);
     if (options.dryRun) return { changed, deleted };
-    const transferTotal = previous ? 1 + (changed.length ? 3 : 0) + (deleted.length ? 1 : 0) : 4;
+    const transferTotal = 1 + (changed.length ? 2 : 0) + (changed.length || deleted.length ? 2 : 0);
     let transferred = 0;
     const advance = () => taskProgress('static:transfer', ++transferred, transferTotal);
     taskProgress('static:transfer', 0, transferTotal);
-    if (!previous) {
-      const archive = join(scratch, 'full.tgz');
-      const remote = '/tmp/_scramble_full.tgz';
-      const parent = posix.dirname(destination);
-      await exec('tar', ['--no-xattrs', '--exclude=scramble/steps/wca_scramble_steps.csv', '-czf', archive, '-C', dirname(root), 'scramble']);
+
+    const remote = `/tmp/cuberoot-scramble-${randomUUID()}.tgz`;
+    const remoteScript = `${remote}.ts`;
+    if (changed.length) {
+      const list = join(scratch, 'changed.txt');
+      const archive = join(scratch, 'delta.tgz');
+      await writeFile(list, `${changed.join('\n')}\n`);
+      await exec('tar', ['--no-xattrs', '-czf', archive, '-C', root, '-T', list]);
       advance();
       await exec('scp', [archive, `${host}:${remote}`]);
       advance();
-      await exec('ssh', [host, `set -e; cd ${shellQuote(parent)}; rm -rf scramble.new scramble.prev; mkdir scramble.new; tar -xzf ${shellQuote(remote)} -C scramble.new --strip-components=1; if [ -d scramble ]; then mv scramble scramble.prev; fi; mv scramble.new scramble; rm -rf scramble.prev ${shellQuote(remote)}`]);
+    }
+    if (changed.length || deleted.length) {
+      const changes: StaticChange[] = [...changed, ...deleted].map(path => ({ path, before: previous?.get(path) ?? null, after: now.get(path) ?? null }));
+      await exec('scp', [fileURLToPath(new URL('./apply-static.ts', import.meta.url)), `${host}:${remoteScript}`]);
       advance();
-    } else {
-      if (changed.length) {
-        const list = join(scratch, 'changed.txt');
-        const archive = join(scratch, 'delta.tgz');
-        const remote = '/tmp/_scramble_delta.tgz';
-        await writeFile(list, `${changed.join('\n')}\n`);
-        await exec('tar', ['--no-xattrs', '-czf', archive, '-C', root, '-T', list]);
-        advance();
-        await exec('scp', [archive, `${host}:${remote}`]);
-        advance();
-        await exec('ssh', [host, `set -e; cd ${shellQuote(destination)}; tar -xzf ${shellQuote(remote)}; rm -f ${shellQuote(remote)}`]);
-        advance();
-      }
-      if (deleted.length) {
-        await exec('ssh', [host, `cd ${shellQuote(destination)} && xargs -d '\\n' -r rm -f --`], `${deleted.join('\n')}\n`);
-        advance();
-      }
+      const cleanup = `rm -f -- ${shellQuote(remote)} ${shellQuote(remoteScript)}`;
+      // Check expected hashes and apply the entire delta under one server lock.
+      const apply = `node ${shellQuote(remoteScript)} ${shellQuote(destination)} ${shellQuote(changed.length ? remote : '-')}`;
+      await exec('ssh', [host, `trap ${shellQuote(cleanup)} EXIT; flock -w 120 /tmp/cuberoot-scramble-static.lock ${apply}`], JSON.stringify(changes));
+      advance();
     }
     await save();
     advance();

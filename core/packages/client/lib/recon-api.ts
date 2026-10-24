@@ -42,9 +42,10 @@ async function apiPut<T>(path: string, body: unknown): Promise<T> {
   }));
 }
 
-async function apiDelete<T>(path: string): Promise<T> {
+async function apiDelete<T>(path: string, body?: unknown): Promise<T> {
   return handleApi<T>(await sessionFetch(`${API_BASE}${path}`, {
-    method: 'DELETE', headers: authHeaders(false),
+    method: 'DELETE', headers: authHeaders(body !== undefined),
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   }));
 }
 
@@ -158,13 +159,15 @@ export async function addAlternative(reconId: number, solution: string): Promise
   return r.alternatives;
 }
 
-export async function updateAlternative(reconId: number, idx: number, solution: string): Promise<ReconAlternative[]> {
-  const r = await apiPut<AltsResponse>(`/${reconId}/alternatives/${idx}`, { solution });
+type AlternativeVersion = Pick<ReconAlternative, 'solution' | 'addedById' | 'createdAt'>;
+
+export async function updateAlternative(reconId: number, idx: number, solution: string, expected: AlternativeVersion): Promise<ReconAlternative[]> {
+  const r = await apiPut<AltsResponse>(`/${reconId}/alternatives/${idx}`, { solution, expected });
   return r.alternatives;
 }
 
-export async function deleteAlternative(reconId: number, idx: number): Promise<ReconAlternative[]> {
-  const r = await apiDelete<AltsResponse>(`/${reconId}/alternatives/${idx}`);
+export async function deleteAlternative(reconId: number, idx: number, expected: AlternativeVersion): Promise<ReconAlternative[]> {
+  const r = await apiDelete<AltsResponse>(`/${reconId}/alternatives/${idx}`, { expected });
   return r.alternatives;
 }
 
@@ -303,8 +306,8 @@ export async function getWcaAttempts(
   return apiGet('/wca-attempts', { compId, personId });
 }
 
-export async function getBiliCover(bvid: string): Promise<{ pic: string }> {
-  return apiGet('/bili-cover', { bvid });
+export async function getBiliCover(bvid: string): Promise<{ pic: string; title?: string }> {
+  return apiGet('/bili-cover', { bvid, v: '3' });
 }
 
 // 抖音封面:传完整 douyin url(短链或长链),服务端解析 aweme_id 后取首帧封面。

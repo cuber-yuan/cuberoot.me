@@ -1,7 +1,7 @@
 'use client';
 import { TimerRoomDialog } from '../TimerRoomDialog';
 
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useId, useMemo, useState, type CSSProperties } from 'react';
 import { BarChart3, CalendarDays, Layers, LayoutDashboard } from 'lucide-react';
 import type { EventId, Solve } from '@cuberoot/shared/timer';
 import { effectiveMs } from '@cuberoot/shared/timer';
@@ -35,6 +35,8 @@ import RecordsOverlay from './RecordsOverlay';
 import CfopCaseStatsPanel from './CfopCaseStatsPanel';
 import DailyStatsPanel from './DailyStatsPanel';
 import { useWorkspaceText } from './localization';
+import { TimerStatsPanel } from '../TimerStatsPanel';
+import { timerStatsPanelLabels } from './stats-labels';
 
 interface Props {
   event: EventId;
@@ -51,6 +53,8 @@ export default function StatsModal({ event, solves: rawSolves, isZh, onClose, on
   const [copied, setCopied] = useState(false);
   const [range, setRange] = useState<TimerStatsDateRange>('all');
   const [tab, setTab] = useState<StatsTab>('overview');
+  const [metricsExpanded, setMetricsExpanded] = useState(false);
+  const metricsId = useId();
 
 
 
@@ -208,10 +212,8 @@ export default function StatsModal({ event, solves: rawSolves, isZh, onClose, on
     );
   };
 
-  // Inline styles for the period table — kept here so we don't have to touch
-  // timer.css (cross-agent: another agent owns recon, avoid CSS file conflict).
   const cellStyle: CSSProperties = { padding: '4px 8px', textAlign: 'left', whiteSpace: 'nowrap' };
-  const numCellStyle: CSSProperties = { ...cellStyle, fontVariantNumeric: 'tabular-nums' };
+  const numCellStyle: CSSProperties = { ...cellStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
 
   return (
     <TimerRoomDialog className="timer-modal stats-modal" language={isZh ? 'zh' : 'en'} onClose={onClose} title={tr({en:'Full stats',zh:'完整统计'}) + ' — ' + evName}>
@@ -257,7 +259,7 @@ export default function StatsModal({ event, solves: rawSolves, isZh, onClose, on
                 <button
                   key={r}
                   onClick={() => setRange(r)}
-                  className={active ? 'primary' : 'hint-btn'}
+                  className={`stats-range-button${active ? ' is-active' : ''}`}
                   aria-pressed={active}
                 >
                   {tr({zh: labelZh[r], en: labelEn[r]})}
@@ -268,14 +270,21 @@ export default function StatsModal({ event, solves: rawSolves, isZh, onClose, on
         </div>
 
         <div className="modal-section" data-tab="overview">
-          <div className="stats-modal-grid">
+          <TimerStatsPanel summaryOnly event={event} solves={solves}
+            labels={timerStatsPanelLabels(isZh ? 'zh' : 'en')}
+            rollingColumns={[]} onRollingColumnsChange={() => {}} />
+          <button type="button" className="modal-action-btn" aria-expanded={metricsExpanded}
+            aria-controls={metricsId} onClick={() => setMetricsExpanded(value => !value)}>
+            {metricsExpanded ? tr({zh:'收起指标',en:'Fewer metrics'}) : tr({zh:'更多指标',en:'More metrics'})}
+          </button>
+          {metricsExpanded && <div id={metricsId} className="stats-modal-grid">
             {lines.map(([k, v]) => (
               <div className="stats-modal-row" key={k}>
                 <span className="stats-modal-lbl">{k}</span>
                 <span className="stats-modal-val">{v}</span>
               </div>
             ))}
-          </div>
+          </div>}
         </div>
 
         {pbIdx >= 0 && (
@@ -289,18 +298,18 @@ export default function StatsModal({ event, solves: rawSolves, isZh, onClose, on
           </div>
         )}
 
-        <div className="modal-section" data-tab="overview">
+        <div className="modal-section" data-tab="daily">
           <h3 className="settings-h3">{tr({ zh: '时间段', en: 'Time periods'
         })}</h3>
-          <table style={{ borderCollapse: 'collapse', fontSize: '0.9em', width: '100%' }}>
+          <table className="stats-period-table" style={{ borderCollapse: 'collapse', fontSize: '0.9em', width: '100%' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border-default)', opacity: 0.75 }}>
                 <th style={cellStyle}>{tr({ zh: '段', en: 'Period' })}</th>
-                <th style={cellStyle}>n</th>
-                <th style={cellStyle}>best</th>
-                <th style={cellStyle}>ao5</th>
-                <th style={cellStyle}>ao12</th>
-                <th style={cellStyle}>mean</th>
+                <th style={numCellStyle}>{tr({zh:'次数',en:'Count'})}</th>
+                <th style={numCellStyle}>{tr({zh:'最佳',en:'Best'})}</th>
+                <th style={numCellStyle}>ao5</th>
+                <th style={numCellStyle}>ao12</th>
+                <th style={numCellStyle}>{tr({zh:'平均',en:'Mean'})}</th>
                 <th style={cellStyle}>{tr({ zh: '对比', en: 'vs prev'
                 })}</th>
               </tr>

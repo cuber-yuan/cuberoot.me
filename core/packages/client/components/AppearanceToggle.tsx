@@ -11,7 +11,7 @@
 // 通过太阳 / 月亮图标选择,选中态跟随当前实际明暗。
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Sun, Moon, Check, Settings } from 'lucide-react';
+import { Sun, Moon, Settings } from '@app-foundation/icons/lucide';
 import { persistItem } from '@/lib/safe-storage';
 import {
   THEME_KEY,
@@ -33,6 +33,7 @@ import { SiteBackgroundControl } from '@/components/SiteBackground';
 import AppLink from '@/components/AppLink';
 import BoolToggle from '@/components/BoolToggle';
 import LangToggle from '@/components/LangToggle';
+import AccentColorSelect from '@/components/AccentColorSelect';
 import { Tooltip } from '@/components/Tooltip';
 import { useDeskPetVisible } from '@/hooks/useDeskPetVisible';
 import { useHomeBackgroundChoice } from '@/hooks/useHomeBackgroundChoice';
@@ -50,10 +51,10 @@ function Swatch({ color }: { color: string }) {
   );
 }
 
-export default function AppearanceToggle({ className, showLabel = false, menuContent }: { className?: string; showLabel?: boolean; menuContent?: ReactNode }) {
+export default function AppearanceToggle({ className, triggerClassName, triggerLabel, labelClassName = 'toolbar-label', showLabel = false, menuContent }: { className?: string; triggerClassName?: string; triggerLabel?: string; labelClassName?: string; showLabel?: boolean; menuContent?: ReactNode }) {
   const t = useT();
   const L = {
-    title: t('设置', 'Settings'),
+    title: triggerLabel ?? t('设置', 'Settings'),
     light: t('浅色', 'Light'),
     dark: t('深色', 'Dark'),
     lowContrast: t('低对比度', 'Low contrast'),
@@ -98,6 +99,7 @@ export default function AppearanceToggle({ className, showLabel = false, menuCon
     cancelHoverClose();
     hoverCloseTimerRef.current = window.setTimeout(() => {
       hoverCloseTimerRef.current = null;
+      if (document.querySelector('.accent-color-menu')) return;
       closeMenu();
     }, HOVER_CLOSE_DELAY_MS);
   };
@@ -130,6 +132,8 @@ export default function AppearanceToggle({ className, showLabel = false, menuCon
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
+      // CompactSelect renders the nested color menu in a body portal.
+      if (e.target instanceof Element && e.target.closest('.accent-color-menu')) return;
       if (ref.current && !ref.current.contains(e.target as Node)) closeMenu();
     };
     const onKey = (e: KeyboardEvent) => {
@@ -174,7 +178,7 @@ export default function AppearanceToggle({ className, showLabel = false, menuCon
     applyContrast(level);
   };
 
-  const cls = ['theme-toggle-inline', className].filter(Boolean).join(' ');
+  const cls = triggerClassName ?? ['theme-toggle-inline', className].filter(Boolean).join(' ');
 
   if (!mounted) {
     return (
@@ -214,7 +218,7 @@ export default function AppearanceToggle({ className, showLabel = false, menuCon
         aria-expanded={open}
       >
         <Settings size={14} />
-        {showLabel && <span className="toolbar-label">{L.title}</span>}
+        {showLabel && <span className={labelClassName}>{L.title}</span>}
       </button>
       {open && (
         <div
@@ -275,7 +279,6 @@ export default function AppearanceToggle({ className, showLabel = false, menuCon
                       onBlur={(event) => { tip.onBlur?.(event); endPreview(); }}
                       onClick={() => pickPalette(p.id)}
                     >
-                      <span className="lang-menu-check">{on && <Check size={13} />}</span>
                       <Swatch color={p.swatch[1]} />
                     </button>
                   )}
@@ -287,6 +290,7 @@ export default function AppearanceToggle({ className, showLabel = false, menuCon
           <div className="appearance-settings">
             <div className="appearance-sec-label" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <LangToggle variant="menu" showLabel />
+              <AccentColorSelect />
               <BoolToggle
                 value={petVisible}
                 onChange={setPetVisible}

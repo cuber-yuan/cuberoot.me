@@ -16,6 +16,7 @@ import '@cuberoot/timer-ui/compact-select.css';
 //    4x4–7x7 / megaminx / clock are fixed-length with no difficulty data → not listed at all.
 // 显示的打乱一律是**最优等态打乱**(同 /timer 真题的「最优打乱」,无 toggle):与该场原打乱同一魔方态、
 // 步数最短。同态 ⇒ 各阶段步数 / 难度值不变。仅「打乱长度」视图例外(那按的就是原打乱长度)。
+import { useRetainedState } from '@/hooks/useRetainedState';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import AppLink from '@/components/AppLink';
@@ -30,7 +31,7 @@ import { loadFlagData, flagDataVersion, compFlagIso2 } from '@/lib/country-flags
 import { compSourceLine } from '@/lib/comp-schedule';
 import { statsUrl } from '@/lib/stats-base';
 import { VARIANT_ORDER, stageLabel, variantLabel, BLOCK_DATA_VARIANTS, BLOCK_STAGE_VARIANT, EO_DATA_VARIANTS, EO_STAGE_VARIANT, LBL_STAGE_VARIANT, VARIANT_STAGES, LENGTH_VARIANT, RECENT_METRIC_ORDER, uiVariantOf, uiVariantOptions, dataVariantOfStage, uiStagesOf, variantDataRef } from '@/lib/scramble-variants';
-import { VariantSelect } from '@/components/VariantSelect';
+import { MethodStagePicker } from '@cuberoot/timer-ui/puzzle-picker';
 import { fetchRecentScramblesEvents, type RecentScramblesEventsJson, type RecentScrMeta } from '@/lib/recent-scrambles-events';
 import { formatDateRangeIso } from '@/lib/wca-date';
 import { eventDisplayName, wcaToReconEvent } from '@/lib/wca-events';
@@ -165,13 +166,6 @@ function findRarestSelection(
   return best ? { variant: best.variant, metric: best.metric, subsetKey: best.subsetKey, step: best.step } : null;
 }
 
-// 稀有汇总:概率阈值下拉的候选(p < 选中值)。默认 1/10k。
-const RARE_THRESHOLDS = [
-  { v: 1e-3, label: '1/1k' },
-  { v: 1e-4, label: '1/10k' },
-  { v: 1e-5, label: '1/100k' },
-];
-const RARE_DEFAULT = 1e-4;
 const RARE_CAP = 60; // 渲染上限(每张卡含 SVG 预览 + ObjectURL,过多伤性能);超出给提示
 
 interface RareEntry { id: string; uiVariant: string; metric: string; step: number; color: ColorLetter | ''; subsetKey: string; p: number }
@@ -372,6 +366,11 @@ function ScrambleCard({ event, scramble, m, lp, isZh, ssTarget, color, dotColors
   return (
     <div className="rs-scard">
       <div className="rs-scard-cube">
+        {scramble.trim() && (
+          <AppLink href={`/recon/submit?${reconParams}`} prefetch={false} className="rs-recon-link">
+            {tr({ zh: '复盘', en: 'Reconstruct' })}
+          </AppLink>
+        )}
         <ScramblePreview2D event={event} scramble={scramble} size={58} fullSizeLink linkTitle={tr({ zh: '查看大图', en: 'View full size' })} />
         {dotList.length > 0 && (
           <span className="rs-scard-dot" title={dotTitle} aria-label={dotTitle} aria-hidden={dotTitle ? undefined : true}>
@@ -383,7 +382,7 @@ function ScrambleCard({ event, scramble, m, lp, isZh, ssTarget, color, dotColors
         {rarity && (
           <div className="rs-scard-rarity">
             <span className="rs-scard-rtag">{rarity.tag}</span>
-            <span className="rs-scard-rprob">≈ {rarity.prob}</span>
+            <span className="rs-scard-rprob">{rarity.prob}</span>
           </div>
         )}
         <Link
@@ -393,11 +392,6 @@ function ScrambleCard({ event, scramble, m, lp, isZh, ssTarget, color, dotColors
           title={optimal ? tr({ zh: '最优等态打乱:与该场原打乱同一魔方态,步数最短', en: 'Optimal equivalent scramble — same cube state as the original, fewest moves' }) : undefined}
         >{scramble}</Link>
         {m && <CompSource m={m} lp={lp} isZh={isZh} row />}
-        {scramble.trim() && (
-          <AppLink href={`/recon/submit?${reconParams}`} prefetch={false} className="rs-recon-link">
-            {tr({ zh: '复盘', en: 'Reconstruct' })}
-          </AppLink>
-        )}
       </div>
     </div>
   );
@@ -406,9 +400,9 @@ function ScrambleCard({ event, scramble, m, lp, isZh, ssTarget, color, dotColors
 export default function RecentScrambles({ lang }: Props) {
   const isZh = lang === 'zh';
   const lp = langPrefix(lang);
-  const [data, setData] = useState<RecentScramblesJson | null>();
-  const [dist, setDist] = useState<DistributionJson | null>(null);
-  const [eventsJson, setEventsJson] = useState<RecentScramblesEventsJson | null>(null);
+  const [data, setData] = useRetainedState<RecentScramblesJson | null | undefined>('home:scrambles', undefined);
+  const [dist, setDist] = useRetainedState<DistributionJson | null | undefined>('home:scrambleDistribution', undefined);
+  const [eventsJson, setEventsJson] = useRetainedState<RecentScramblesEventsJson | null>('home:scrambleEvents', null);
   const [event, setEvent] = useState('333');
   const aliveRef = useRef(true);
   const extrasStartedRef = useRef(false);
@@ -427,11 +421,20 @@ export default function RecentScrambles({ lang }: Props) {
   useEffect(() => {
     fetch(statsUrl('/stats/scramble/recent_scrambles.json'), { cache: 'no-cache' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j: RecentScramblesJson | null) => { if (aliveRef.current) setData(j); })
-      .catch(() => { if (aliveRef.current) setData(null); });
-  }, []);
+      .then((j: RecentScramblesJson | null) => { if (aliveRef.current) setData(previous => j ?? previous ?? null); })
+      .catch(() => { if (aliveRef.current) setData(previous => previous ?? null); });
+  }, [setData]);
 
-  // 先拿默认 333 卡片；项目全集和完整概率分布等首批内容画完后再补。
+  // The default rarest view needs both the scrambles and their probabilities.
+  // Fetch them together and retain the skeleton until both have settled.
+  useEffect(() => {
+    void fetch(statsUrl('/stats/scramble/distribution.json') + '?v=20260614opt')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: DistributionJson | null) => { if (aliveRef.current) setDist(j); })
+      .catch(() => { if (aliveRef.current) setDist(previous => previous ?? null); });
+  }, [setDist]);
+
+  // 项目全集等首批内容画完后再补。
   // 用户开始触碰控件时立即预热，保证功能完整，同时避免三个大 JSON 同时下载、解析。
   const loadExtras = useCallback(() => {
     if (extrasStartedRef.current) return;
@@ -439,11 +442,7 @@ export default function RecentScrambles({ lang }: Props) {
 
     void fetchRecentScramblesEvents()
       .then((j) => { if (aliveRef.current) setEventsJson(j); });
-    void fetch(statsUrl('/stats/scramble/distribution.json') + '?v=20260614opt')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j: DistributionJson | null) => { if (aliveRef.current) setDist(j); })
-      .catch(() => { if (aliveRef.current) setDist(null); });
-  }, []);
+  }, [setEventsJson]);
 
   useEffect(() => {
     if (!data) return;
@@ -488,8 +487,8 @@ export default function RecentScrambles({ lang }: Props) {
   const dateRange = batchDateRange(data ?? null, eventsJson);
 
   // 主数据到达前保留与成品区块一致的几何尺寸，避免动态 chunk 已到、JSON 未到时先塌陷。
-  if (data === undefined) return <div className="recent-scrambles recent-scrambles--loading" data-tour="recent-scrambles" aria-hidden="true" />;
-  if (availableEvents.size === 0) return null;
+  if (data === undefined || dist === undefined) return <div className="recent-scrambles recent-scrambles--loading" data-tour="recent-scrambles" aria-hidden="true" />;
+  if (availableEvents.size === 0) return <p className="landing-slot-message">{tr({ zh: '暂无近期打乱', en: 'No recent scrambles available' })}</p>;
 
   const curEvent = availableEvents.has(event) ? event : (availableEvents.has('333') ? '333' : [...availableEvents][0]);
   const pickerGroups: readonly PuzzlePickerGroup[] = [{
@@ -511,10 +510,9 @@ export default function RecentScrambles({ lang }: Props) {
       onTouchStart={loadExtras}
     >
       <div className="rs-topbar">
-        <span className="rs-title">{tr({ zh: '近期打乱', en: 'Recent Scrambles' })}</span>
-        {dateRange && <span className="rs-date-range">{dateRange}</span>}
+        <span className="rs-title" title={dateRange || undefined}>{tr({ zh: '近期打乱', en: 'Recent Scrambles' })}</span>
+        <PuzzlePicker showArrow={false} isZh={isZh} selectedEvent={curEvent} groups={pickerGroups} onSelect={setEvent} />
       </div>
-      <PuzzlePicker isZh={isZh} selectedEvent={curEvent} groups={pickerGroups} onSelect={setEvent} />
       {curEvent === '333'
         ? <Recent333Body data={data} dist={dist} eventsJson={eventsJson} isZh={isZh} lp={lp} />
         : <RecentEventBody event={curEvent} json={eventsJson} isZh={isZh} lp={lp} />}
@@ -534,15 +532,8 @@ function Recent333Body({ data, dist, eventsJson, isZh, lp }: {
   const [metric, setMetric] = useState('cross');
   const [step, setStep] = useState<number | null>(null);
   const sel = useSubsetSelection('dual');
-  // 概率视图专用的底色档:默认双色白黄(WY)。独立于类型视图的 sel —— 类型视图会被 findRarestSelection
-  // 自动定位到最稀有(单色)那格,概率视图不该被它带走,故各持一份。
-  const rareSel = useSubsetSelection('dual');
-  // 视图:'type' 按 变体/类型/底色/步数 下钻单桶(变体可选 LENGTH_VARIANT = 按原打乱长度分桶);
-  // 'rare' 在选定底色档内横扫全部 变体×类型,列出概率 < threshold 的稀有打乱。
-  const [mode, setMode] = useState<'type' | 'rare'>('type');
-  const [threshold, setThreshold] = useState(RARE_DEFAULT);
-  // 概率视图的「综合」档:合并全部底色档取跨档最稀有(picker 里的第 5 个选项)。与 rareSel 互斥。
-  const [rareAgg, setRareAgg] = useState(false);
+  // 最稀有固定展示全批最低概率结果；自选保留独立的筛选条件。
+  const [mode, setMode] = useState<'type' | 'rare'>(dist ? 'rare' : 'type');
 
   // 首屏一次性把默认选择定位到本批全局概率最低(最稀有)的那一格;用户手动改过任一选择器即不再覆盖。
   const pickedRef = useRef(false);
@@ -568,15 +559,6 @@ function Recent333Body({ data, dist, eventsJson, isZh, lp }: {
     selectByKey: (key: string) => { markTouched(); sel.selectByKey(key); },
   };
 
-  // 概率视图的底色选择器:点任一色块即退出「综合」;综合选中时 subsetKey 置空 = 不高亮任何色块。
-  const rarePickerSel: SubsetSelection = {
-    ...rareSel,
-    subsetKey: rareAgg ? '' : rareSel.subsetKey,
-    setColorMode: (m: ColorMode) => { setRareAgg(false); rareSel.setColorMode(m); },
-    selectOption: (id: string) => { setRareAgg(false); rareSel.selectOption(id); },
-    selectByKey: (key: string) => { setRareAgg(false); rareSel.selectByKey(key); },
-  };
-
   const hasData = (v: string) => {
     const r = data?.rank?.[v];
     if (!r) return false;
@@ -594,23 +576,24 @@ function Recent333Body({ data, dist, eventsJson, isZh, lp }: {
   const curVariant = variantOptions.includes(variant) ? variant : (variants[0] ?? 'std');
   const isLength = curVariant === LENGTH_VARIANT;
   // 聚合方法(lbl / block / eo)的指标散在多个数据变体里 -> 按映射逐个指标回查。
-  const stageVariantMap = curVariant === 'block' ? BLOCK_STAGE_VARIANT : curVariant === 'eo' ? EO_STAGE_VARIANT : null;
-  const metrics = useMemo(() => {
-    if (curVariant === 'lbl') {
-      return uiStagesOf(curVariant).filter((m) => {
-        const ref = variantDataRef(curVariant, m);
+  const metricsForVariant = useCallback((selectedVariant: string) => {
+    if (selectedVariant === 'lbl') {
+      return uiStagesOf(selectedVariant).filter((m) => {
+        const ref = variantDataRef(selectedVariant, m);
         return ref.recentMetric in (data?.rank?.[ref.variant] ?? {});
       });
     }
+    const stageVariantMap = selectedVariant === 'block' ? BLOCK_STAGE_VARIANT : selectedVariant === 'eo' ? EO_STAGE_VARIANT : null;
     if (stageVariantMap) {
       return RECENT_METRIC_ORDER.filter((m) => {
         const dv = stageVariantMap[m];
         return dv !== undefined && m in (data?.rank?.[dv] ?? {});
       });
     }
-    const r = data?.rank?.[curVariant];
-    return r ? RECENT_METRIC_ORDER.filter((m) => m in r) : [];
-  }, [data, curVariant, stageVariantMap]);
+    const rank = data?.rank?.[selectedVariant];
+    return rank ? RECENT_METRIC_ORDER.filter((m) => m in rank) : [];
+  }, [data]);
+  const metrics = useMemo(() => metricsForVariant(curVariant), [curVariant, metricsForVariant]);
   const curMetric = metrics.includes(metric) ? metric : (metrics[0] ?? 'cross');
   const aliasRef = variantDataRef(curVariant, curMetric);
   const dataVariant = aliasRef.variant;
@@ -654,35 +637,29 @@ function Recent333Body({ data, dist, eventsJson, isZh, lp }: {
     return `${lp}/scramble/stats${qs ? `?${qs}` : ''}`;
   }, [prob, curVariant, curMetric, isWhole, subsetKey, lp]);
 
-  // 稀有汇总:在选定底色档(rareSel)内、或「综合」(rareAgg=合并全档),概率 < threshold 的去重打乱
-  // (最稀有在前)。仅 rare 模式计算。
-  const rare = useMemo(
-    () => (mode === 'rare' && data && dist
-      ? collectRareScrambles(data, dist, threshold, rareAgg ? null : rareSel.subsetKey)
-      : []),
-    [mode, data, dist, threshold, rareAgg, rareSel.subsetKey],
-  );
+  // 跨所有底色和类型比较，保留最低概率的结果（含并列），不受自选条件影响。
+  const rare = useMemo(() => {
+    if (mode !== 'rare' || !data || !dist) return [];
+    const candidates = collectRareScrambles(data, dist, Infinity, null);
+    return candidates.filter(r => r.p === candidates[0]?.p);
+  }, [mode, data, dist]);
 
   const modePill = (
     <select
       value={String(mode === 'rare')}
       onChange={event => { const v = event.currentTarget.value === 'true'; setMode(v ? 'rare' : 'type'); }}
       aria-label={tr({ zh: '视图', en: 'View' })}
-      className="native-select"
+      className="rs-select"
     >
-      <option value="true">{tr({ zh: '概率', en: 'Rare' })}</option>
-      <option value="false">{tr({ zh: '类型', en: 'By type' })}</option>
+      <option value="true">{tr({ zh: '最稀有', en: 'Rarest' })}</option>
+      <option value="false">{tr({ zh: '自选', en: 'Custom' })}</option>
     </select>
   );
   const variantSelect = (
-    <VariantSelect
-      className="rs-select"
-      value={curVariant}
-      options={variantOptions}
-      onChange={(v) => { markTouched(); setVariant(v); }}
-      isZh={isZh}
-      label={variantLabel}
-      ariaLabel={tr({ zh: '变体', en: 'Variant' })}
+    <MethodStagePicker
+      isZh={isZh} method={curVariant} stage={curMetric} methods={variantOptions}
+      stagesOf={v => v === LENGTH_VARIANT ? [] : metricsForVariant(v)}
+      onSelect={(v, m) => { markTouched(); setVariant(v); if (m) setMetric(m); }}
     />
   );
 
@@ -700,28 +677,12 @@ function Recent333Body({ data, dist, eventsJson, isZh, lp }: {
   if (!data || variants.length === 0) return null;
 
   return (
-    <>
+    <div className="rs-body">
       <div className="rs-head">
         {modePill}
-        {mode === 'rare' ? (<>
-          <SubsetColorPicker sel={rarePickerSel} isZh={isZh} allOption={{ active: rareAgg, onSelect: () => setRareAgg(true) }} />
-          <select
-            className="rs-select"
-            value={threshold}
-            onChange={(e) => setThreshold(Number(e.target.value))}
-            aria-label={tr({ zh: '概率阈值', en: 'Probability threshold' })}
-            title={tr({ zh: '列出概率低于此值的近期打乱', en: 'List recent scrambles rarer than this' })}
-          >
-            {RARE_THRESHOLDS.map((t) => (
-              <option key={t.label} value={t.v}>{`< ${t.label}`}</option>
-            ))}
-          </select>
-        </>) : (<>
+        {mode === 'type' && (<>
         {!isWhole && <SubsetColorPicker sel={pickerSel} isZh={isZh} />}
         {variantSelect}
-        {metrics.length > 1 && (
-          <VariantSelect className="rs-select" value={curMetric} options={metrics} onChange={(v) => { markTouched(); setMetric(v); }} isZh={isZh} label={stageLabel} ariaLabel={tr({ zh: '类型', en: 'Type' })} />
-        )}
         {steps.length > 0 && (
           <select className="rs-select" value={curStep ?? ''} onChange={(e) => { markTouched(); setStep(Number(e.target.value)); }} aria-label={tr({ zh: '步数', en: 'Moves' })}>
             {steps.map((s) => (<option key={s} value={s}>{stepOptionLabel(s)}</option>))}
@@ -740,9 +701,8 @@ function Recent333Body({ data, dist, eventsJson, isZh, lp }: {
           <>
             <div className="rs-cards scroll-panel scroll-panel--hover-lift">
               {rare.slice(0, RARE_CAP).map((r) => {
-                // 综合视图:点显示整个胜出档的色集(多色档 = 扇形拼色),消除「多色档被当单色底」歧义。
-                // 具体档视图:档已由 picker 明示,点仍显示单个胜出色。
-                const aggColors = rareAgg ? subsetColorsOf(r.subsetKey) : [];
+                // 标明最低概率对应的底色档。
+                const aggColors = subsetColorsOf(r.subsetKey);
                 return (
                   <ScrambleCard
                     key={r.id}
@@ -766,9 +726,7 @@ function Recent333Body({ data, dist, eventsJson, isZh, lp }: {
               <div className="rs-rare-more">{tr({ zh: `仅显示最稀有的 ${RARE_CAP} 条(共 ${rare.length} 条)`, en: `Showing the ${RARE_CAP} rarest of ${rare.length}` })}</div>
             )}
           </>
-        ) : (
-          <div className="rs-empty">{tr({ zh: '本批暂无低于该概率的打乱', en: 'No scrambles below this probability in this batch' })}</div>
-        )
+        ) : null
       ) : entries.length > 0 ? (
         <div className="rs-cards scroll-panel scroll-panel--hover-lift">
           {entries.slice(0, 12).map(([id, color]) => (
@@ -778,7 +736,7 @@ function Recent333Body({ data, dist, eventsJson, isZh, lp }: {
       ) : (
         <div className="rs-empty">{tr({ zh: '该组合本批暂无数据', en: 'No data for this combination' })}</div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -814,7 +772,7 @@ function RecentEventBody({ event, json, isZh, lp, headExtra }: {
   const metaOf = (id: string) => json?.meta?.[id];
 
   return (
-    <>
+    <div className="rs-body">
       <div className="rs-head">
         {headExtra}
         {showLengthToggle && (
@@ -840,6 +798,6 @@ function RecentEventBody({ event, json, isZh, lp, headExtra }: {
           ))}
         </div>
       ) : null}
-    </>
+    </div>
   );
 }

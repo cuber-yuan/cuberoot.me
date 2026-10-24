@@ -11,6 +11,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, dirname, relative, sep } from 'node:path';
+import { findHistoryPushSites } from '../scripts/url-history-policy';
+import navigationHistory from '../scripts/navigation-history-allowlist.json';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..'); // packages/client
 const SCAN_DIRS = ['app', 'components', 'lib', 'hooks', 'i18n'];
@@ -25,6 +27,7 @@ const ALLOWLIST = new Set([
   'app/[lang]/recon/submit/ReconSubmitForm.tsx',      // cubedb 自定义编码(encodeUrlAlg)+ 编辑/?from 模式门控,nuqs 声明式 hook 无法复刻
   'app/[lang]/dev/stack/_tools/react-router.tsx',    // 文档示例文本(<code> 里展示 API 名),非真实调用
   'lib/url_hash.ts',                                 // URL 片段(#case 名):nuqs 只管 query string,不碰 hash;全站唯一一处写 hash
+  'lib/timer-practice-url-adapter.tsx',                // nuqs 自定义传输层；统一编码批量状态，业务组件继续使用 nuqs
 ]);
 
 // 另一团队的 roux 实验 WIP,不在本约定范围内;落地后再纳入
@@ -94,5 +97,60 @@ describe('URL state convention — no raw history.* / popstate (use nuqs)', () =
         '命中:\n' +
         violations.join('\n'),
     ).toEqual([]);
+  });
+
+  it('only pushes reviewed navigation states, never new filters or layouts', () => {
+    const actual = files.flatMap(file => {
+      const path = relative(ROOT, file).split(sep).join('/');
+      return findHistoryPushSites(readFileSync(file, 'utf8'), path)
+        .map(site => `${path}: ${site.call}`);
+    }).sort();
+    for (const entry of navigationHistory) expect(entry.reason.trim()).not.toBe('');
+    const allowed = navigationHistory.map(entry => `${entry.path}: ${entry.call}`).sort();
+    expect(actual, '筛选、排序、搜索、分页、布局及练习内切换用 replace。新增真实导航需在 scripts/navigation-history-allowlist.json 精确登记调用和理由；删除调用也应移除登记，不得整页豁免。').toEqual(allowed);
+  });
+
+  it('detects parser options, setter overrides, batch updates and conditional pushes', () => {
+    const source = `
+      const [events, setEvents] = useQueryState('psychEvent', parser.withOptions({ history: 'push' }));
+      setEvents('333oh,pyram', { history: 'push' });
+      const [query, setQuery] = useQueryStates({ page: parser }, { history: 'push' });
+      setQuery({ page: 2 }, { history: mobile ? 'push' : 'replace' });
+    `;
+    expect(findHistoryPushSites(source).map(site => site.call)).toEqual([
+      "useQueryState('psychEvent') history='push'",
+      "setEvents('333oh,pyram') history='push'",
+      "useQueryStates({page}) history='push'",
+      "setQuery({page}) history=mobile ? 'push' : 'replace'",
+    ]);
+  });
+
+  it('ignores comments and strings, and permits default/explicit replacement', () => {
+    expect(findHistoryPushSites(`
+      // useQueryState('page', parser.withOptions({ history: 'push' }));
+      const documentation = "history: 'push'";
+      const [page, setPage] = useQueryState('page', parser);
+      setPage(2, { history: 'replace' });
+    `)).toEqual([]);
+  });
+
+  it('keeps a batch parser navigation exception scoped to its own key', () => {
+    expect(findHistoryPushSites(`useQueryStates({
+      tool: parser.withOptions({ history: 'push' }),
+      filter: parser.withOptions({ history: 'push' }),
+    });`).map(site => site.call)).toEqual([
+      "useQueryStates({tool}) history='push'",
+      "useQueryStates({filter}) history='push'",
+    ]);
+  });
+
+  it('does not let an approved navigation permit a filter in the same file', () => {
+    const source = `
+      useQueryState('view', parser.withOptions({ history: 'push' }));
+      useQueryState('psychEvent', parser.withOptions({ history: 'push' }));
+    `;
+    const allowed = new Set(["useQueryState('view') history='push'"]);
+    expect(findHistoryPushSites(source).filter(site => !allowed.has(site.call)).map(site => site.call))
+      .toEqual(["useQueryState('psychEvent') history='push'"]);
   });
 });

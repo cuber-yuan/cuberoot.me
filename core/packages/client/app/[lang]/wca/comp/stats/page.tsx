@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import Link from '@/components/AppLink';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, ArrowUp, ArrowDown, ArrowRight, Mountain, Waves, Ghost } from 'lucide-react';
+import { ArrowLeft, ArrowUp, ArrowDown, ArrowRight, Mountain, Waves, Ghost } from '@app-foundation/icons/lucide';
 import { CountryInput } from '@/components/CountryInput';
 import { EventSelect } from '@/components/EventSelect';
 import { Flag } from '@/components/Flag';
@@ -24,6 +24,7 @@ import { RecordPlaceRankings } from './RecordPlaceRankings';
 import '../../_wca_stats_extra.css';
 import './calendar_stats.css';
 import { tr } from '@/i18n/tr';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 const EVENT_LIST = ['3x3', '2x2', '4x4', '5x5', '6x6', '7x7', '3bld', '4bld', '5bld', 'oh', 'sq1', 'pyra', 'mega', 'clock', 'skewb', 'fmc', 'mbld'];
 
@@ -183,7 +184,7 @@ export default function CalendarStatsPage() {
   const eventByCount = byEvent.length > 0 ? byEvent[0][1] : 1;
 
   if (!comps) {
-    return <div className="cs-page"><div className="cs-loading">{t('common.loading')}</div></div>;
+    return <div className="cs-page"><div className="cs-loading"><LoadingIndicator>{t('common.loading')}</LoadingIndicator></div></div>;
   }
 
   return (
@@ -495,7 +496,7 @@ function GeoExtremesSection({ comps, isZh }: { comps: Comp[]; isZh: boolean }) {
               </Link>
             </span>
             <span className="cs-geo-meta">
-              {[localizeCity(r.comp.city ?? '', isZh, r.comp.country), countryName(r.comp.country, isZh)].filter(Boolean).join(', ')} · {formatDateRangeIso(r.comp.start_date, r.comp.end_date)}
+              {[localizeCity(r.comp.city ?? '', isZh, r.comp.country), countryName(r.comp.country, isZh)].filter(Boolean).join(tr({ zh: '，', en: ', ' }))} · {formatDateRangeIso(r.comp.start_date, r.comp.end_date)}
             </span>
             <span className="cs-geo-value">{r.value}</span>
           </div>

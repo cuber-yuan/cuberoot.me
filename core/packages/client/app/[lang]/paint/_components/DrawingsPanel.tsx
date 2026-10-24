@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Plus, Trash2, Pencil, Check, Images } from 'lucide-react';
+import { X, Plus, Trash2, Pencil, Check, Images } from '@app-foundation/icons/lucide';
 import { Spinner } from '@/components/Spinner/Spinner';
 import { tr } from '@/i18n/tr';
 import { useT } from '@/hooks/useT';
@@ -12,6 +12,7 @@ import {
   renameDrawing,
   removeDrawing,
 } from '../_lib/cloud-store';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 interface Props {
   open: boolean;
@@ -82,7 +83,7 @@ export default function DrawingsPanel({ open, onClose }: Props) {
         {loading && (
           <div className="paint-drawings-empty">
             <Spinner size={16} />
-            <span>{t('加载中…', 'Loading…')}</span>
+            <span><LoadingIndicator>{t('加载中…', 'Loading…')}</LoadingIndicator></span>
           </div>
         )}
 

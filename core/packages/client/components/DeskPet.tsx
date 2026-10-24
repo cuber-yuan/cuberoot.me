@@ -1,4 +1,5 @@
 'use client';
+import { useDouyinToolSurface } from '@/lib/douyin-content';
 import { installedPetAvailable } from '@/lib/installed-content';
 
 // Clawd web desk pet — ported interaction engine from clawd-on-desk renderer.js.
@@ -82,10 +83,13 @@ const VC: Record<ThemeId, [number, number]> = {
   rootbeast: [0.5, 0.64],
 };
 
-// Viewport size excluding the scrollbar — CSS right/bottom anchor to this, not
-// to window.innerWidth (which includes the scrollbar → a ~15px drift per step).
-const vpW = () => document.documentElement.clientWidth;
-const vpH = () => document.documentElement.clientHeight;
+// Desktop fixed anchors exclude the scrollbar. Mobile layout overflow can widen
+// the fixed-position containing block beyond clientWidth/clientHeight; use its size
+// for coordinates, then clamp against visualViewport below.
+const vpW = () => window.matchMedia('(max-width: 767px)').matches
+  ? window.innerWidth : document.documentElement.clientWidth;
+const vpH = () => window.matchMedia('(max-width: 767px)').matches
+  ? window.innerHeight : document.documentElement.clientHeight;
 
 // Clamp the bottom-right anchor (right/bottom px) so the pet's visual center
 // (fraction fx,fy of its square box) may travel a touch PAST each viewport edge,
@@ -97,19 +101,21 @@ const PEEK = 0.08;
 const clampAnchor = (right: number, bottom: number, w: number, h: number, fx: number, fy: number) => {
   const cw = vpW(), ch = vpH();
   const mX = -w * PEEK, mY = -h * PEEK;
-  // Native navigation bars cannot receive WebView pointer events. Keep the
-  // entire pet vertically inside the visible WebView, including restored pets.
+  // Native navigation bars and mobile browser chrome cannot receive page pointer
+  // events. Keep the entire pet inside the visible height, including restored pets.
   // WeChat is included when iOS has not supplied the mini-program marker yet.
   const viewport = window.visualViewport;
-  const safe = mayUseMiniProgramBridge();
+  const safe = mayUseMiniProgramBridge() || window.matchMedia('(max-width: 767px)').matches;
   const style = safe ? getComputedStyle(document.documentElement) : null;
   const top = (viewport?.offsetTop ?? 0) + (parseFloat(style?.getPropertyValue('--sat') ?? '') || 0) + 8;
   const bottomEdge = Math.min(ch, (viewport?.offsetTop ?? 0) + (viewport?.height ?? ch))
     - (parseFloat(style?.getPropertyValue('--sab') ?? '') || 0) - 8;
   const minBottom = safe ? ch - bottomEdge : mY - h * (1 - fy);
   const maxBottom = safe ? Math.max(minBottom, ch - top - h) : ch - mY - h * (1 - fy);
+  const left = safe ? (viewport?.offsetLeft ?? 0) : 0;
+  const rightEdge = safe ? left + (viewport?.width ?? cw) : cw;
   return {
-    right: Math.min(Math.max(mX - w * (1 - fx), right), cw - mX - w * (1 - fx)),
+    right: Math.min(Math.max(cw - rightEdge + mX - w * (1 - fx), right), cw - left - mX - w * (1 - fx)),
     bottom: Math.min(Math.max(minBottom, bottom), maxBottom),
   };
 };
@@ -231,6 +237,7 @@ const CSS = `
 `;
 
 export default function DeskPet() {
+  const douyin = useDouyinToolSurface();
   const [mounted, setMounted] = useState(false);
   const [size, setSize] = useState<Size>('m');
   const [character, setCharacter] = useState<ThemeId>('rootbeast');
@@ -250,7 +257,6 @@ export default function DeskPet() {
   // so it survives client-side navigation and keeps ticking across pages.
   const [metronomeOpen, setMetronomeOpen] = useState(false);
   const pathname = usePathname();
-  const showSearch = !/^\/(?:zh|en)?\/?$/.test(pathname || '/');
   const user = useAuthStore((s) => s.user);
   const fbUnread = useFeedbackUnread();
   const isAdmin = hasAdminAccess(user);
@@ -324,7 +330,7 @@ export default function DeskPet() {
   // gesture so the mobile keyboard opens; the search overlay's real input then
   // takes over once it mounts (which is async, hence out of the gesture).
   const kbdRef = useRef<HTMLInputElement>(null);
-  const ctrlRef = useRef<{ rest: () => void; wake: () => void; cling: () => void; inMini: () => boolean; resetPos: () => void } | null>(null);
+  const ctrlRef = useRef<{ rest: () => void; wake: () => void; cling: () => void; inMini: () => boolean; resetPos: () => void; reposition: () => void } | null>(null);
   // Visual-center screen point captured right before a size/character change,
   // so the pet's visual center stays put (scales about itself; characters land
   // on the same point) instead of drifting from the bottom-right anchor.
@@ -383,40 +389,30 @@ export default function DeskPet() {
     };
   }, []);
 
-  // Keep the pet and its attached tools above the mobile search controls.
+  // Keep the pet and its attached tools above the mobile search input.
   // Move the actual anchor so dragging and the touch dismiss button still work.
   useEffect(() => {
     if (!searchOpen) return;
-    const avoidControls = () => {
-      const root = rootRef.current;
-      const box = document.querySelector('.deskpet-search-box');
-      const toolbar = document.querySelector('.deskpet-toolbar');
-      if (!root || !box || !toolbar || window.innerWidth > 768) return;
-      const pet = root.getBoundingClientRect();
-      const admin = root.querySelector('.admin-tools-surface')?.getBoundingClientRect();
-      const input = box.getBoundingClientRect(), controls = toolbar.getBoundingClientRect();
-      const top = Math.min(input.top, controls.top);
-      const bottom = Math.max(pet.bottom, admin?.bottom ?? pet.bottom);
-      if (Math.max(pet.right, admin?.right ?? pet.right) <= controls.left ||
-          Math.min(pet.left, admin?.left ?? pet.left) >= controls.right || bottom <= top - 12) return;
-      const dy = Math.min(bottom - top + 12, Math.max(0, pet.top - 12));
-      root.style.bottom = `${clampAnchor(vpW() - pet.right,
-        parseFloat(getComputedStyle(root).bottom) + dy, pet.width, pet.height, ...VC[character]).bottom}px`;
-    };
+    const avoidControls = () => ctrlRef.current?.reposition();
     const resize = new ResizeObserver(avoidControls);
     const observeControls = () => {
       const box = document.querySelector('.deskpet-search-box');
-      const toolbar = document.querySelector('.deskpet-toolbar');
-      if (!box || !toolbar) return;
+      if (!box) return;
       mount.disconnect();
-      resize.observe(box); resize.observe(toolbar);
+      resize.observe(box);
+      // Keyboard/URL-bar changes resize the parent even if the input stays the same size.
+      if (box.parentElement) resize.observe(box.parentElement);
+      // Responsive pet sizing and expanded tools can settle after the search mounts.
+      // Repositioning changes only offsets, so these size observations do not loop.
+      if (rootRef.current) resize.observe(rootRef.current);
+      const tools = rootRef.current?.querySelector('.admin-tools-surface');
+      if (tools) resize.observe(tools);
       avoidControls();
     };
     const mount = new MutationObserver(observeControls);
     mount.observe(document.body, { childList: true, subtree: true });
     observeControls();
-    window.visualViewport?.addEventListener('resize', avoidControls);
-    return () => { mount.disconnect(); resize.disconnect(); window.visualViewport?.removeEventListener('resize', avoidControls); };
+    return () => { mount.disconnect(); resize.disconnect(); };
   }, [searchOpen, character, size]);
 
   useEffect(() => {
@@ -1081,6 +1077,7 @@ export default function DeskPet() {
       wake: exitRest,
       cling: clingViaMenu,
       inMini: () => mini,
+      reposition: () => keepInViewport(),
       resetPos: () => {
         if (mini) liftFromMini(dnd ? 'sleeping' : 'idle');
         root.style.right = '';
@@ -1116,9 +1113,28 @@ export default function DeskPet() {
 
     const keepInViewport = () => {
       const r = root.getBoundingClientRect();
-      const c = clampAnchor(vpW() - r.right, vpH() - r.bottom, r.width, r.height, ...VC[character]);
-      root.style.right = (mini ? miniRight(false) : c.right) + 'px';
-      root.style.bottom = c.bottom + 'px';
+      let bottom = vpH() - r.bottom;
+      const box = window.innerWidth <= 768 ? document.querySelector<HTMLElement>('.deskpet-search-box') : null;
+      if (box?.parentElement) {
+        // The search animates from the pet. Reserve its final layout position,
+        // not the transient transformed bounds sampled during that animation.
+        const main = box.parentElement.getBoundingClientRect();
+        const paddingBottom = parseFloat(getComputedStyle(box.parentElement).paddingBottom) || 0;
+        const inputLeft = main.left + (main.width - box.offsetWidth) / 2;
+        const input = { left: inputLeft, right: inputLeft + box.offsetWidth,
+          top: main.bottom - paddingBottom - box.offsetHeight };
+        const admin = root.querySelector('.admin-tools-surface')?.getBoundingClientRect();
+        const controlBottom = Math.max(r.bottom, admin?.bottom ?? r.bottom);
+        if (Math.max(r.right, admin?.right ?? r.right) > input.left
+          && Math.min(r.left, admin?.left ?? r.left) < input.right && controlBottom > input.top - 12) {
+          bottom += Math.min(controlBottom - input.top + 12, Math.max(0, r.top - 12));
+        }
+      }
+      const c = clampAnchor(vpW() - r.right, bottom, r.width, r.height, ...VC[character]);
+      const rightStyle = (mini ? miniRight(false) : c.right) + 'px';
+      const bottomStyle = c.bottom + 'px';
+      if (root.style.right !== rightStyle) root.style.right = rightStyle;
+      if (root.style.bottom !== bottomStyle) root.style.bottom = bottomStyle;
     };
     keepInViewport();
     window.addEventListener('resize', keepInViewport);
@@ -1166,7 +1182,7 @@ export default function DeskPet() {
     };
   }, [mounted, hidden, character, randomMode, user, petAvailable, visibleKey]);
 
-  if (!mounted || hidden || !petAvailable) return null;
+  if (douyin || !mounted || hidden || !petAvailable) return null;
 
   const zh = lang === 'zh';
   const t = (z: string, e: string) => (zh ? z : e);
@@ -1211,13 +1227,13 @@ export default function DeskPet() {
       {/* Keyboard primer — focused inside the tap gesture so iOS/Android raise
           the soft keyboard before the (async) search input mounts. Must stay a
           real, non-readonly, non-display:none input or the keyboard won't show. */}
-      {showSearch && <input
+      <input
         ref={kbdRef}
         aria-hidden
         tabIndex={-1}
         inputMode="search"
         style={{ position: 'fixed', bottom: 0, left: 0, width: 1, height: 1, opacity: 0, padding: 0, margin: 0, border: 0, fontSize: 16, background: 'transparent', pointerEvents: 'none', zIndex: -1 }}
-      />}
+      />
       <div className={`clawd-deskpet${searchOpen ? ' pet-front' : ''}${touchActionsVisible ? ' touch-actions' : ''}`} data-size={size} data-char={character} data-original={ORIGINAL_CHARACTERS.some(pet => pet.id === character)} data-pixel={THEMES[character].pixel} ref={rootRef}>
         <style>{CSS}</style>
         <AdminTools centerX={VC[character][0]} />
@@ -1285,7 +1301,7 @@ export default function DeskPet() {
           className="clawd-deskpet-hit"
           ref={hitRef}
           aria-hidden
-          title={showSearch ? t('点我搜索 / 拖动', 'click to search · drag') : t('点我打开工具栏 / 拖动', 'click for tools · drag')}
+          title={t('点我搜索 / 拖动', 'click to search · drag')}
           onContextMenu={(e) => e.preventDefault()}
         />
       </div>
@@ -1293,7 +1309,6 @@ export default function DeskPet() {
       {searchOpen && (
         <DeskPetSearch
           lang={curLang}
-          showSearch={showSearch}
           origin={searchOriginRef.current}
           onClose={() => setSearchOpen(false)}
           onOpenPetHome={() => { setSearchOpen(false); setTouchActionsVisible(false); window.location.assign(`${curLang === 'zh' ? '/zh' : ''}/pets?pet=${character}`); }}

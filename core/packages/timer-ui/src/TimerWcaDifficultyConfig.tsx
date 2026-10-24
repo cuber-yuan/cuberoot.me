@@ -1,5 +1,6 @@
 import BoolToggle from './BoolToggle';
 import './compact-select.css';
+import { MethodStagePicker } from './TimerPuzzlePicker';
 import {
   normalizeTimerWcaDifficultySettings,
   reconcileTimerWcaDifficultySettings,
@@ -15,6 +16,7 @@ import {
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -85,6 +87,7 @@ export function TimerWcaDifficultyConfig({
   const [catalog, setCatalog] = useState<TimerWcaDifficultyCatalog>(EMPTY_CATALOG);
   const [coverage, setCoverage] = useState<TimerWcaDifficultyCoverage>('idle');
   const [draft, setDraft] = useState<Partial<TimerWcaDifficultySettings> | null>(null);
+  const difficultyTriggerRef = useRef<HTMLButtonElement>(null);
   const settings = { ...savedSettings, ...draft };
   const onChange = (patch: Partial<TimerWcaDifficultySettings>) => {
     if (draft !== null) setDraft(current => current === null ? null : { ...current, ...patch });
@@ -165,9 +168,9 @@ export function TimerWcaDifficultyConfig({
   const colorOption = timerColorSubsetOption(normalized.wcaDiffColors);
 
   const difficultyToggle = (
-    <button type="button" className="timer-difficulty-trigger" aria-haspopup="dialog"
+    <button ref={difficultyTriggerRef} type="button" className="timer-difficulty-trigger" aria-haspopup="dialog"
       aria-expanded={draft !== null} data-active={(!model.locked && savedSettings.wcaDifficultyOn) || undefined}
-      onClick={() => setDraft({ wcaDifficultyOn: true })} disabled={disabled}>
+      onClick={() => setDraft(current => current ? null : { wcaDifficultyOn: true })} disabled={disabled}>
       {labels.difficulty}
     </button>
   );
@@ -195,7 +198,7 @@ export function TimerWcaDifficultyConfig({
       {toggleSlot && createPortal(difficultyToggle, toggleSlot)}
       {mergeSlot && createPortal(mergeControl, mergeSlot)}
       {draft !== null && (
-        <TimerDifficultyDialog language={language} disabled={disabled} canApply={!model.locked}
+        <TimerDifficultyDialog anchorRef={difficultyTriggerRef} language={language} disabled={disabled} canApply={!model.locked}
           onClose={() => setDraft(null)}
           onApply={() => { persist(draft); setDraft(null); }}
           onClear={() => { persist({ wcaDifficultyOn: false }); setDraft(null); }}>
@@ -218,51 +221,20 @@ export function TimerWcaDifficultyConfig({
                     }}
                   />
                 )}
-                <select
-                  aria-label={labels.methodAriaLabel}
-                  className="timer-wca-difficulty-select"
-                  disabled={disabled}
-                  onChange={(event) => {
-                    const nextUiVariant = event.target.value;
-                    const nextStage = model.stageOptions[0]
-                      ?? timerWcaDifficultyUiModel(wcaEventId, {
-                        ...normalized,
-                        wcaDiffVariant: nextUiVariant,
-                      }, catalog, coverage).stageOptions[0];
-                    if (!nextStage) return;
+                <MethodStagePicker
+                  disabled={disabled} stagesDisabled={model.locked} isZh={language === 'zh'} method={model.uiVariant} stage={model.dataStage}
+                  methods={model.variantOptions}
+                  stagesOf={v => {
+                    const next = timerWcaDifficultyUiModel(wcaEventId, { ...normalized, wcaDiffVariant: v }, catalog, coverage);
+                    return next.showStage ? next.stageOptions : [];
+                  }}
+                  onSelect={(v, s) => {
                     const next = timerWcaDifficultyUiModel(wcaEventId, {
-                      ...normalized,
-                      wcaDiffVariant: nextUiVariant,
-                      wcaDiffStage: nextStage,
+                      ...normalized, wcaDiffVariant: v, ...(s ? { wcaDiffStage: s } : {}),
                     }, catalog, coverage);
                     onChange({ wcaDiffVariant: next.dataVariant, wcaDiffStage: next.dataStage });
                   }}
-                  value={model.uiVariant}
-                >
-                  {model.variantOptions.map((option) => (
-                    <option key={option} value={option}>{labels.methodLabel(option)}</option>
-                  ))}
-                </select>
-                {model.showStage && (
-                  <select
-                    aria-label={labels.stageAriaLabel}
-                    className="timer-wca-difficulty-select"
-                    disabled={disabled || model.locked}
-                    onChange={(event) => {
-                      const next = timerWcaDifficultyUiModel(wcaEventId, {
-                        ...normalized,
-                        wcaDiffVariant: model.uiVariant,
-                        wcaDiffStage: event.target.value,
-                      }, catalog, coverage);
-                      onChange({ wcaDiffVariant: next.dataVariant, wcaDiffStage: next.dataStage });
-                    }}
-                    value={model.dataStage}
-                  >
-                    {model.stageOptions.map((option) => (
-                      <option key={option} value={option}>{labels.stageLabel(option)}</option>
-                    ))}
-                  </select>
-                )}
+                />
               </div>
               {!model.locked && <div className="timer-wca-difficulty-range">
                 <TimerRangeSlider
