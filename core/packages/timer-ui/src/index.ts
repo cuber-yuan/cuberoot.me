@@ -2,6 +2,7 @@
 // Other modules can be dropped when unused: importing one shared hook must
 // not eagerly load online video, statistics or reconstruction workspaces.
 import './timing-surface.css';
+export { useLiveSmartCubeAttempt, TimerLiveSolutionPanel } from './live-smart-cube-attempt';
 import './timer-chrome.css';
 import './timer-stage-layout.css';
 import './timer-battle-layout.css';
@@ -323,7 +324,7 @@ export { TimerWorkspace, useTimerWideLayout, TIMER_WIDE_QUERY } from './TimerWor
 
 export { TimerSettingsPanel } from './TimerSettingsPanel';
 
-export { TimerGoalSettings, TimerRoundSettings, TIMER_TRAINING_SETTING_FIELD_IDS } from './TimerTrainingSettings';
+export { TimerGoalSettings, TimerRoundSettings, TimerTrainingTimingStatus, TIMER_TRAINING_SETTING_FIELD_IDS } from './TimerTrainingSettings';
 export { TimerGoalProgress } from './TimerGoalProgress';
 export { TimerRoundPanel, type RoundPanelProps } from './TimerRoundPanel';
 export { TimerTargetTime, useTimerTargetFeedback } from './TimerTargetTime';
@@ -370,3 +371,14 @@ export { TimerNetBattlePage, TimerNetBattleStage, TimerNetBattleEvent, type Time
 
 export { TimerDifficultyDialog } from './TimerDifficultyDialog';
 export { ReconCrossToggle } from './recon/ReconCrossToggle';
+export { TimerSoloLayoutEditor, type TimerSoloLayoutSettings } from './TimerSoloLayoutEditor';
+export { TimerResultsTabs } from './TimerResultsTabs';
+export { TimerPracticeContentPicker } from './TimerPracticeContentPicker';
+export { TimerPracticeMethodPicker, type TimerPracticeMethod } from './TimerPracticeMethodPicker';
+export { useTimerWcaCompetitionFilters } from './wca-competition-filters';
+export { useNetBattleLiveCube, type UseNetBattleLiveCubeOptions, type NetBattleLiveCubePlayer } from './net-battle-live';
+export { useNetBattleLiveView, type NetPkLock } from './net-battle-live-view';
+export { TimerNetPkArena } from './TimerNetPkArena';
+export { TimerRemoteLiveCube } from './TimerRemoteLiveCube';
+
+export { timerTrainingSummaries } from './training-statistics';

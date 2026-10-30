@@ -2,11 +2,14 @@
   "name": "reconer",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@12.6.0",
   "type": "module",
   "description": "魔方速拧视频自动复盘工具 (TypeScript 重构)",
   "scripts": {
     "research:status": "tsx scripts/research-status.ts",
     "data:audit": "tsx scripts/dataset-audit.ts",
+    "video:prepare": "tsx scripts/prepare-video-frames.ts",
+    "video:reconstruct": "tsx scripts/reconstruct-observations.ts",
     "evaluate": "tsx scripts/evaluate-reconstruction.ts",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -18,9 +21,6 @@
     "@typescript/native-preview": "latest",
     "tsx": "^4.23.0",
     "typescript": "^5.7.0",
-    "vitest": "^4.1.11"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "vitest": "^4.1.12"
   }
 }

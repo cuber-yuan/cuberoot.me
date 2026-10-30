@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
+import { STAGE_SOLVER_ASSETS } from '../../../scripts/copy-stage-solver-assets.mts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 
@@ -222,6 +223,7 @@ const CORE_PATHS = [
   repoPath('ops', 'systemd', 'cuberoot-drive-compression.service'),
   repoPath('ops', 'bin', 'provision-assistant-reader.sql'),
   repoPath('ops', 'nginx', 'purge-api-cache.ts'),
+  repoPath('ops', 'maintenance', 'prune-api-releases.ts'),
   repoPath('ops', 'systemd', 'cuberoot-assistant-knowledge.service'),
   repoPath('ops', 'systemd', 'cuberoot-assistant-knowledge.timer'),
   repoPath('.github', 'workflows', 'deploy_core.yml'),
@@ -251,6 +253,8 @@ const STATS_PATHS = [
   packagePath('stats-build', 'src', '**', '*.ts'),
   jobPath('stats-build', 'src', '**', '*.ts'),
   corePath('scripts', 'resolve-workspace-path.mjs'),
+  repoPath('ops', 'maintenance', 'stats-capacity.ts'),
+  repoPath('.github', 'workflows', 'stats.yml'),
 ] as const;
 
 const TEST_PATHS = [
@@ -268,6 +272,7 @@ const TEST_PATHS = [
   repoPath('.sync', '**'),
   repoPath('scripts', 'upstream', '**'),
   repoPath('ops', 'nginx', '**'),
+  repoPath('ops', 'maintenance', '**'),
   repoPath('ops', 'vercel-ban-relay', 'competition-rule.json'),
   repoPath('ops', 'systemd', 'cuberoot-drive-compression.service'),
   repoPath('ops', 'bin', 'pg-dump-recon.sh'),
@@ -276,6 +281,7 @@ const TEST_PATHS = [
   repoPath('.github', 'workflows', 'backup_recon.yml'),
   repoPath('.github', 'workflows', 'best2x2_drift.yml'),
   repoPath('.github', 'workflows', 'deploy_core.yml'),
+  repoPath('.github', 'workflows', 'cleanup_api_staging.yml'),
   repoPath('.github', 'workflows', 'deploy_next.yml'),
   repoPath('.github', 'workflows', 'elev_backfill.yml'),
   repoPath('.github', 'workflows', 'icons_drift.yml'),
@@ -283,6 +289,7 @@ const TEST_PATHS = [
   repoPath('.github', 'workflows', 'sq1_pbl_drift.yml'),
   repoPath('.github', 'workflows', 'stats.yml'),
   repoPath('.github', 'workflows', 'test.yml'),
+  repoPath('.github', 'workflows', 'app_release.yml'),
   repoPath('.github', 'workflows', 'update_upcoming.yml'),
 ] as const;
 
@@ -419,7 +426,7 @@ describe('deployment workflow path contracts', () => {
 
   it('queues every core-api writer without evicting unrelated pending releases', () => {
     const members = workflowNames().filter(name => readWorkflow(name).includes('group: deploy-core-production'));
-    expect(members.sort()).toEqual(['cube555_native.yml', 'deploy_core.yml', 'deploy_cubeopt_native.yml', 'wca_data_release.yml']);
+    expect(members.sort()).toEqual(['cleanup_api_staging.yml', 'cube555_native.yml', 'deploy_core.yml', 'deploy_cubeopt_native.yml', 'wca_data_release.yml']);
     for (const name of members) {
       const block = readWorkflow(name).match(/group: deploy-core-production\n(?:\s+(?:#.*|cancel-in-progress: false|queue: max)\n)+/)?.[0] ?? '';
       expect(block).toContain('cancel-in-progress: false');
@@ -853,16 +860,34 @@ describe('deployment workflow path contracts', () => {
       const block = workflow.slice(start, next < 0 ? undefined : start + 1 + next);
       for (const asset of [
         '/tools/cstimer-scramble/',
-        '/tools/solver/rust-cross/cross-solver-worker.js',
-        '/tools/solver/rust-cross/xcross-table-worker.js',
-        '/tools/solver/rust-cross/cross_solver.js',
-        '/tools/solver/rust-cross/cross_solver_bg.wasm',
+        ...STAGE_SOLVER_ASSETS.map(asset => `/tools/solver/rust-cross/${asset}`),
       ]) expect(block, `${job}: ${asset}`).toContain(asset);
+    }
+    for (const name of ['android_release.yml', 'app_release.yml']) {
+      const buildJob = readWorkflow(name).split('\n  build:\n')[1]?.split('\n  publish:\n')[0];
+      expect(buildJob, name).toBeDefined();
+      // Release jobs use cone mode and select the complete vendored directories.
+      expect(buildJob, name).toMatch(/^\s+tools\/solver\/rust-cross\s*$/m);
+      expect(buildJob, name).toMatch(/^\s+tools\/cstimer-scramble\s*$/m);
     }
     for (const domain of ['mobile', 'desktop']) {
       expect(workflowTriggers(readStepFilterPaths('test.yml', 'Detect affected inputs', domain), [
         repoPath('.github', 'workflows', 'test.yml'),
       ]), domain).toBe(true);
+    }
+  });
+
+  it('checks out the real Cross startup fixtures in both client test jobs', () => {
+    const startup = readFileSync(join(REPO_ROOT, packagePath('client', 'tests', 'rust_cross_startup.test.ts')), 'utf8');
+    const fixtures = [...startup.matchAll(/readFileSync\(path\.join\(assets, '([^']+)'\)/g)].map(match => match[1]);
+    expect(fixtures).toEqual(['cross-solver-worker.js', 'tables/pt_cross.bin.gz']);
+    const workflow = readWorkflow('test.yml');
+    for (const job of ['test', 'client-tests']) {
+      const start = workflow.indexOf(`\n  ${job}:\n`);
+      expect(start, job).toBeGreaterThan(-1);
+      const next = workflow.slice(start + 1).search(/\n  [a-z][a-z-]*:\n/);
+      const block = workflow.slice(start, next < 0 ? undefined : start + 1 + next);
+      for (const fixture of fixtures) expect(block, `${job}: ${fixture}`).toContain(`/tools/solver/rust-cross/${fixture}`);
     }
   });
 
@@ -959,6 +984,33 @@ describe('deployment workflow path contracts', () => {
     );
     expect(sq2Run).toContain('before=$(sha256sum ../stats/scramble/dist_sq2.json)');
     expect(sq2Run).toContain('test "$before" = "$(sha256sum ../stats/scramble/dist_sq2.json)"');
+  });
+
+  it('checks server capacity before computation and prunes releases only after healthy activation', () => {
+    const cleanup = readWorkflow('cleanup_api_staging.yml');
+    expect(cleanup).toContain("workflows: ['Deploy Core']");
+    expect(cleanup).toContain('types: [completed]');
+    expect(cleanup).toContain("cron: '23 */6 * * *'");
+    expect(cleanup).toContain('ref: main');
+    expect(cleanup.indexOf('- name: Verify cleanup safety before deletion')).toBeLessThan(cleanup.indexOf('- name: Remove verified completed deployment staging'));
+    expect(readStepFilterPaths('test.yml', 'Detect affected inputs', 'client')).toContain('.github/workflows/cleanup_api_staging.yml');
+    const stats = readWorkflow('stats.yml');
+    const preflight = stats.indexOf('- name: Check server capacity before computation');
+    expect(preflight).toBeGreaterThan(-1);
+    for (const name of ['Activate MySQL', 'Download and import WCA database', 'Compute all statistics']) {
+      expect(preflight).toBeLessThan(stats.indexOf(`- name: ${name}`));
+    }
+    expect(stats.match(/id: stats_ssh/g)).toHaveLength(1);
+    expect(readStepRun('stats.yml', 'Check server capacity before computation')).toContain("node '$stage/stats-capacity.ts'");
+    const run = readStepRun('deploy_core.yml', 'Deploy server');
+    expect(run.indexOf('node "$final/prune-api-releases.ts" --apply --previous "$previous_dist"')).toBeGreaterThan(run.indexOf('pm2 save\ntrap - ERR'));
+    expect(run.indexOf('flock -n 9')).toBeGreaterThan(-1);
+    expect(run.indexOf('flock -n 9')).toBeLessThan(run.indexOf('mv -Tf "$pending_link" dist'));
+    const coreWorkflow = readWorkflow('deploy_core.yml');
+    expect(coreWorkflow.indexOf('- name: Verify release retention before deployment')).toBeGreaterThan(-1);
+    expect(coreWorkflow.indexOf('- name: Verify release retention before deployment')).toBeLessThan(coreWorkflow.indexOf('- name: Deploy server'));
+    expect(readStepFilterPaths('test.yml', 'Detect affected inputs', 'client')).toContain('ops/maintenance/**');
+    expect(readWorkflow('test.yml')).toContain('/ops/maintenance/');
   });
 
   it('atomically deploys CubeOpt with the same dotenv gate and rollback contract', () => {

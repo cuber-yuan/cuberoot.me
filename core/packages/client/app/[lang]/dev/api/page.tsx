@@ -66,16 +66,32 @@ const DOMAINS: { key: string; zh: string; en: string }[] = [
 //   equals the set mounted via app.route('/v1', …) in apps/api/src/index.ts.
 //   CI red here = a newly-mounted route is undocumented: add its endpoints below,
 //   then add the file stem to this list.
-//   account_auth account_face admin_assistant admin_dashboard admin_disk alg alg_lsll alg_marks alg_preferred_algs alg_srs alg_sets alg_sweep alg_time_attack_order announced_comps app_boot_diagnostics article auth battle_rooms calendar cn_comp_names colpi
+//   career_applications account_auth account_face admin_assistant admin_dashboard admin_disk alg alg_lsll alg_marks alg_preferred_algs alg_srs alg_sets alg_sweep alg_time_attack_order announced_comps app_boot_diagnostics article auth battle_rooms calendar cn_comp_names colpi
 //   chat comp_follows creator_gallery cube cubeopt_solve cubing_live documents downloads drive feedback forum friends geo health historical_ranks pb private_vault
-//   membership membership_benefits membership_apple membership_google membership_subscriptions music nav_sites pets nemesizer notifications ops remote_access dev_preview page_notices paint pattern_examples platform_catalog platform_commerce platform_content platform_learning platform_qr progress quiz recon recon_ground_truth recon_intake scramble_555 teacher_directory teaching teaching_saas
+//   membership membership_benefits membership_apple membership_google membership_subscriptions music nav_sites pets nemesizer notifications ops remote_access dev_preview page_notices paint pattern_examples platform_catalog platform_commerce platform_content platform_learning platform_qr progress quiz recon recon_ground_truth recon_intake recon_capture scramble_555 teacher_directory teaching teaching_saas
 //   smart_cube_macs scramble_marks sim_masks sms_receipt sponsors timer_backups timer_boot_telemetry timer_presence trainer_rooms wca_format wca_fun_stats wca_person wca_proxy
-//   video_rooms wca_recent_records wca_result_watch wca_schedule wca_scrambles wca_stats_extra wca_teachers wca_teams wca_training_institutions wechat_jssdk wechat_pc_opensdk wiki
+//   video_rooms wca_recent_records wca_result_watch wca_schedule wca_scrambles wca_stats_extra wca_teachers wca_teams wca_training_institutions wca_translations wechat_jssdk wechat_pc_opensdk wiki
 //   platform_competitions platform_competition_attempts platform_competition_evidence platform_competition_settlements platform_competition_device_reports platform_organizer_applications platform_refunds
-//   enterprise_verification contests workspace
-//   mcp mcp_oauth onboarding timer_replay_shares site_assistant cube_agents
+//   enterprise_verification contests workspace app_releases
+//   mcp mcp_oauth onboarding timer_replay_shares site_assistant site_assistant_shares cube_agents
 // ─ covers-routes-end ─
 const ENDPOINTS: Ep[] = [
+  { d: 'recon', m: 'GET', p: '/v1/recon-captures/status', g: 'admin', c: 'no-store', zh: '上传前核对采集服务、同库 Drive 及当前身份', en: 'Check capture service, same-database Drive and identity before upload' },
+  { d: 'recon', m: 'POST', p: '/v1/recon-captures', g: 'admin', c: 'no-store', zh: '管理员将原始动作绑定私有 Drive 视频，幂等创建采集样本', en: 'Human administrator binds original moves to a private Drive video idempotently' },
+  { d: 'recon', m: 'GET', p: '/v1/recon-captures', g: 'admin', c: 'no-store', zh: '读取采集样本队列，支持 AI 只读密钥', en: 'Read video capture queue, including read-only AI key access' },
+  { d: 'recon', m: 'GET', p: '/v1/recon-captures/:id', g: 'admin', c: 'no-store', zh: '读取原始记录、上传进度、完整性及对齐状态', en: 'Read original recording, upload progress, integrity and alignment' },
+  { d: 'recon', m: 'POST', p: '/v1/recon-captures/:id/complete', g: 'admin', c: 'no-store', zh: '原上传者核对完整原片分块指纹并进入待确认', en: 'Original uploader verifies full video chunk fingerprints and queues review' },
+  { d: 'recon', m: 'POST', p: '/v1/recon-captures/:id/sync', g: 'admin', c: 'no-store', zh: '原上传者按版本保存人工视频对齐锚点，不确认训练真值', en: 'Original uploader saves versioned video alignment anchors without approving training truth' },
+  { d: 'recon', m: 'GET', p: '/v1/recon-captures/:id/video', g: 'admin', c: 'no-store', zh: '鉴权读取已校验的私有原片，支持 Range', en: 'Authenticated byte-range access to verified private original video' },
+  { d: 'recon', m: 'HEAD', p: '/v1/recon-captures/:id/video', g: 'admin', c: 'no-store', zh: '鉴权读取私有原片元数据', en: 'Authenticated private original video metadata' },
+  { d: 'content', m: 'GET', p: '/v1/career-applications/status', g: 'public', c: 'no-store', zh: '招聘投递服务可用状态', en: 'Career application availability' },
+  { d: 'content', m: 'POST', p: '/v1/career-applications', g: 'public', c: 'no-store', zh: '提交招聘申请及附件', en: 'Submit a career application and attachments' },
+  { d: 'content', m: 'GET', p: '/v1/career-applications', g: 'admin', c: 'no-store', zh: '管理员读取招聘申请', en: 'Administrator reads career applications' },
+  { d: 'content', m: 'DELETE', p: '/v1/career-applications/:id', g: 'admin', c: 'no-store', zh: '管理员删除招聘申请及附件', en: 'Administrator deletes an application and its attachments' },
+  { d: 'content', m: 'GET', p: '/v1/career-applications/:id/:file', g: 'admin', c: 'no-store', zh: '管理员下载申请附件', en: 'Administrator downloads application attachments' },
+  { d: 'content', m: 'POST', p: '/v1/site-assistant/shares', g: 'login', c: 'no-store', zh: '本人问答显式创建单条文字快照，不含图片及其他对话', en: 'Explicit owner-only single-message text snapshot without images or other turns' },
+  { d: 'content', m: 'GET', p: '/v1/site-assistant/shares/:id', g: 'public', c: 'no-store', zh: '读取公开消息，不返回用户或请求身份；不缓存、不索引', en: 'Read shared text without owner/request identity; no caching or indexing' },
+  { d: 'content', m: 'DELETE', p: '/v1/site-assistant/shares/:id', g: 'login', c: 'no-store', zh: '仅分享创建者可撤销链接', en: 'Only the owner may revoke a link' },
   { d: 'recon', m: 'GET', p: '/v1/recon-intake', g: 'admin', zh: '读取复盘待办队列', en: 'List reconstruction intake' },
   { d: 'recon', m: 'POST', p: '/v1/recon-intake', g: 'admin', zh: '收录原始录像与批注', en: 'Collect recording and annotations' },
   { d: 'recon', m: 'GET', p: '/v1/recon-intake/:id', g: 'admin', zh: '样本与测试历史', en: 'Case and test history' },
@@ -85,10 +101,12 @@ const ENDPOINTS: Ep[] = [
   { d: 'recon', m: 'POST', p: '/v1/recon-intake/:id/review', g: 'admin', zh: '管理员验收或修改批注', en: 'Administrator review or annotation revision' },
   { d: 'account', m: 'GET', p: '/v1/smart-cube/macs', g: 'login', c: 'no-store', zh: '读取我的智能魔方地址', en: 'Read my smart cube addresses' },
   { d: 'account', m: 'PATCH', p: '/v1/smart-cube/macs', g: 'login', c: 'no-store', zh: '按设备保存或删除智能魔方地址', en: 'Save or remove smart cube addresses per device' },
-  { d: 'account', m: 'GET', p: '/v1/workspace/:action', g: 'login', c: 'no-store', zh: 'CubeRoot 员工身份、项目、工作记录与讨论；按员工及项目权限过滤', en: 'CubeRoot employee session, projects, reports and discussion, filtered by grants' },
-  { d: 'account', m: 'POST', p: '/v1/workspace/:action', g: 'login', c: 'no-store', zh: '员工记录与评论；member/project 仅管理员，服务端逐次检查权限', en: 'Employee reports and comments; member/project require administrator access on every write' },
+  { d: 'account', m: 'GET', p: '/v1/workspace/:action', g: 'login', c: 'no-store', zh: '员工身份、项目、工作时段报告、讨论、清单和排期；按资格过滤后分页', en: 'Employee session, projects, work-hour reports, discussion, checklists and schedules; access-filtered pagination' },
+  { d: 'account', m: 'POST', p: '/v1/workspace/:action', g: 'login', c: 'no-store', zh: '报告、评论与共享清单；checklist-delete / schedule-delete 按 id/version 删除整份清单或排期；排期写入和删除需负责人，member/project 需管理员；逐次检查项目资格和版本', en: 'Reports, comments and checklists; checklist-delete / schedule-delete remove a whole list or schedule by id/version; schedule writes and deletions require managers, member/project require admins; project and version checks on every write' },
   { d: 'comp', m: 'GET', p: '/v1/contests', g: 'public', c: 'short', zh: 'Contests 公开项目、比赛、纪录、排名及选手；view 选择资源，支持 event/region/group/category/type/history/id/q/offset，成绩格式由 RecordRanks 提供', en: 'Public Contests catalog, competitions, records, rankings and persons; select view, filter by event/region/group/category/type/history/id/q/offset; RecordRanks formats results' },
-  { d: 'content', m: 'POST', p: '/v1/downloads/events', g: 'public', c: 'no-store', zh: '匿名记录 Android 下载入口点击；仅接受 play/apk 渠道与 en/zh 语言，正文最多 256 字节，按 IP 限流', en: 'Record anonymous Android download-entry clicks; accepts only play/apk channels and en/zh languages, with a 256-byte body limit and per-IP rate limiting' },
+  { d: 'content', m: 'POST', p: '/v1/downloads/events', g: 'public', c: 'no-store', zh: '匿名记录 Android / Windows 下载入口点击；接受 play、apk、windows-installer、windows-portable 渠道与 en/zh 语言，正文最多 256 字节，按 IP 限流', en: 'Record anonymous Android / Windows download clicks; accepts play, apk, windows-installer and windows-portable channels and en/zh languages, with a 256-byte body limit and per-IP rate limiting' },
+  { d: 'content', m: 'GET', p: '/v1/admin/app-releases', g: 'admin', c: 'no-store', zh: '读取发布配置状态、当前提交、待处理请求和构建结果', en: 'Read release configuration status, current commit, pending request and build results' },
+  { d: 'content', m: 'POST', p: '/v1/admin/app-releases', g: 'admin', c: 'no-store', zh: '按请求 ID、精确提交及平台派发发布，返回防重试回执', en: 'Dispatch a release by request ID, exact commit and platform, returning an idempotent receipt' },
   { d: 'enterprise-verification', m: 'POST', p: '/v1/enterprise-verification/admin/applications/:id/receipt', g: 'admin', c: 'no-store', zh: '登记实际银行到账，包含异常或过期来款，不授予认证', en: 'Record actual bank receipts, including mismatches and late transfers, without granting certification' },
   { d: 'enterprise-verification', m: 'GET', p: '/v1/enterprise-verification/organizations/:slug', g: 'login', c: 'no-store', zh: '读取企业认证状态', en: 'Read enterprise verification' },
   { d: 'enterprise-verification', m: 'POST', p: '/v1/enterprise-verification/organizations/:slug', g: 'login', c: 'no-store', zh: '申请对公账户认证', en: 'Apply for corporate account verification' },
@@ -102,7 +120,10 @@ const ENDPOINTS: Ep[] = [
   { d: 'enterprise-verification', m: 'POST', p: '/v1/enterprise-verification/admin/applications/:id/revoke', g: 'admin', c: 'no-store', zh: '撤销认证', en: 'Revoke enterprise verification' },
   { d: 'wca-data', m: 'GET', p: '/v1/wca/training-institutions', g: 'public', c: 'no-store', zh: '公开培训机构目录及学生机构归属，支持未参赛学生', en: 'Public training institutions and WCA/named student affiliations' },
   { d: 'wca-data', m: 'PUT', p: '/v1/wca/training-institutions/:studentKey', g: 'admin', zh: '管理员独立设置或清除学生培训机构，不修改老师或战队', en: 'Admin sets or clears an institution independently of teacher and team' },
-  { d: 'wca-data', m: 'GET', p: '/v1/wca/teams', g: 'public', c: 'no-store', zh: '战队目录及选手战队批量查询', en: 'Team directory and batch cuber assignments' },
+  { d: 'wca-data', m: 'GET', p: '/v1/wca/translations', g: 'public', c: 'short', zh: '官方英中译文检索；重复 q 批量查询，返回来源版本与后备链接', en: 'Official bilingual lookup; repeated q for batches, with provenance and fallback links' },
+  { d: 'wca-data', m: 'GET', p: '/v1/wca/translations/status', g: 'public', c: 'no-store', zh: '翻译索引覆盖范围及同步状态', en: 'Translation index coverage and sync status' },
+  { d: 'wca-data', m: 'POST', p: '/v1/wca/translations/sync', g: 'admin', c: 'no-store', zh: '从 WCA Weblate 原子同步官方译文', en: 'Atomically synchronize translations from WCA Weblate' },
+  { d: 'wca-data', m: 'GET', p: '/v1/wca/teams', g: 'public', c: 'no-store', zh: '战队与选手归属；directory=1 返回人数及按三阶平均排序的分页成员，支持 team/q', en: 'Teams and assignments; directory=1 returns counts and paginated members ordered by 3x3 average, with team/q filters' },
   { d: 'wca-data', m: 'PUT', p: '/v1/wca/teams/:wcaId', g: 'admin', zh: '管理员选择、自定义或清除选手战队', en: 'Admin assigns, creates, or clears a cuber team' },
   { m: 'GET', p: '/v1/auth/onboarding', d: 'auth', g: 'login', c: 'no-store', zh: '读取当前账号的首页导览已看标记；不缓存', en: 'Read the signed-in account’s homepage tour status; no cache' },
   { m: 'PUT', p: '/v1/auth/onboarding', d: 'auth', g: 'login', c: 'no-store', zh: '将当前账号标记为已看导览；幂等，不接受其他账号 ID', en: 'Mark the current account’s tour as seen; idempotent, accepts no target account ID' },
@@ -251,7 +272,7 @@ const ENDPOINTS: Ep[] = [
   { d: 'wca-data', m: 'GET', p: '/v1/wca/historical-ranks/countries', g: 'public', c: 'cdn', zh: '国家列表', en: 'Country list' },
   { d: 'wca-data', m: 'GET', p: '/v1/wca/historical-ranks/meta', g: 'public', c: 'cdn', zh: '时间线元信息', en: 'Timeline meta' },
   { d: 'wca-data', m: 'GET', p: '/v1/wca/recent-records', g: 'public', zh: '近期纪录(WCA Live 轮询)', en: 'Recent records (WCA Live poll)' },
-  { d: 'wca-data', m: 'GET', p: '/v1/wca/teachers', g: 'public', c: 'cdn', zh: '按选手与项目批量读取老师，或按老师反查学生', en: 'Batch-read teachers by cuber and event, or students by teacher' },
+  { d: 'wca-data', m: 'GET', p: '/v1/wca/teachers', g: 'public', c: 'cdn', zh: '按选手与项目批量读取老师，或按老师反查学生；options=1 返回项目老师筛选目录（no-store）', en: 'Batch-read teachers or students; options=1 returns event teacher filter options (no-store)' },
   { d: 'wca-data', m: 'PUT', p: '/v1/wca/teachers/:studentId/:eventId', g: 'login', zh: '有效会员按项目登记自己；管理员可代填', en: 'Active member self-registration per event; admin assignment' },
   { d: 'wca-data', m: 'DELETE', p: '/v1/wca/teachers/:studentId/:eventId', g: 'login', zh: '老师本人或管理员按项目撤销关系', en: 'Teacher or admin removes an event relation' },
   { d: 'wca-data', m: 'GET', p: '/v1/wca/comp/:id/schedule', g: 'public', c: 'cdn', zh: '比赛赛程(服务端缓存)', en: 'Competition schedule (cached)' },
@@ -623,6 +644,11 @@ const ENDPOINTS: Ep[] = [
   { d: 'platform', m: 'GET', p: '/v1/platform/instructor/earnings', g: 'login', c: 'no-store', zh: '按订单账本计算讲师收入', en: 'Instructor earnings derived from order ledgers' },
   { d: 'platform', m: 'GET', p: '/v1/platform/instructor/payout-profile', g: 'login', c: 'no-store', zh: '读取自己的加密结算资料状态', en: 'Read owned encrypted payout-profile status' },
   { d: 'platform', m: 'PUT', p: '/v1/platform/instructor/payout-profile', g: 'login', c: 'no-store', zh: '保存自己的加密结算资料，需要幂等键', en: 'Save an owned encrypted payout profile with an idempotency key' },
+  { d: 'platform', m: 'POST', p: '/v1/platform/instructor/payout-profile/wechat', g: 'login', c: 'no-store', zh: '绑定微信收款身份', en: 'Bind a WeChat payout identity' },
+  { d: 'platform', m: 'GET', p: '/v1/platform/instructor/payouts', g: 'login', c: 'no-store', zh: '查看自己的提现及可用余额', en: 'Read owned payouts and available balance' },
+  { d: 'platform', m: 'POST', p: '/v1/platform/instructor/payouts', g: 'login', c: 'no-store', zh: '申请佣金提现', en: 'Request a commission payout' },
+  { d: 'platform', m: 'POST', p: '/v1/platform/instructor/payouts/:id/receipt', g: 'login', c: 'no-store', zh: '查询提现收款确认信息', en: 'Read payout receipt confirmation' },
+  { d: 'platform', m: 'POST', p: '/v1/platform/payouts/wechat/notify', g: 'webhook', c: 'no-store', zh: '接收微信转账通知', en: 'Receive WeChat transfer notifications' },
   { d: 'platform', m: 'POST', p: '/v1/platform/instructor/certificates', g: 'login', c: 'no-store', zh: '为自有课程学员签发证书', en: 'Issue a certificate for an owned-course learner' },
 
   // ---- platform: administrator ----
@@ -695,6 +721,7 @@ const ENDPOINTS: Ep[] = [
   { d: 'platform', m: 'GET', p: '/v1/platform/admin/instructor-payouts', g: 'admin', c: 'no-store', zh: '讲师结算批次', en: 'Instructor payout batches' },
   { d: 'platform', m: 'POST', p: '/v1/platform/admin/instructor-payouts/generate', g: 'admin', c: 'no-store', zh: '从未结算收入账本生成结算批次', en: 'Generate a payout batch from unsettled earnings ledgers' },
   { d: 'platform', m: 'POST', p: '/v1/platform/admin/instructor-payouts/:id/approve', g: 'admin', c: 'no-store', zh: '批准待处理结算并审计', en: 'Approve a pending payout with audit evidence' },
+  { d: 'platform', m: 'POST', p: '/v1/platform/admin/instructor-payouts/:id/refresh-wechat', g: 'admin', c: 'no-store', zh: '发起或核对微信提现转账', en: 'Dispatch or reconcile a WeChat payout transfer' },
   { d: 'platform', m: 'POST', p: '/v1/platform/admin/instructor-payouts/:id/paid', g: 'admin', c: 'no-store', zh: '标记结算已支付并审计', en: 'Mark a payout paid with audit evidence' },
   { d: 'platform', m: 'POST', p: '/v1/platform/admin/instructor-payouts/:id/reconcile-processing-refund', g: 'admin', c: 'no-store', zh: '人工核对处理中退款后完成结算', en: 'Finalize a payout after reconciling a processing refund' },
   { d: 'platform', m: 'POST', p: '/v1/platform/admin/reconciliation/runs', g: 'admin', c: 'no-store', zh: '创建支付对账批次', en: 'Create a payment reconciliation run' },
@@ -1075,6 +1102,7 @@ const ENDPOINTS: Ep[] = [
   { d: 'calendar', m: 'PATCH', p: '/v1/calendar/calendars/:id', g: 'login', zh: '改日历名字 / 颜色 / 时区', en: 'Rename / recolour / re-zone a calendar' },
   { d: 'calendar', m: 'DELETE', p: '/v1/calendar/calendars/:id', g: 'login', zh: '删日历(主日历不可删)', en: 'Delete a calendar (not the default one)' },
   { d: 'calendar', m: 'GET', p: '/v1/calendar/events', g: 'login', c: 'no-store', zh: '窗口内事件(含受邀的);重复事件整取,由前端展开', en: 'Events in a window (invitations included); recurring masters are returned whole and expanded client-side' },
+  { d: 'calendar', m: 'POST', p: '/v1/calendar/competitions', g: 'login', zh: '将比赛去重加入个人日程，保留已有内容', en: 'Add competitions to personal events without duplicates or overwriting existing content' },
   { d: 'calendar', m: 'POST', p: '/v1/calendar/events', g: 'login', zh: '新建日程', en: 'Create an event' },
   { d: 'calendar', m: 'PATCH', p: '/v1/calendar/events/:id', g: 'login', zh: '改日程,?scope=this|following|all 决定动这一次 / 此后 / 整条序列', en: 'Edit an event; ?scope=this|following|all picks this occurrence, the tail, or the whole series' },
   { d: 'calendar', m: 'DELETE', p: '/v1/calendar/events/:id', g: 'login', zh: '删日程(同样分 scope)', en: 'Delete an event (same scopes)' },

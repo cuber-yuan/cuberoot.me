@@ -1,6 +1,10 @@
+import { timerTrainingSummaries } from '@cuberoot/timer-ui';
+import { createPortal } from 'react-dom';
+import { useTimerWcaCompetitionFilters, TimerPracticeContentPicker, TimerPracticeMethodPicker, TimerResultsTabs, TimerSoloLayoutEditor } from '@cuberoot/timer-ui';
+import { timerPracticeContents, selectedTimerPracticeContent, type TimerPracticeContent } from '@cuberoot/shared/timer';
 import { SiteCorners } from "@2017yanr02/continuous-corners/react";
 import { shareOrDownloadBackup } from './file-export';
-import { AndroidUpdateNotice } from './AndroidUpdateNotice';
+import { InstalledUpdateNotice } from './AndroidUpdateNotice';
 import { UURemotePanel } from './UURemotePanel';
 import { TimerSoloPage, timerSoloModalState, useTimerSoloCompactLayout } from '@cuberoot/timer-ui/TimerSoloPage';
 import { InstalledBleHost, installedBleRequestPort } from './installed-ble-host';
@@ -38,7 +42,7 @@ import { timerHidesRunningUi } from '@cuberoot/shared/timer';
 import { startWatchTimerSync } from './watch-timer-sync';
 import type { TimerSettingsUpdate } from './data/timer-repository';
 import { TimerKeymapSettings, useTimerRound, TimerGoalSettings, TimerRoundSettings, TimerGoalProgress, TimerRoundPanel, TimerTargetTime, useTimerTargetFeedback } from '@cuberoot/timer-ui';
-import { normalizeTimerTrainingSettings } from '@cuberoot/shared/timer';
+import { normalizeTimerTrainingSettings, timerSupportsTrainingTiming } from '@cuberoot/shared/timer';
 import { smartCubeTargetFacelets } from '@cuberoot/shared/smart-cube/cubie';
 import { normalizeWcaScramble } from '@cuberoot/shared/normalize-wca-scramble';
 import { LiveSmartCubeAnchor, type LiveSmartCubeAnchorSnapshot } from '@cuberoot/shared/smart-cube/anchor';
@@ -47,7 +51,8 @@ import {
   TIMER_DEVICE_REGISTRATIONS,
 } from '@cuberoot/shared/timer/device-contract';
 import { SmartCubeAttemptProducer } from '@cuberoot/shared/timer/smart-cube-attempt';
-import type { Quat } from '@cuberoot/shared/smart-cube/orientation';
+import { useLiveSmartCubeAttempt, TimerLiveSolutionPanel, TimerTrainingTimingStatus } from '@cuberoot/timer-ui';
+import { sensorBasisForBrand, mirrorForBrand, type Quat } from '@cuberoot/shared/smart-cube/orientation';
 import LiveCubeState from '@cuberoot/timer-ui/LiveCubeState';
 import { encodeReplayUrl } from '@cuberoot/shared/timer/replay-encode';
 import { shouldAutoRecap } from '@cuberoot/shared/timer/reconstruct/recap';
@@ -101,8 +106,6 @@ import {
   formatTimerTimingDisplay,
   generateTimerDrillScramble,
   isCnEligible,
-  TIMER_333_TRAINING_GROUPS,
-  timerPuzzleSelection,
   generateTimerScramble,
   histBack,
   histForward,
@@ -260,11 +263,12 @@ import {
 import {
   Clock3,
   Grid2X2,
+  LayoutTemplate,
   Settings as SettingsIcon,
   UserRound,
   X,
 } from 'lucide-react';
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode, type MouseEvent as ReactMouseEvent } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent, type ReactNode, type MouseEvent as ReactMouseEvent } from 'react';
 
 import {
   COPY,
@@ -482,6 +486,7 @@ export function App({ host }: { host: InstalledAppHost }) {
   const primaryNavRef = useRef<HTMLElement>(null);
   const [connection, setConnection] = useState<ConnectionState>('checking');
   const [wcaDifficultyCoverage, setWcaDifficultyCoverage] = useState<TimerWcaDifficultyCoverage>('idle');
+  const [wcaSourceSlot, setWcaSourceSlot] = useState<HTMLDivElement | null>(null);
   const [wcaTopControlsSlot, setWcaTopControlsSlot] = useState<HTMLSpanElement | null>(null);
   const [wcaDifficultyToggleSlot, setWcaDifficultyToggleSlot] = useState<HTMLSpanElement | null>(null);
   const [mobileWcaPool] = useState(createMobileWcaPool);
@@ -524,7 +529,7 @@ export function App({ host }: { host: InstalledAppHost }) {
   const fullscreenRef = useRef(fullscreen);
   const [manualEntryOpen, setManualEntryOpen] = useState(false);
   const historyWorkspaceRef = useRef<TimerHistoryWorkspaceHandle>(null);
-  const [historyTab, setHistoryTab] = useState<'history' | 'stats' | 'chart'>('history');
+  const [historyTab, setHistoryTab] = useState<'history' | 'stats'>('history');
   const [statsOpen, setStatsOpen] = useState(false);
   const [replayImportOpen, setReplayImportOpen] = useState(false);
   const [replaySolve, setReplaySolve] = useState<Solve | null>(null);
@@ -573,7 +578,11 @@ export function App({ host }: { host: InstalledAppHost }) {
   const timerContextMutationBusyRef = useRef(false);
   const [solverBlocking, setSolverBlocking] = useState(false);
   const solverBlockingRef = useRef(false); solverBlockingRef.current = solverBlocking;
-  const timerOverlayBlocking = solverBlocking || openOverlay !== null || statsOpen || historyModalOpen || replayBlocking;
+  const [layoutEditing, setLayoutEditing] = useState(false);
+  const layoutEditingRef = useRef(false);
+  const finishLayoutEditing = useCallback(() => { layoutEditingRef.current = false; setLayoutEditing(false); }, []);
+  useEffect(() => { if (view !== 'timer' || timerMode !== 1) finishLayoutEditing(); }, [view, timerMode, finishLayoutEditing]);
+  const timerOverlayBlocking = layoutEditing || solverBlocking || openOverlay !== null || statsOpen || historyModalOpen || replayBlocking;
   const openOverlayRef = useRef<TimerOverlayId | null>(openOverlay);
   const [solverOpenRequest, setSolverOpenRequest] = useState(0);
   const changeSolverSheet = useCallback((open: boolean) => {
@@ -638,6 +647,8 @@ export function App({ host }: { host: InstalledAppHost }) {
   const manualScrambles = store?.settings.manualScrambles ?? '';
   const scramble222Mode = store?.settings.scramble222Mode ?? 'optimal';
   const scramble222Type = store?.settings.scramble222Type ?? 'full';
+  const practiceContents = useMemo(() => timerPracticeContents(activeEvent), [activeEvent]);
+  const practiceContent = selectedTimerPracticeContent(practiceContents, activeEvent, scramble222Type, null);
   const byStepsSettings: TimerByStepsSettings = {
     genByStepsOn: store?.settings.genByStepsOn ?? DEFAULT_TIMER_BY_STEPS_SETTINGS.genByStepsOn,
     genStepsMetric: store?.settings.genStepsMetric ?? DEFAULT_TIMER_BY_STEPS_SETTINGS.genStepsMetric,
@@ -813,6 +824,8 @@ export function App({ host }: { host: InstalledAppHost }) {
   const solvesRef = useRef(solves);
   solvesRef.current = solves;
   const stats = useMemo(() => summarize(solves, activeEvent), [activeEvent, solves]);
+  const trainingStatistics = useMemo(() => timerTrainingSummaries(solves, activeEvent, trainingSettings.trainingStartMode),
+    [solves, activeEvent, trainingSettings.trainingStartMode]);
   const historyMoveTargets = useMemo(() => store
     ? timerHistoryMoveTargets(store.database.sessions, store.database.activeSessionId)
     : [], [store]);
@@ -1491,9 +1504,8 @@ export function App({ host }: { host: InstalledAppHost }) {
       return;
     }
 
-    // Canonical Web behavior: projects without a WCA-pool mapping keep the
-    // Real source selected but use that same project's local provider. This is
-    // not a network-error fallback, and it must never turn into a 333 scramble.
+    // A restored event may reach generation before source normalization runs.
+    // Unsupported real sources use the event's own provider during that handoff.
     if (!timerSupportsRealWcaScrambles(event)) {
       generateRandomScramble(liveEntry, requestId);
       return;
@@ -2165,6 +2177,7 @@ export function App({ host }: { host: InstalledAppHost }) {
     void host.addBackButtonListener(() => {
       if (toolsBlePickerRef.current) { toolsBlePickerRef.current.cancel(); return; }
       const current = viewRef.current;
+      if (layoutEditingRef.current) { finishLayoutEditing(); return; }
       if (trainerSubsetOpenRef.current) { trainerSubsetOpenRef.current = null; setTrainerSubsetOpen(null); return; }
       if (replayBlockingRef.current) { setReplayImportOpen(false); setReplaySolve(null); return; }
       if (statsOpenRef.current) { setStatsOpen(false); return; }
@@ -2331,11 +2344,12 @@ export function App({ host }: { host: InstalledAppHost }) {
     sourceMatches: slotMatchesActiveSource,
   });
   const attemptCanStartRef = useRef(attemptCanStart);
-  attemptCanStartRef.current = attemptCanStart;
+  attemptCanStartRef.current = !layoutEditing && attemptCanStart;
   const attemptRef = useRef<MobileScrambleAttemptSnapshot | null>(null);
   const smartCubeAttemptProducerRef = useRef(new SmartCubeAttemptProducer());
   const smartCubeMoveSubscribersRef = useRef(new Set<(move: string, timestamp: number) => void>());
   const smartCubeQuatRef = useRef<Quat | null>(null);
+  const smartCubeLastFaceletsRef = useRef<string | null>(null);
   const smartCubeReferenceRef = useRef<Quat | null>(null);
   const [smartCubeCalibration, setSmartCubeCalibration] = useState(0);
   const calibrationReferenceRef = useRef<Quat | null>(null);
@@ -2348,9 +2362,17 @@ export function App({ host }: { host: InstalledAppHost }) {
   };
   const [smartCubeRenderedView, setSmartCubeRenderedView] = useState('net');
   const connectedSmartCubeRef = useRef<Solve['device']>(undefined);
+  const smartCubeAttemptDeviceRef = useRef<Solve['device']>(undefined);
+  const trainingTimingMode = () => timerSupportsTrainingTiming(activeEventRef.current) && connectedSmartCubeRef.current
+    ? storeRef.current?.settings.trainingStartMode ?? 'first-turn' : undefined;
   const [attemptSplitState, setAttemptSplitState] = useState<TimerAttemptSplitState>({ stages: {} });
   const [attemptSplitRecorder] = useState(() => new TimerAttemptSplitRecorder(setAttemptSplitState));
   const attemptStartedAtRef = useRef(0);
+  const { solve: liveSolve, publish: publishLiveSolve, clear: clearLiveSolve } = useLiveSmartCubeAttempt(
+    smartCubeAttemptProducerRef.current, () => timerPhaseRef.current === 'running' && attemptRef.current
+      ? { startedAt: attemptStartedAtRef.current, event: attemptRef.current.event, scramble: attemptRef.current.scramble }
+      : null);
+  const [liveStageTarget, setLiveStageTarget] = useState<HTMLDivElement | null>(null);
   const timerDisplayMsRef = useRef(0);
   const externalAttemptRef = useRef<{kind: 'smart-timer' | 'stackmat'; sessionId: string; snapshot: MobileScrambleAttemptSnapshot; running: boolean} | null>(null);
   const externalActiveRef = useRef(false);
@@ -2377,6 +2399,7 @@ export function App({ host }: { host: InstalledAppHost }) {
       ...(attempt.caseId ? { caseId: attempt.caseId } : {}),
       event: attempt.event,
       inspectionMs: result.inspectionMs || undefined,
+      ...(result.trainingStartMode ? { trainingStartMode: result.trainingStartMode } : {}),
       ...(bld ? { bld } : {}),
       ...(stages ? { stages } : {}),
       penalty: result.autoPenalty,
@@ -2450,7 +2473,13 @@ export function App({ host }: { host: InstalledAppHost }) {
 
   const timer = useTimerController({
     inputBlocked: () => externalActiveRef.current,
-    onTransition: onTimerSoundTransition,
+    smartCubeActive: () => Boolean(connectedSmartCubeRef.current || smartCubeAttemptDeviceRef.current),
+    trainingStartMode: trainingTimingMode,
+    canManualArmTraining: () => smartCubeGuidance.match === true,
+    onTransition: transition => {
+      timerPhaseRef.current = transition.state.phase;
+      onTimerSoundTransition(transition);
+    },
     canStart: attemptCanStart,
     enabled: view !== 'settings' && timerVisible
       && timerMode === 1
@@ -2479,6 +2508,8 @@ export function App({ host }: { host: InstalledAppHost }) {
         };
       }
       attemptStartedAtRef.current = startedAtMs;
+      clearLiveSolve();
+      smartCubeAttemptDeviceRef.current = connectedSmartCubeRef.current;
       attemptSplitRecorder.begin({
         bldMemo: (storeRef.current?.settings.bldMemo ?? true) && isBldEvent(entry.event),
         multiStage: (storeRef.current?.settings.multiStage ?? false)
@@ -2497,6 +2528,9 @@ export function App({ host }: { host: InstalledAppHost }) {
     },
   });
   timingRunningRef.current = timer.machine.phase === 'running';
+  useEffect(() => {
+    if (timer.machine.phase !== 'running') smartCubeAttemptDeviceRef.current = undefined;
+  }, [timer.machine.phase]);
   timerPhaseRef.current = timer.machine.phase;
   cancelTimerArmRef.current = timer.cancelArm;
   const timerRef = useRef(timer);
@@ -2586,14 +2620,15 @@ export function App({ host }: { host: InstalledAppHost }) {
     onChange: setSmartCubeAnchor,
   }));
   const smartCubeSoloController = useMemo(() => new SmartCubeSoloTimerController({
-    armFromCube: () => {
-      const armed = timerRef.current.armFromCube();
-      if (armed) timerPhaseRef.current = (storeRef.current?.settings.inspectionSec ?? 0) > 0
-        ? 'inspecting'
-        : 'ready';
+    armFromCube: (timestamp) => {
+      const armed = timerRef.current.armFromCube(timestamp);
+      if (armed) timerPhaseRef.current = trainingTimingMode()
+        ? trainingTimingMode() === 'first-turn' ? 'ready' : 'inspecting'
+        : (storeRef.current?.settings.inspectionSec ?? 0) > 0 ? 'inspecting' : 'ready';
       return armed;
     },
-    autoReadyOnScramble: () => storeRef.current?.settings.bluetoothAutoReady === 'scrambled',
+    autoReadyOnScramble: () => trainingTimingMode() ? trainingTimingMode() !== 'manual'
+      : storeRef.current?.settings.bluetoothAutoReady === 'scrambled',
     canStartAttempt: () => attemptCanStartRef.current,
     getPhase: () => timerPhaseRef.current,
     isTimingEnabled: () => timingEnabledRef.current,
@@ -2603,6 +2638,7 @@ export function App({ host }: { host: InstalledAppHost }) {
     },
     recordMove: ({ move, timestamp }) => {
       if (!smartCubeAttemptProducerRef.current.recordMove(move, timestamp)) return;
+      publishLiveSolve();
       const attempt = attemptRef.current;
       if (!attempt) return;
       attemptSplitRecorder.observeMoves({
@@ -2636,7 +2672,7 @@ export function App({ host }: { host: InstalledAppHost }) {
     },
     onMove: (move, timestamp, facelets, metadata) => {
       const futureHistory = metadata?.futureHistory === true;
-      smartCubeAnchorController.move(move);
+      smartCubeAnchorController.move(move, timestamp);
       if (timerModeRef.current !== 1) {
         if (!futureHistory) battleSmartCubeHandlersRef.current?.onMove(move, timestamp, facelets);
         return;
@@ -2660,8 +2696,17 @@ export function App({ host }: { host: InstalledAppHost }) {
   connectedSmartCubeRef.current = smartCube.phase === 'connected' && smartCube.deviceName
     ? { model: smartCube.model ?? 'gan-v4', name: smartCube.deviceName }
     : undefined;
+  useEffect(() => {
+    if (smartCube.phase !== 'connected') return;
+    void import('@cuberoot/timer-ui/reconstruct/library-cache')
+      .then(({ reconstructionLibraries }) => reconstructionLibraries.warm())
+      .then(() => import('@cuberoot/timer-ui/reconstruct-analysis'))
+      .then(({ reconstructionAnalyzer }) => reconstructionAnalyzer.warmup()).catch(() => {});
+  }, [smartCube.phase]);
+  if (smartCube.facelets) smartCubeLastFaceletsRef.current = smartCube.facelets;
   useAutoReady({
     enabled: view !== 'settings' && timerVisible && timerMode === 1 && smartCube.phase === 'connected' && timingEnabled
+      && !trainingTimingMode()
       && attemptCanStart
       && !moreOpen && !manualEntryOpen && !timerOverlayBlocking
       && (timer.machine.phase === 'idle' || timer.machine.phase === 'inspecting' || timer.machine.phase === 'stopped')
@@ -2860,6 +2905,7 @@ export function App({ host }: { host: InstalledAppHost }) {
       ? Math.max(0, timer.nowMs - (timer.machine.inspectionStartedAtMs ?? timer.nowMs))
       : 0,
     inspectionLimitSec: timer.machine.inspectionSec ?? 0,
+    trainingObservation: Boolean(timer.machine.trainingStartMode),
     lastPenalty,
     phase: timer.machine.phase,
     precision: resultPrecision,
@@ -2881,6 +2927,7 @@ export function App({ host }: { host: InstalledAppHost }) {
   // and fades them only once timing is actually running.
   const sourceControlsEnabled = timer.machine.phase !== 'running'
     && !timerContextMutationBusy;
+  const wcaCompetitionFilters = useTimerWcaCompetitionFilters({ today: toLocalIsoDate(), language, disabled: !sourceControlsEnabled });
   const scrambleReady = attemptCanStart;
   const mappedRealSource = scrambleSource === 'wca'
     && timerSupportsRealWcaScrambles(activeEvent);
@@ -2947,6 +2994,13 @@ export function App({ host }: { host: InstalledAppHost }) {
     timer.cancelArm();
     applyScrambleHistory({ list: [], idx: -1 });
   }, [applyScrambleHistory, timer.cancelArm]);
+
+  useEffect(() => {
+    if (!sourceControlsEnabled || scrambleSource !== 'wca'
+      || timerSupportsRealWcaScrambles(activeEvent)) return;
+    invalidateCurrentScramble();
+    setScrambleSource('random');
+  }, [activeEvent, sourceControlsEnabled, scrambleSource, invalidateCurrentScramble]);
 
   const updateSettings = useCallback((changes: TimerSettingsUpdate) => {
     const revision = storeSnapshotGateRef.current.beginMutation();
@@ -3136,6 +3190,28 @@ export function App({ host }: { host: InstalledAppHost }) {
     });
   }, [activeEvent, announce, applyStoreSnapshot, beginTimerContextMutation, copy.actionFailed, copy.finishAttemptFirst, endTimerContextMutation, invalidateCurrentScramble, recoverLatestStoreSnapshot, smartCube, timer]);
 
+  const openPractice = (entry: TimerPracticeContent, method: 'train' | 'memo' | 'recognize', select = false) => {
+    if (!sourceControlsEnabled) return;
+    const path = method === 'recognize' ? entry.recognizePath
+      : select ? entry.selectPath ?? entry.runPath : entry.runPath ?? entry.path;
+    if (!path) return;
+    const [pathname, search] = path.split('?');
+    const params = new URLSearchParams({ event: activeEvent, training: pathname });
+    for (const [key, value] of new URLSearchParams(search)) params.set(`train.${key}`, value);
+    if (method !== 'recognize') params.set('train.mode', method === 'memo' ? 'memo' : 'recap');
+    openToolsRoute(`/timer?${params}`);
+  };
+  const choosePracticeContent = (id: string) => {
+    if (!sourceControlsEnabled) return;
+    const entry = practiceContents.find(item => item.id === id);
+    if (!entry || entry.id === practiceContent?.id) return;
+    if (!entry.timer) { openPractice(entry, 'train', !!entry.selectPath); return; }
+    invalidateCurrentScramble();
+    if (entry.id !== 'solve') setScrambleSource('random');
+    if (entry.timer.type222) updateScramble222Type(entry.timer.type222);
+    selectTimerEvent(entry.timer.event);
+  };
+
   const updateSolve = useCallback((solve: Solve, changes: Partial<Pick<Solve, 'penalty' | 'comment' | 'bld' | 'reconOk'>>) => {
     const last = solvesRef.current[solvesRef.current.length - 1];
     if (last?.id === solve.id && changes.penalty) setLastPenalty(changes.penalty);
@@ -3219,6 +3295,13 @@ export function App({ host }: { host: InstalledAppHost }) {
     onEnableGyro: () => updateSettings({ recordGyro: true }),
   };
   const recapSolve = solves.find((solve) => solve.id === recapSolveId) ?? null;
+  const liveSolutionPanel = timer.machine.phase === 'running' && liveSolve ? (
+    <TimerLiveSolutionPanel language={language}>
+      <Suspense fallback={null}><ReconstructReport key={liveSolve.id} solve={liveSolve}
+        host={reconstructionHost} isZh={language === 'zh'} live
+        liveGyroSamples={liveSolve.liveGyroSamples} liveStageTarget={liveStageTarget} /></Suspense>
+    </TimerLiveSolutionPanel>
+  ) : null;
   const solveRecap = recapSolve && (
     <Suspense fallback={<Spinner label={{ en: 'Loading', zh: '加载中' }[language]} />}>
       <SolveRecap
@@ -3569,7 +3652,7 @@ export function App({ host }: { host: InstalledAppHost }) {
 
   useEffect(() => {
     const modalState = () => timerSoloModalState(
-      viewRef.current === 'settings'
+      layoutEditingRef.current || viewRef.current === 'settings'
       || !timerVisibleRef.current
       || (openOverlayRef.current !== null && openOverlayRef.current !== TIMER_OVERLAY_IDS.stageSolver)
       || solverBlockingRef.current || statsOpenRef.current || historyModalOpenRef.current || replayBlockingRef.current
@@ -3849,7 +3932,15 @@ export function App({ host }: { host: InstalledAppHost }) {
       className={`app-shell app-shell--${dockHistory || view === 'settings' ? 'timer' : view}${shellViewport.classNameSuffix}${fullscreen ? ' app-shell--timer-fullscreen' : ''}${timer.machine.phase === 'running' ? ' is-solving' : ''}`}
       data-timer-hide-ui={timerMode === 1 && store && timerHidesRunningUi(timer.machine.phase, store.settings) ? '' : undefined}
       data-wide={wideLayout ? 'true' : undefined}
-      style={shellViewport.style}
+      data-layout-editing={layoutEditing ? '' : undefined}
+      style={{ ...shellViewport.style,
+        '--solo-scramble-gap': `${store?.settings.soloLayout.scrambleGap ?? 16}px`,
+        '--solo-source-gap': `${store?.settings.soloLayout.sourceGap ?? 16}px`,
+        '--solo-timer-gap': `${store?.settings.soloLayout.timerGap ?? 20}px`,
+        '--solo-cube-gap': `${store?.settings.soloLayout.cubeGap ?? 8}px`,
+        '--solo-source-scale': store?.settings.soloLayout.sourceScale ?? 1,
+        '--solo-cube-scale': store?.settings.soloLayout.cubeScale ?? 1,
+      } as CSSProperties}
     >
       <SiteCorners exclude=".site-glass-engine, .maplibregl-map" containers=".cg-card, .rc-card, .recon-card, .sortable-card, .timer-workspace-panel" />
       <TimerPrintController
@@ -3885,7 +3976,9 @@ export function App({ host }: { host: InstalledAppHost }) {
 
 
 
-      <TimerWorkspace className="view-container" active={timerMode === 1 && timerVisible} panelOpen={dockHistory} recap={solveRecap}>
+      <TimerWorkspace className="view-container" active={timerMode === 1 && timerVisible}
+        data-live-reconstruction={liveSolutionPanel ? '' : undefined}
+        panelOpen={dockHistory && !liveSolutionPanel} recap={liveSolutionPanel ?? solveRecap}>
         {timerVisible && timerMode === 1 && (
           <TimerSoloPage tools={{
           tool: openOverlay === TIMER_OVERLAY_IDS.bulkTool ? 'bulk' : openOverlay === TIMER_OVERLAY_IDS.bldTool ? 'bld-helper' : openOverlay === TIMER_OVERLAY_IDS.solverTool ? 'solver' : null,
@@ -3909,14 +4002,6 @@ export function App({ host }: { host: InstalledAppHost }) {
                     triggerLabel={copy.more}
                     viewportBottomInset={primaryNavBottomInset}
                   />
-                  <button
-                    aria-label={copy.settings}
-                    className="timer-toolbar-icon"
-                    data-no-timer
-                    disabled={timer.machine.phase === 'running' || timerContextMutationBusy}
-                    onClick={() => { setSettingsCategory('timer'); setView('settings'); }}
-                    type="button"
-                  ><SettingsIcon aria-hidden="true" size={17} /></button>
                 </>
               ),
           controls: (
@@ -3924,32 +4009,35 @@ export function App({ host }: { host: InstalledAppHost }) {
                   {smartCubeDeviceCenter}
                   <TimerPuzzlePicker
                     showArrow={false}
-                    combineScrambleTypes={timerPuzzleSelection(activeEvent).puzzle === '333'}
+                    combineScrambleTypes
                     dataNoTimer
                     disabled={timer.machine.phase === 'running' || timerContextMutationBusy}
                     groups={eventPickerGroups}
                     onOpenChange={handleTimerOverlayOpenChange}
-                    onSelect={selectTimerEvent}
+                    onSelect={id => {
+                      if (id === '222') updateScramble222Type('full');
+                      selectTimerEvent(id);
+                    }}
                     open={openOverlay === TIMER_OVERLAY_IDS.puzzlePicker}
                     puzzleLabel={copy.puzzle}
                     scrambleTypeLabel={copy.scrambleType}
                     selectedEvent={activeEvent}
                   />
+                  <TimerPracticeContentPicker entries={practiceContents} selectedId={practiceContent?.id}
+                    label={practiceContent?.title[language] ?? (language === 'zh' ? '请选择' : 'Choose content')}
+                    disabled={!sourceControlsEnabled} language={language} onSelect={choosePracticeContent}
+                    open={openOverlay === TIMER_OVERLAY_IDS.practiceContent} onOpenChange={handleTimerOverlayOpenChange} />
+                  {practiceContent && (practiceContent.runPath || practiceContent.recognizePath) && <TimerPracticeMethodPicker
+                    value="train" recall={!!practiceContent.runPath} recognize={!!practiceContent.recognizePath}
+                    disabled={!sourceControlsEnabled} language={language}
+                    open={openOverlay === TIMER_OVERLAY_IDS.practiceMethod}
+                    onOpenChange={open => handleTimerOverlayOpenChange(open, { id: TIMER_OVERLAY_IDS.practiceMethod, reason: 'trigger' })}
+                    onChange={method => { if (method !== 'train') openPractice(practiceContent, method); }} />}
                   <TimerScrambleSourceSelect
                     showArrow={false}
                     language={language}
-                    trainingItems={timerPuzzleSelection(activeEvent).puzzle === '333'
-                      ? eventPickerGroups.flatMap(group => group.items)
-                        .filter(item => TIMER_333_TRAINING_GROUPS.some(group => (group.events as readonly string[]).includes(item.id)))
-                        .map(item => ({ value: item.id, label: item.label }))
-                      : []}
-                    trainingValue={timerPuzzleSelection(activeEvent).puzzle === '333' && activeEvent !== '333' ? activeEvent : undefined}
-                    onTrainingChange={id => {
-                      if (!sourceControlsEnabled) return;
-                      invalidateCurrentScramble();
-                      setScrambleSource('random');
-                      selectTimerEvent(id);
-                    }}
+                    trainingItems={practiceContent?.selectPath ? [{ value: 'cases', label: language === 'zh' ? '选定情况' : 'Selected cases' }] : []}
+                    onTrainingChange={() => { if (practiceContent) openPractice(practiceContent, 'train', true); }}
                     className="shell-scramble-source-select"
                     disabled={!sourceControlsEnabled}
                     labels={{
@@ -3966,16 +4054,15 @@ export function App({ host }: { host: InstalledAppHost }) {
                         announce(copy.finishAttemptFirst);
                         return;
                       }
-                      const selection = timerPuzzleSelection(activeEvent);
-                      const leavingTraining = source !== 'manual' && selection.puzzle === '333' && activeEvent !== '333';
-                      if (source === scrambleSourceRef.current && !leavingTraining) return;
+                      if (source === scrambleSourceRef.current) return;
                       invalidateCurrentScramble();
                       setScrambleSource(source);
-                      if (leavingTraining) selectTimerEvent('333');
                     }}
                     onOpenChange={handleTimerOverlayOpenChange}
                     open={openOverlay === TIMER_OVERLAY_IDS.scrambleSource}
                     popupClassName="shell-scramble-source-popup"
+                    realAvailable={timerSupportsRealWcaScrambles(activeEvent)}
+                    realMenuContent={<div ref={setWcaSourceSlot} />}
                     realValue="wca"
                     triggerClassName="shell-players-select"
                     value={scrambleSource}
@@ -3985,11 +4072,27 @@ export function App({ host }: { host: InstalledAppHost }) {
                     data-no-timer
                     ref={setWcaDifficultyToggleSlot}
                   />
+                  <button type="button" className="timer-toolbar-icon solo-layout-toggle" data-no-timer
+                    aria-label={language === 'zh' ? '调整布局' : 'Edit layout'} aria-pressed={layoutEditing}
+                    disabled={!layoutEditing && (timer.machine.phase !== 'idle' && timer.machine.phase !== 'stopped' || timerContextMutationBusy)}
+                    onClick={() => {
+                      if (layoutEditing) finishLayoutEditing();
+                      else { layoutEditingRef.current = true; setLayoutEditing(true); }
+                    }}><LayoutTemplate size={18} strokeWidth={1.6} /></button>
+                  <button
+                    aria-label={copy.settings}
+                    className="timer-toolbar-icon settings-popover-trigger"
+                    data-no-timer
+                    disabled={timer.machine.phase === 'running' || timerContextMutationBusy}
+                    onClick={() => { setSettingsCategory('timer'); setView('settings'); }}
+                    type="button"
+                  ><SettingsIcon aria-hidden="true" size={17} /></button>
 
                 </>
               )}}
         stage={{
           className: "mobile-timer-stage timer-view",
+          rankings: solves.length > 0 && <TimerRankBadge eventId={activeEvent} centis={rankCentis} type="single" country={rankCountry} isZh={language === 'zh'} scopes={store!.settings.rankScopes} wcaId={rankWcaId} host={timerRankHost} />,
           fullscreen: fullscreen,
           source: <>
                 {scrambleSource === 'wca' && timerSupportsRealWcaScrambles(activeEvent) && (
@@ -3997,7 +4100,9 @@ export function App({ host }: { host: InstalledAppHost }) {
                     className="mobile-scramble-source-config mobile-wca-source-config"
                     disabled={!sourceControlsEnabled}
                   >
-                    <TimerWcaSourceConfig
+                    {wcaSourceSlot && createPortal(<TimerWcaSourceConfig
+                      popupContainer={wcaSourceSlot}
+                      competitionFilters={wcaCompetitionFilters}
                       adapter={wcaSourceAdapter}
                       competitionDisplayName={(competitionId, canonicalName) => (
                         displayMobileWcaCompetitionName(competitionId, canonicalName, language)
@@ -4007,8 +4112,6 @@ export function App({ host }: { host: InstalledAppHost }) {
                       maxDate={toLocalIsoDate()}
                       minDate={TIMER_WCA_MIN_DATE}
                       onChange={updateWcaSourceSettings}
-                      onOpenChange={handleTimerOverlayOpenChange}
-                      open={openOverlay === TIMER_OVERLAY_IDS.wcaCompetition}
                       renderCountry={(country) => <Flag iso2={country} />}
                       renderDateRange={(props) => (
                         <DateRangeInput
@@ -4030,7 +4133,7 @@ export function App({ host }: { host: InstalledAppHost }) {
                         <span className="mobile-wca-shared-controls" ref={setWcaTopControlsSlot} />
                       )}
                       wcaEventId={timerWcaScrambleEventId(activeEvent)}
-                    />
+                    />, wcaSourceSlot)}
                     <TimerWcaDifficultyConfig
                       adapter={mobileTimerWcaDifficultyAdapter}
                       disabled={!sourceControlsEnabled}
@@ -4135,29 +4238,33 @@ export function App({ host }: { host: InstalledAppHost }) {
                   disabled={timer.machine.phase === 'running' || timerContextMutationBusy}
                   language={language}
                   summary={stats}
+                  trainingSummaries={trainingStatistics}
                   onClick={() => setView('history')}
                 />}}
         solver={solverHintPanel}
+        narrowRecap={liveSolutionPanel}
         timing={{
-digitsCorner: solves.length > 0 && <TimerRankBadge eventId={activeEvent} centis={rankCentis} type="single" country={rankCountry} isZh={language === 'zh'} scopes={store!.settings.rankScopes} wcaId={rankWcaId} host={timerRankHost} />,
 className: targetFeedbackClass,
 ariaLabel: copy.timer,
 colorClass: `${timerColorClass} tf-${store!.settings.timerFont}`,
 fontScale: store!.settings.timerFontScale,
-cornerAspect: smartCube.phase === 'connected' ? undefined : timerCubePreviewAspect(activeEvent, scramble),
-cornerSlot: smartCube.phase === 'connected' ? (
+cornerAspect: smartCube.phase === 'connected' || smartCubeAttemptDeviceRef.current ? undefined : timerCubePreviewAspect(activeEvent, scramble),
+cornerSlot: smartCube.phase === 'connected' || smartCubeAttemptDeviceRef.current ? (
                   <div className="timer-live-cube">
                     <LiveCubeState
                       algAnchored={smartCubeAnchor.algAnchored}
                       displayOrientation={trainingOrientation}
                       calibrateToken={smartCubeCalibration}
                       calibrationReference={calibrationReferenceRef.current}
-                      facelets={smartCube.facelets || null}
+                      facelets={smartCube.facelets || (smartCubeAttemptDeviceRef.current ? smartCubeLastFaceletsRef.current : null)}
                       language={language}
                       mode={store!.settings.liveCubeView}
                       moves={[...smartCubeAnchor.moves]}
+                      liveSource={smartCubeAnchorController}
                       onViewChange={setSmartCubeRenderedView}
                       useGyro={store!.settings.gyroEnabled}
+                      sensorBasis={sensorBasisForBrand(smartCube.model ?? smartCubeAttemptDeviceRef.current?.model)}
+                      mirror={mirrorForBrand(smartCube.model ?? smartCubeAttemptDeviceRef.current?.model)}
                       quatRef={store!.settings.gyroEnabled ? smartCubeQuatRef : undefined}
                     />
                   </div>
@@ -4300,7 +4407,10 @@ scrambleSlot: (
                   </TimerScrambleStrip>
                 ),
 surfaceRef: surfaceRef,
+cubeFooter: timer.machine.phase === 'running' && liveSolve && <div ref={setLiveStageTarget} className="timer-live-stage" data-no-timer />,
 children: <>
+                <TimerTrainingTimingStatus mode={trainingTimingMode()} phase={timer.machine.phase}
+                  matched={smartCubeGuidance.match === true} language={language} />
                 <span aria-live="polite" className="sr-only">{timerInstruction}</span>
                 {timer.machine.phase === 'running' && <TimerTargetTime targetMs={targetMs} displayMs={displayMs} localize={value => value[language]} />}
                 {timer.machine.phase === 'running' && (multiStageActive || bldMemoActive) && (
@@ -4395,6 +4505,7 @@ children: <>
 
         {view === 'timer' && timerMode === 'net' && (
           <NetBattleMode
+            smartCubeSettings={store!.settings}
             sessionId={store!.database.activeSessionId}
             recordGyro={store!.settings.recordGyro}
             recordingOutbox={netRecordingOutbox}
@@ -4455,7 +4566,7 @@ children: <>
               hidden={view !== surface}
               key={surface}
             >
-              {surface === 'account' && <AndroidUpdateNotice host={host} language={language} />}
+              {surface === 'account' && <InstalledUpdateNotice host={host} language={language} />}
               {surface === 'account' && <UURemotePanel host={host} language={language} />}
               {showState && (
                 <div className="web-surface-state" role={status === 'error' ? 'alert' : 'status'}>
@@ -4514,9 +4625,11 @@ children: <>
           );
         })}
 
-        {view === 'history' && (
+        {view === 'history' && !liveSolutionPanel && (
           <section className="history-view timer-workspace-panel" aria-labelledby="history-title" data-no-timer>
-            {dockHistory && viewHeader}
+            <TimerResultsTabs value={historyTab === 'history' ? 'times' : 'stats'} language={language}
+              onChange={tab => { historyWorkspaceRef.current?.dismiss(); setHistoryTab(tab === 'times' ? 'history' : 'stats'); }}
+              onClose={() => { historyWorkspaceRef.current?.dismiss(); setView('timer'); }} />
             <div className="timer-workspace-panel-body">
             <header className="section-heading">
               <h1 id="history-title">{copy.history}</h1>
@@ -4534,10 +4647,7 @@ children: <>
               sessions={store!.database.sessions}
               viewportBottomInset={primaryNavBottomInset}
             />
-            <select aria-label={{en:'Results view',zh:'成绩视图'}[language]} value={historyTab} onChange={event => { historyWorkspaceRef.current?.dismiss(); setHistoryTab(event.target.value as typeof historyTab); }}>
-              <option value="history">{{en:'History',zh:'历史'}[language]}</option><option value="stats">{{en:'Stats',zh:'统计'}[language]}</option><option value="chart">{{en:'Charts',zh:'图表'}[language]}</option>
-            </select>
-            {historyTab !== 'history' && <TimerStatisticsWorkspace view={historyTab} language={language} event={activeEvent} solves={solves}
+            {historyTab !== 'history' && <TimerStatisticsWorkspace compact view={historyTab} language={language} event={activeEvent} solves={solves}
               labels={timerStatsPanelLabels(language)} rollingColumns={store!.settings.statsRollingColumns}
               onRollingColumnsChange={statsRollingColumns => updateSettings({statsRollingColumns})}
               sessionData={store!.database.sessions.map(session => ({session,byEvent:store!.database.dataBySession[session.id] ?? {}}))}
@@ -4758,7 +4868,7 @@ children: <>
                   stageVisible={timerSupportsStageSplits(activeEvent)}
                   value={store!.settings}
                 />
-                <TimerGoalSettings value={store!.settings} event={activeEvent} onChange={updateSettings} localize={value => value[language]} />
+                <TimerGoalSettings value={store!.settings} event={activeEvent} onChange={updateSettings} localize={value => value[language]} trainingTiming />
               </section>
             )}
 
@@ -4917,6 +5027,10 @@ children: <>
             </>}
           </TimerSettingsPanel>
         )}
+        {layoutEditing && store && <TimerSoloLayoutEditor surfaceRef={surfaceRef}
+          contentKey={`${scramble}:${store.settings.showCubePreview}:${smartCube.phase}`}
+          getSettings={() => storeRef.current!.settings} updateSettings={updateSettings}
+          language={language} onDone={finishLayoutEditing} />}
       </TimerWorkspace>
 
       {replayImportOpen && <TimerReplayImportModal language={language} onClose={() => setReplayImportOpen(false)}

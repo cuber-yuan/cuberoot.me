@@ -1118,6 +1118,7 @@
           "tools/solver/rust-cross/xcross-table-worker.js",
           "tools/solver/rust-cross/cross_solver.js",
           "tools/solver/rust-cross/cross_solver_bg.wasm",
+          "tools/solver/rust-cross/tables/pt_cross.bin.gz",
           "core/scripts/copy-stage-solver-assets.mts"
         ]
       },
@@ -1211,7 +1212,7 @@
       ],
       "verification": [
         "node scripts/deskpet-playtime/build-playtime.mjs --check",
-        "preview all 30 complete loops in a browser"
+        "preview complete loops for every added or changed story in a browser, including the loop seam, small size, light/dark backgrounds and reduced-motion poster"
       ],
       "driftPolicy": "Edit choreography sources and regenerate. The manifest drives the gallery and pet runtime. Bump PLAYTIME_VERSION in client/lib/deskpet-playtime.ts when regenerating published assets."
     },
@@ -1365,6 +1366,21 @@
         "the shared Web build, Capacitor sync, and selected Android or iOS native build complete from tracked sources; record installation, device, signing, and store evidence separately"
       ],
       "driftPolicy": "These outputs and local configuration are gitignored and never become editable source or tracked generated artifacts. An Android build is not iOS evidence and neither platform's local build is signing or store evidence."
+    },
+    {
+      "id": "apps.official-distribution",
+      "kind": "build-output",
+      "source": {
+        "locator": "Exact reviewed main commit selected by an administrator; native artifacts owned by Mobile and Desktop",
+        "paths": [".github/workflows/app_release.yml", "core/scripts/android-release/distribute.ts", "core/scripts/android-release/publish-server.mjs", "core/packages/shared/src/android-release.ts"]
+      },
+      "license": { "spdx": "LicenseRef-CubeRoot", "evidence": "LICENSE and packaged dependency licenses" },
+      "owner": "core/scripts/android-release",
+      "workingDirectory": "core",
+      "command": "Manually dispatch app_release.yml through the administrator download-page entry",
+      "transientOutputs": ["release-staging/**"],
+      "verification": ["verify native identity, Android production signing certificate and artifact checksums before promoting the public latest.json", "verify both Windows EXEs before publishing their shared manifest"],
+      "driftPolicy": "Versioned APK/EXE artifacts and per-platform manifests live on static.cuberoot.me/downloads, never in Git. Daily push builds do not publish them; an administrator release allocates a monotonically increasing sequence."
     },
     {
       "id": "desktop.tauri-build",

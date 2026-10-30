@@ -12,11 +12,13 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'r
 import dynamic from 'next/dynamic';
 import { usePathname } from 'next/navigation';
 import { parseAsBoolean, useQueryState } from 'nuqs';
-import { ArrowRight, Crown, Download, Heart, Lock, LockOpen, LogIn, User, type LucideIcon } from '@app-foundation/icons/lucide';
+import { ArrowRight, Check, Crown, Download, Heart, Lock, LockOpen, LogIn, Pencil, User, type LucideIcon } from '@app-foundation/icons/lucide';
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, rectSortingStrategy, SortableContext } from '@dnd-kit/sortable';
 import Link from '@/components/AppLink';
 import SortableCard from '@/components/SortableCard';
+import { RecordBadge } from '@/components/RecordBadge';
+import { CubingIcon } from '@cuberoot/event-icon';
 import HeaderToggles from '@/components/HeaderToggles';
 import { Tooltip } from '@/components/Tooltip';
 import OnboardingGuideModal from '@/components/OnboardingGuideModal';
@@ -88,14 +90,17 @@ interface LandingCardContentProps {
   label: string;
   Icon?: LucideIcon;
   iconImg?: string;
+  record?: string;
+  iconText?: string;
+  puzzleIcon?: string;
 }
 
-function LandingCardContent({ label, Icon, iconImg }: LandingCardContentProps) {
+function LandingCardContent({ label, Icon, iconImg, record, iconText, puzzleIcon }: LandingCardContentProps) {
   return (
     <>
-      {(iconImg || Icon) && (
+      {(iconImg || Icon || record || iconText || puzzleIcon) && (
         <div className="landing-card-icon">
-          {iconImg
+          {puzzleIcon ? <CubingIcon icon={puzzleIcon} /> : iconText ? <span className="landing-card-icon-text">{iconText}</span> : record ? <RecordBadge record={record} /> : iconImg
             ? <img src={iconImg} alt="" className="landing-card-logo" aria-hidden="true" />
             : Icon
               ? <Icon size={30} strokeWidth={1.5} />
@@ -209,6 +214,8 @@ export default function LandingPage() {
   // 是 hydration-safe(SSG 首帧按未登录渲染,挂载后才切到已登录),避免 SSG/CSR 错配。
 
   const isAdmin = Boolean(user?.isAdmin || isAdminWcaId(user?.wcaId));
+  const [editingCards, setEditingCards] = useState(false);
+  const canEditCards = isAdmin && editingCards;
   const [pinnedRecons, setPinnedRecons] = useRetainedState<ReconSolve[] | null>('home:pinnedRecons', null);
   const [savingPins, setSavingPins] = useState<Set<number>>(new Set());
   const [pinError, setPinError] = useState<string | null>(null);
@@ -274,7 +281,7 @@ export default function LandingPage() {
       : <User size={16} aria-hidden />
   );
 
-  const renderLock = (id: string, locked: boolean, adminOnly = false, label?: string) => isAdmin && (
+  const renderLock = (id: string, locked: boolean, adminOnly = false, label?: string) => canEditCards && (
     <button type="button" className="landing-card-lock" aria-pressed={locked}
       disabled={adminOnly || !locksLoaded || savingLocks.has(id)}
       title={adminOnly ? tr({ zh: '仅管理员可见', en: 'Administrators only' }) : !locksLoaded ? tr({ zh: '锁定状态尚未加载', en: 'Lock status has not loaded' }) : locked ? tr({ zh: '解锁', en: 'Unlock' }) : tr({ zh: '锁定', en: 'Lock' })}
@@ -331,6 +338,9 @@ export default function LandingPage() {
           label={t(card.nameKey)}
           Icon={card.Icon}
           iconImg={card.iconImg}
+          record={card.record}
+          iconText={card.iconText}
+          puzzleIcon={card.puzzleIcon}
         />
       </>
     );
@@ -340,14 +350,15 @@ export default function LandingPage() {
     if (isDisabled) {
       cardElement = (
         <div className={className} id={`card-${card.id}`}
-          title={developmentLabel}
+          title={developmentLabel} aria-label={card.id === 'calendar' ? t(card.nameKey) : undefined}
           aria-disabled="true" role="link">
           {content}
         </div>
       );
     } else if (card.internal) {
       cardElement = (
-        <Link href={card.href} className={className} id={`card-${card.id}`} prefetch={false}>
+        <Link href={card.href} className={className} id={`card-${card.id}`} prefetch={false}
+          aria-label={card.id === 'calendar' ? t(card.nameKey) : undefined}>
           {content}
         </Link>
       );
@@ -363,7 +374,7 @@ export default function LandingPage() {
       <SortableCard
         key={card.id}
         id={card.id}
-        draggable={isAdmin}
+        draggable={canEditCards}
         tourKey={CARD_ID_TO_TOUR[card.id]}
       >
         {renderLock(card.id, locked, card.adminOnly)}
@@ -380,7 +391,7 @@ export default function LandingPage() {
     if (visibleCards.length === 0) return null;
     const handleDragEnd = (event: DragEndEvent) => {
       const { active, over } = event;
-      if (!isAdmin || !over || active.id === over.id) return;
+      if (!canEditCards || !over || active.id === over.id) return;
       const current = orderedCards.map((card) => card.id);
       const oldIndex = current.indexOf(String(active.id));
       const newIndex = current.indexOf(String(over.id));
@@ -452,7 +463,7 @@ export default function LandingPage() {
   if (!locksLoaded || !layoutReady.notice || !layoutReady.members || !layoutReady.order) return <ClientLoadStatus />;
 
   if (douyin) return <div className="landing-page">
-    <div className="landing-auth"><Link href="/account" prefetch={false}>{tr({ zh: '我的', en: 'Account' })}</Link><HeaderToggles /></div>
+    <div className="landing-auth"><HeaderToggles /><Link href="/account" prefetch={false}>{tr({ zh: '我的', en: 'Account' })}</Link></div>
     <div className="brand-line"><span className="brand-name">CubeRoot</span></div>
     <p>{tr({ zh: '计时、成绩记录与比赛信息查询', en: 'Timing, solve records and competition information' })}</p>
     <div className="hero-grids">
@@ -468,6 +479,13 @@ export default function LandingPage() {
     {/* Keep the data loader mounted while the first personalized layout settles. */}
     <div className="landing-page" style={personalLoading ? { display: 'none' } : undefined}>
       <div className="landing-auth">
+        {isAdmin && <Tooltip content={editingCards ? tr({ zh: '完成编辑', en: 'Finish editing' }) : tr({ zh: '编辑', en: 'Edit' })}>
+          {(tip) => <button {...tip} type="button" className="landing-auth-icon" aria-pressed={editingCards}
+            aria-label={editingCards ? tr({ zh: '完成编辑', en: 'Finish editing' }) : tr({ zh: '编辑', en: 'Edit' })}
+            onClick={() => setEditingCards(current => !current)}>
+            {editingCards ? <Check size={16} aria-hidden="true" /> : <Pencil size={16} aria-hidden="true" />}
+          </button>}
+        </Tooltip>}
         {isAdmin && <Tooltip content={tr({ zh: '下载', en: 'Download' })}>
           {(tip) => <Link {...tip} href="/download" className="landing-auth-icon"
             aria-label={tr({ zh: '下载', en: 'Download' })} prefetch={false}>
@@ -488,6 +506,8 @@ export default function LandingPage() {
         >
           <Heart size={14} aria-hidden="true" />
         </Link>
+        {renderCardGrid('calendar', SECTIONS.flatMap((section) => section.cards).filter((card) => card.id === 'calendar'), 'landing-calendar-link')}
+        <HeaderToggles />
         {!user ? (
           <Link href={`/account${nextQuery(pathname)}`} className="landing-auth-btn is-login" prefetch={false}
             aria-label={tr({ zh: '登录', en: 'Log in' })} title={tr({ zh: '登录', en: 'Log in' })}>
@@ -503,14 +523,14 @@ export default function LandingPage() {
             {authInner}
           </Link>
         )}
-        <HeaderToggles />
       </div>
 
       <div className="brand-line">
         <img src={mounted && effectiveTheme === 'dark' ? '/icons/CubeRoot-dark.png' : '/icons/CubeRoot.png'} alt="" className="brand-logo" />
         <span className="brand-name">{t('brand')}</span>
       </div>
-      <LandingSearch cards={searchCards} lang={lang} />
+      <LandingSearch cards={searchCards} lang={lang} workspaceEntry />
+      <div className="landing-personal-row">
       {user && compFollows.loaded && <div className="landing-personal-comps">
         <PersonUpcomingComps key={personalKey} wcaId={user.wcaId || undefined} isZh={lang === 'zh'}
           onReady={onPersonalReady}
@@ -519,6 +539,16 @@ export default function LandingPage() {
           title={null}
           followedIds={compFollows.follows} />
       </div>}
+        <div className="landing-training-links">
+          <Link href="/alg/3x3/zbll/run" className="landing-card" data-site-surface="panel" prefetch={false}>
+            <LandingCardContent label={tr({ zh: 'ZBLL 训练', en: 'ZBLL Training' })} />
+          </Link>
+          <Link href="/alg/3x3/lsll/run" className="landing-card" data-site-surface="panel" prefetch={false}>
+            <LandingCardContent label={tr({ zh: 'LSLL 训练', en: 'LSLL Training' })} />
+          </Link>
+        </div>
+      </div>
+      <div className="landing-featured-notices">
       {featuredNotices.map((featuredNotice) => {
         if (!featuredNotice.href) return null;
         const FeaturedIcon = iconFor(featuredNotice);
@@ -557,16 +587,9 @@ export default function LandingPage() {
               </a>
             );
       })}
+      </div>
 
       <div className="landing-training-grid">
-        <div className="landing-training-links">
-          <Link href="/alg/3x3/zbll/run" className="landing-card" data-site-surface="panel" prefetch={false}>
-            <LandingCardContent label={tr({ zh: 'ZBLL 训练', en: 'ZBLL Training' })} />
-          </Link>
-          <Link href="/alg/3x3/lsll/run" className="landing-card" data-site-surface="panel" prefetch={false}>
-            <LandingCardContent label={tr({ zh: 'LSLL 训练', en: 'LSLL Training' })} />
-          </Link>
-        </div>
         <div className="landing-pinned-recons" aria-busy={pinnedRecons === null && !pinError}>
           {pinnedRecons === null && !pinError
             ? <><div className="landing-widget-skeleton" aria-hidden="true" /><div className="landing-widget-skeleton" aria-hidden="true" /></>
@@ -603,7 +626,7 @@ export default function LandingPage() {
 
       <div className="cards-sections">
         {SECTIONS.map((sec) => {
-          const grid = renderCardGrid(sec.id, sec.cards, 'cards-container');
+          const grid = renderCardGrid(sec.id, sec.cards.filter((card) => card.id !== 'calendar'), 'cards-container');
           return grid && (
             <section key={sec.id} id={`section-${sec.id}`} className="cards-section">
               <div className="section-header">
@@ -630,14 +653,15 @@ export default function LandingPage() {
         </section>
       )}
 
-      <div className="landing-contact-details">
-        <ContactDetails />
-      </div>
-
+      <footer className="landing-footer-layout">
+      <div className="landing-footer-info">
       <div className="footer">
         {/* allow-nested-link: footer entries are sibling links with text-only contents. */}
         <Link href={ABOUT_FOOTER_ENTRY.href} className="footer-about" prefetch={false}>
           {t(ABOUT_FOOTER_ENTRY.nameKey)}
+        </Link>
+        <Link href="/careers" prefetch={false}>
+          {tr({ zh: '加入我们', en: 'Careers' })}
         </Link>
         <Link href={SUPPORT_FOOTER_ENTRY.href} className="footer-credits" prefetch={false}>
           <Heart size={12} aria-hidden="true" />
@@ -680,6 +704,11 @@ export default function LandingPage() {
           />
         </div>
       )}
+      </div>
+      <div className="landing-contact-details">
+        <ContactDetails />
+      </div>
+      </footer>
       <OnboardingGuideModal open={guideOpen && !personalLoading} onClose={closeGuide} />
     </div>
     </>

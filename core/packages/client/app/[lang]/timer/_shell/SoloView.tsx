@@ -1,6 +1,8 @@
 'use client';
+import { TimerResultsTabs } from '@cuberoot/timer-ui';
+import { useLiveSmartCubeAttempt, TimerLiveSolutionPanel, TimerTrainingTimingStatus } from '@cuberoot/timer-ui';
 
-import { trainingSolveMetrics } from '@cuberoot/shared/timer/reconstruct/recon-text';
+import { timerTrainingSummaries } from '@cuberoot/timer-ui';
 import { useDouyinToolSurface } from '@/lib/douyin-content';
 import { TimerSoloPage, timerSoloModalState, useTimerSoloCompactLayout } from '@cuberoot/timer-ui/TimerSoloPage';
 import SoloLayoutEditor from '../_components/SoloLayoutEditor';
@@ -49,7 +51,6 @@ import {
   LayoutTemplate,
   ArrowLeft,
   Box,
-  X,
 } from '@app-foundation/icons/lucide';
 import HomeLink from '@/components/HomeLink';
 import { petReact } from '@/lib/deskpet';
@@ -195,10 +196,11 @@ import {
   parseManualScrambleQueue,
   takeManualScramble,
   SmartCubeAttemptProducer,
-  type GyroSample,
 } from '@cuberoot/shared/timer';
 import { AutoRecapDismissGesture, shouldAutoRecap } from '../_lib/reconstruct/recap';
 import { reconstructionAnalyzer } from '@cuberoot/timer-ui/reconstruct-analysis';
+import { reconTestScrambleSource, showReconTestEntry } from '@/lib/recon-test-source';
+import type { ReconTestSource } from '../_components/ReconTestPicker';
 import {
   nextCube222SpecialScramble,
   prefetchCube222SpecialScramble,
@@ -321,6 +323,7 @@ const SolveRecap = dynamic(() => import('../_components/SolveRecap'), {
 const LiveReconstructReport = dynamic(() => import('../_components/ReconstructReport'), { ssr: false });
 /** Administrator-only fake-cube panel, loaded on demand. */
 const DevFakeCubePanel = dynamic(() => import('../_components/DevFakeCubePanel'), { ssr: false });
+const ReconTestPicker = dynamic(() => import('../_components/ReconTestPicker'), { ssr: false });
 import './shell.css';
 import { tr } from '@/i18n/tr';
 
@@ -1344,6 +1347,14 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
     applyScrambleHist(histPush(scrambleHistRef.current, timerScrambleHistoryEntry(t)));
   }, [applyScrambleHist]);
 
+  const useReconTestScramble = useCallback((source: ReconTestSource) => {
+    if (!bluetoothCubeRef.current?.status.connected || competitionRef.current.enabled
+      || (phaseRef.current !== 'idle' && phaseRef.current !== 'stopped')) return false;
+    applyScrambleHist(histPush(scrambleHistRef.current,
+      timerScrambleHistoryEntry(source.scramble.trim(), null, null, reconTestScrambleSource(source.id, source.sourceHash))));
+    return true;
+  }, [applyScrambleHist]);
+
   const prevScramble = useCallback(() => {
     const back = histBack(scrambleHistRef.current);
     if (back) applyScrambleHist(back);
@@ -1382,9 +1393,10 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   const caseIdAtStartRef = useRef<string | null>(null);
   const smartCubeAttemptProducerRef = useRef(new SmartCubeAttemptProducer());
   const abortingSmartCubeRef = useRef(false);
-  const [liveSolve, setLiveSolve] = useState<(Solve & { liveGyroSamples?: readonly GyroSample[] }) | null>(null);
-  const liveSolvePublishRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (liveSolvePublishRef.current !== null) clearTimeout(liveSolvePublishRef.current); }, []);
+  const { solve: liveSolve, publish: publishLiveSolve, clear: clearLiveSolve } = useLiveSmartCubeAttempt(
+    smartCubeAttemptProducerRef.current, () => phaseSnapshotRef.current === 'running'
+      ? { startedAt: attemptStartedAtRef.current, event: eventAtStartRef.current, scramble: scrambleAtStartRef.current }
+      : null);
   const [liveStageTarget, setLiveStageTarget] = useState<HTMLDivElement | null>(null);
   const autoRecapDismissGestureRef = useRef(new AutoRecapDismissGesture());
   const autoRecapInputBlockedRef = useRef(false);
@@ -1504,9 +1516,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
       ? { reference: scrambleGyroRef.current, initial: gyroQuatRef.current,
         orientation: timerSmartCubeTrainingOrientation(event, getSettings().preScrT) }
       : undefined);
-    if (liveSolvePublishRef.current !== null) clearTimeout(liveSolvePublishRef.current);
-    liveSolvePublishRef.current = null;
-    setLiveSolve(null);
+    clearLiveSolve();
   }, () => ({ trainingStartMode: trainingTimingModeRef.current() }));
   cancelArmForScrambleChangeRef.current = competition.enabled ? () => {} : timer.cancelArm;
   useLayoutEffect(() => { timer.reset(); smartCubeAttemptProducerRef.current.reset(); }, [competition.enabled, competition.attemptKey, timer.reset]);
@@ -1655,21 +1665,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
       if (!smartCubeAttemptProducerRef.current.recordMove(move, timestamp)) return;
       // Use only this attempt's accepted moves, never the 3D anchor's scramble log.
       const moves = smartCubeAttemptProducerRef.current.snapshotMoves();
-      // Coalesce only the expensive presentation snapshot, never physical moves
-      // or split/stop detection. The final recording is drained synchronously.
-      if (liveSolvePublishRef.current === null) {
-        const attempt = attemptStartedAtRef.current;
-        liveSolvePublishRef.current = setTimeout(() => {
-          liveSolvePublishRef.current = null;
-          if (phaseSnapshotRef.current !== 'running' || attempt !== attemptStartedAtRef.current) return;
-          const { moves, device, gyroSamples } = smartCubeAttemptProducerRef.current.snapshotLive();
-          setLiveSolve({
-            id: `live-${attempt}`, event: eventAtStartRef.current,
-            scramble: scrambleAtStartRef.current, timeMs: moves.at(-1)?.ts ?? 0,
-            penalty: 'ok', ts: 0, moves, device, liveGyroSamples: gyroSamples,
-          });
-        }, 100);
-      }
+      publishLiveSolve();
       attemptSplitRecorder.observeMoves({
         event: eventAtStartRef.current,
         moves,
@@ -1829,7 +1825,11 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   useEffect(() => () => liveAnchor.setConnection(null), [liveAnchor]);
   const cubeConnected = supportsSmartCube && bluetoothCube.status.connected;
   useEffect(() => {
-    if (cubeConnected) reconstructionAnalyzer.warmup();
+    if (cubeConnected) {
+      void import('@cuberoot/timer-ui/reconstruct/library-cache')
+        .then(({ reconstructionLibraries }) => reconstructionLibraries.warm())
+        .then(() => reconstructionAnalyzer.warmup()).catch(() => {});
+    }
   }, [cubeConnected]);
   const trainingTimingActive = cubeConnected && !competition.enabled && timerSupportsTrainingTiming(event);
   useEffect(() => {
@@ -2759,17 +2759,8 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
 
   // ── Derived display (digits text + color class) ─────────────────
   const stats = useMemo(() => summarize(solves, event), [solves, event]);
-  const trainingStatistics = useMemo(() => {
-    if (!timerSupportsTrainingTiming(event)) return undefined;
-    const repetitions = solves.filter(solve => solve.moves?.length
-      && (solve.trainingStartMode ?? 'first-turn') === settings.trainingStartMode);
-    const samples = repetitions.map(solve => ({ solve, metrics: trainingSolveMetrics(solve) }));
-    return (['observationMs', 'executionMs', 'totalMs'] as const).map(key => summarize(
-      samples.map(({ solve, metrics }) => ({ ...solve, timeMs: metrics[key],
-        // Penalties belong to the total; do not add +2 to each component.
-        penalty: key === 'totalMs' ? solve.penalty : solve.penalty === '+2' ? 'ok' as const : solve.penalty,
-      })), event));
-  }, [solves, event, settings.trainingStartMode]);
+  const trainingStatistics = useMemo(() => timerTrainingSummaries(solves, event, settings.trainingStartMode),
+    [solves, event, settings.trainingStartMode]);
   const inspectionLimit = settings.inspectionSec;
   const colorClass = useMemo(() => {
     if (timer.phase === 'holding') return 'holding';
@@ -2918,15 +2909,9 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   // Live and completed reconstruction share the desktop dock. Both expand
   // naturally with the document; narrow screens show live moves below the timer.
   const liveSolutionPanel = timer.phase === 'running' && liveSolve ? (
-    <section className="shell-recap timer-live-solution" data-no-timer
-      aria-label={tr({ zh: '实时解法', en: 'Live solution' })}>
-      <div className="shell-recap-head timer-live-solution-label">
-        {tr({ zh: '实时解法', en: 'Live solution' })}
-      </div>
-      <div className="shell-recap-body">
-        <LiveReconstructReport key={liveSolve.id} solve={liveSolve} liveGyroSamples={liveSolve.liveGyroSamples} isZh={isZh} live liveStageTarget={liveStageTarget} />
-      </div>
-    </section>
+    <TimerLiveSolutionPanel language={isZh ? 'zh' : 'en'}>
+      <LiveReconstructReport key={liveSolve.id} solve={liveSolve} liveGyroSamples={liveSolve.liveGyroSamples} isZh={isZh} live liveStageTarget={liveStageTarget} />
+    </TimerLiveSolutionPanel>
   ) : null;
 
   // 桌面复盘占右栏；窄屏在 recordSolve 中直接进入整屏成绩详情。
@@ -3123,6 +3108,9 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
           controls: (
           <>
           {trainingOrg && trainingAssignment && <AppLink className="tb-btn" data-no-timer prefetch={false} href={`/training/${encodeURIComponent(trainingOrg)}?assignment=${encodeURIComponent(trainingAssignment)}`}>{tr({ zh: '训练打卡进度', en: 'Training check-in progress' })}</AppLink>}
+          {showReconTestEntry(isAdmin, cubeConnected, event, competition.enabled) && <ReconTestPicker
+            canSelect={cubeConnected && (timer.phase === 'idle' || timer.phase === 'stopped')}
+            onSelect={useReconTestScramble} />}
           <TimerDeviceCenter
             triggerRef={bluetoothButtonRef}
             className="shell-topbar-device-center"
@@ -3197,7 +3185,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
               ariaLabel: tr({ zh: '出题来源', en: 'Question source' }),
               real: tr({ zh: '真题', en: 'Real' }),
               realOption: tr({ zh: 'WCA 真题', en: 'WCA real' }),
-              random: randomSourceOptionLabel,
+              random: tr({ zh: '随机', en: 'Random' }),
               randomOption: randomSourceOptionLabel,
               manual: tr({ zh: '手动', en: 'Manual' }),
               manualOption: tr({ zh: '手动输入', en: 'Manual input' }),
@@ -3237,6 +3225,9 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
         stage={{
           className: "shell-main",
           fullscreen: fullscreen,
+          rankings: settings.rankScopes.length > 0 && rankBadgePhase && solves.length > 0 ? (
+            <RankBadge eventId={event} centis={rankCentis} type="single" country={rankCountry} isZh={isZh} scopes={settings.rankScopes} wcaId={authUser?.wcaId} />
+          ) : undefined,
           source: !douyin && <ScrambleSourceBar disabled={!sourceControlsEnabled} event={event} isZh={isZh} diffSlot={diffSlot} mergeSlot={mergeSlot} wcaSourceSlot={wcaSourceSlot} />,
           statistics: <TimerStatRail
             ariaExpanded={panelTab != null}
@@ -3372,17 +3363,10 @@ cubeFooter: <>
   {timer.phase === 'running' && liveSolve && <div ref={setLiveStageTarget} className="timer-live-stage" data-no-timer />}
 </>,
 cornerAspect: cubeConnected || cubeStartedRef.current ? undefined : timerCubePreviewAspect(event, previewScramble),
-digitsCorner: settings.rankScopes.length > 0 && rankBadgePhase && solves.length > 0 ? (
-            <RankBadge eventId={event} centis={rankCentis} type="single" country={rankCountry} isZh={isZh} scopes={settings.rankScopes} wcaId={authUser?.wcaId} />
-          ) : undefined,
 children: <>
           {/* sub-content under the digits */}
-          {trainingTimingActive && timer.phase === 'inspecting' && <div className="timer-live-tps">
-            {tr({ zh: '观察中 · 起手后自动记录分段', en: 'Observing · turn to record the attempt' })}
-          </div>}
-          {trainingTimingActive && settings.trainingStartMode === 'manual'
-            && (timer.phase === 'idle' || timer.phase === 'stopped') && scrambleGuidance.match === true
-            && <div className="timer-live-tps">{tr({ zh: '按空格或点击计时区开始观察', en: 'Press Space or tap the timer to start observation' })}</div>}
+          <TimerTrainingTimingStatus mode={trainingTimingActive ? settings.trainingStartMode : undefined}
+            phase={timer.phase} matched={scrambleGuidance.match === true} language={isZh ? 'zh' : 'en'} />
           {timer.phase === 'running' && <TimerTargetTime targetMs={targetMs} displayMs={timer.displayMs} localize={tr} />}
           {!trainingTimingActive && timer.phase === 'inspecting' && inspectionIllegalCount > 0 && (
             <div className="inspection-illegal-warn" title={tr({ zh: 'WCA 4d: 观察期间只允许整体旋转 (x/y/z)，转面会判 DNF', en: 'WCA 4d: only rotations (x/y/z) are legal during inspection — face turns are DNF'
@@ -3453,14 +3437,8 @@ children: <>
       </>}
         history={panelTab && !liveSolutionPanel && (
         <aside className={`timer-workspace-panel shell-panel${isDesktop ? ' shell-panel--rail' : ' shell-panel--sheet'}`}>
-          <div className="shell-panel-tabs">
-            <button type="button" className={`shell-panel-tab${panelTab === 'times' ? ' active' : ''}`} onClick={() => setPanelTab('times')}>{tr({ zh: '成绩', en: 'Times'
-          })}</button>
-            <button type="button" className={`shell-panel-tab${panelTab === 'stats' ? ' active' : ''}`} onClick={() => setPanelTab('stats')}>{tr({ zh: '统计', en: 'Stats'
-          })}</button>
-            <button type="button" className="shell-panel-close" onClick={() => setPanelTab(null)} aria-label={tr({ zh: '关闭', en: 'Close'
-          })}><X size={16} /></button>
-          </div>
+          <TimerResultsTabs value={panelTab === 'stats' ? 'stats' : 'times'} onChange={setPanelTab}
+            onClose={() => setPanelTab(null)} language={isZh ? 'zh' : 'en'} />
           <div className="shell-panel-body timer-workspace-panel-body">{renderPanelBody()}</div>
         </aside>
       )}

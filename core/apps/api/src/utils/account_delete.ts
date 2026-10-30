@@ -49,6 +49,7 @@ export const PURGE_TABLES: readonly (readonly [string, string])[] = [
   // 先删跨事件的两张(我在别人事件里的受邀行、提醒去重记录),再删事件与日历本体。
   ['calendar_guests', 'guest_key'],      // 我被别人邀请的那些行
   ['calendar_reminder_log', 'user_key'], // 提醒去重记录
+  ['calendar_competitions', 'owner_key'], // Competition identities and deleted-event markers
   ['calendar_events', 'owner_key'],      // 我的日程(删日历也会级联,这里显式兜一遍)
   ['calendars', 'owner_key'],            // 日历本体
   ['calendar_shares', 'owner_key'],      // 对外展示设置 + 分享 token
@@ -145,6 +146,8 @@ export const PLATFORM_ACCOUNT_DELETE_TABLES = [
  * 新表要么进清单,要么进这里,不能两边都不在(那就是漏了)。
  */
 export const NOT_USER_OWNED: Readonly<Record<string, string>> = {
+  recon_captures: '私有视频采集引用通过 owner_user_id 外键随 app_users 级联删除；原视频随 Drive 清理',
+  recon_capture_revisions: '随 capture_id 级联删除采集修订；其他采集上的 actor_user_id 随账号删除置空',
   workspace_members: '0282 数据库注销守卫清理私人草稿与修订、撤销项目资格、匿名化成员和评论；保留已提交团队记录，账号外键置空',
   remote_access_requests: '远程接入申请通过 user_id 外键随账号级联删除，申请事件随申请删除；已授权设备仍须由负责人独立撤销',
   dev_preview_requests: '开发网址申请通过 user_id 外键随账号级联删除，申请事件随申请删除；已开通隧道仍须由负责人独立撤销',
@@ -172,6 +175,7 @@ export const NOT_USER_OWNED: Readonly<Record<string, string>> = {
   user_blocks: '黑名单关系的双向账号外键都随 app_users 级联删',
   user_wca_friend_contacts: '未注册 WCA 好友条目只属于账号本人,随 app_users 级联删',
   site_assistant_requests: '私有 AI 问答与监控指标通过 user_id 外键随 app_users 级联删除，不转为匿名正文',
+  site_assistant_shares: '用户主动公开的单条聊天快照通过 user_id 外键随账号级联删除，公开链接随即失效',
   recon_favorites: '私有复盘收藏通过 user_id 外键随 app_users 级联删',
   user_pets: '私人宠物领养与养成数据通过 user_id 外键随 app_users 级联删',
   drive_members: '网盘访问权限随 app_users 级联删',

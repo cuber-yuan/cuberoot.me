@@ -15,9 +15,10 @@ import { alignAlgFile, caseAlgIssue, loadAlg } from '@/lib/alg_case_alignment';
  *
  * AdminCaseEditor supplies editable fields directly to this layout; no separate edit screen.
  */
-import { Fragment, useEffect, useMemo, useState, useRef } from 'react';
+import { Fragment, useEffect, useMemo, useState, useRef, useId, type ReactNode } from 'react';
+import { useAlgCaseEntryTransition } from '@/hooks/useAlgViewTransition';
 import Link from '@/components/AppLink';
-import { ArrowLeft, ExternalLink, Copy, Check, Shuffle, FlipHorizontal2, HelpCircle, AlertTriangle } from '@app-foundation/icons/lucide';
+import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Copy, Check, Shuffle, FlipHorizontal2, HelpCircle, AlertTriangle } from '@app-foundation/icons/lucide';
 import type { AlgCase, AlgEntry, AlgFile, AlgPuzzle, AlgSubmission } from '@cuberoot/shared';
 import { displayedAlgorithmStm } from '@/lib/alg-metrics';
 import { formatScrambleForEvent } from '@cuberoot/shared/sq1-notation';
@@ -47,6 +48,7 @@ import AlgMirrorPanel, { hasMirror } from '@/components/AlgMirrorPanel';
 import { algCaseHref, algCaseDetailHref, buildCaseSlugMap } from '@/lib/alg_case_link';
 import { primaryCaseName, displayAlgCaseName } from '@/lib/alg_case_display';
 import { compareAlgGroupLabel } from '@/lib/alg_group_order';
+import { adjacentAlgCases } from '@/lib/alg_case_navigation';
 import {
   CASE_VIEW_ANGLES,
   caseViewAlg,
@@ -184,13 +186,60 @@ function PlayableAlgRow({ entry, puzzle, set, mirror, ori = 0, viewAngle, sq1Not
   );
 }
 
-export default function AlgCaseView({ puzzle, set, caseObj: caseProp, data, embedded = false }: { puzzle: AlgPuzzle; set: string; caseObj: AlgCase; data: AlgFile; embedded?: boolean; }) {
+function CaseDetailsTabs({ metadata, advanced }: { metadata: ReactNode; advanced?: ReactNode }) {
+  const [active, setActive] = useState(0);
+  const id = useId();
+  const tabs = useRef<HTMLDivElement>(null);
+  const touch = useRef<{ x: number; y: number } | null>(null);
+  const labels = [tr({ zh: '元信息', en: 'Metadata' }), ...(advanced ? [tr({ zh: '高级', en: 'Advanced' })] : [])];
+  const selected = Math.min(active, labels.length - 1);
+  return <section className="alg-case-details-tabs">
+    <div ref={tabs} role="tablist" aria-label={tr({ zh: 'Case 信息', en: 'Case details' })}>
+      {labels.map((label, index) => <button key={index} type="button" role="tab" id={`${id}-tab-${index}`}
+        aria-controls={`${id}-panel-${index}`} aria-selected={selected === index} tabIndex={selected === index ? 0 : -1}
+        onClick={() => setActive(index)} onKeyDown={event => {
+          const next = event.key === 'Home' ? 0 : event.key === 'End' ? labels.length - 1
+            : event.key === 'ArrowRight' ? (index + 1) % labels.length
+              : event.key === 'ArrowLeft' ? (index + labels.length - 1) % labels.length : null;
+          if (next === null) return;
+          event.preventDefault();
+          setActive(next);
+          tabs.current?.querySelectorAll<HTMLButtonElement>('button')[next]?.focus();
+        }}>{label}</button>)}
+    </div>
+    <div className="alg-case-details-viewport" onTouchStart={event => {
+      if ((event.target as HTMLElement).closest('input, textarea, select, button, a')) return;
+      const point = event.touches[0];
+      touch.current = point ? { x: point.clientX, y: point.clientY } : null;
+    }} onTouchCancel={() => { touch.current = null; }} onTouchEnd={event => {
+      const start = touch.current;
+      touch.current = null;
+      const point = event.changedTouches[0];
+      if (!start || !point) return;
+      const dx = point.clientX - start.x;
+      if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(point.clientY - start.y) * 1.5) return;
+      setActive(current => Math.max(0, Math.min(labels.length - 1, current + (dx < 0 ? 1 : -1))));
+    }}>
+      <div className="alg-case-details-track" style={{ transform: `translateX(-${selected * 50}%)` }}>
+        {[metadata, ...(advanced ? [advanced] : [])].map((content, index) => <div key={index} role="tabpanel"
+          id={`${id}-panel-${index}`} aria-labelledby={`${id}-tab-${index}`} tabIndex={0}
+          aria-hidden={selected !== index} inert={selected !== index} className={selected === index ? 'is-active' : undefined}>
+          {content}
+        </div>)}
+      </div>
+    </div>
+  </section>;
+}
+
+export default function AlgCaseView({ puzzle, set, caseObj: caseProp, data, embedded = false, onEmbeddedCaseChange }: { puzzle: AlgPuzzle; set: string; caseObj: AlgCase; data: AlgFile; embedded?: boolean; onEmbeddedCaseChange?: (href: string) => void; }) {
   /**
    * 显示的这张 case 自己拿一份 —— admin 改完 / 拖完就地更新,不回写上层的 `data`:
    * 上层是按 **slug** 解析出这张 case 的,改了名字再回写会当场解析失败(整页变「没找到」)。
    * 代价是关联缩略图(镜像/逆)那份 `data` 会短暂过期,刷新即一致。
    */
   const [caseObj, setCaseObj] = useState(caseProp);
+  const motionRoot = useRef<HTMLDivElement>(null);
+  useAlgCaseEntryTransition(motionRoot, String(caseObj.id ?? caseObj.name), !embedded);
   const [insertionCases, setInsertionCases] = useState(data.cases);
   useEffect(() => { setInsertionCases(data.cases); }, [data.cases]);
   useEffect(() => {
@@ -324,7 +373,7 @@ export default function AlgCaseView({ puzzle, set, caseObj: caseProp, data, embe
     return `${path}${path.includes('?') ? '&' : '?'}orientation=${encodeURIComponent(effectiveOrientation)}${hash}`;
   };
 
-  // 「返回」→ case 所在的子组列表页(带 #name 高亮那张卡)。是有明确目标的导航,不是 history.back。
+  // 返回拥有该 case 的一级列表；更细的分组只在列表内作为分区标题。
   const rawBackHref = algCaseHref(puzzle, set, caseObj);
   const backHref = keepOrientation(keepViewAngle(keepSq1Notation(keepSq1Top(rawBackHref))));
 
@@ -342,6 +391,7 @@ export default function AlgCaseView({ puzzle, set, caseObj: caseProp, data, embe
     const href = algCaseDetailHref(puzzle, set, (c.id != null && slugMap.byId.get(c.id)) || '');
     return keepOrientation(keepViewAngle(keepScrambleKind(keepSq1Notation(keepSq1Top(href)))));
   };
+  const adjacent = useMemo(() => adjacentAlgCases(puzzle, set, data.cases, caseObj), [puzzle, set, data.cases, caseObj]);
 
   // 社区公式:只这张 case 的。
   const [submissions, setSubmissions] = useState<AlgSubmission[]>([]);
@@ -406,7 +456,10 @@ export default function AlgCaseView({ puzzle, set, caseObj: caseProp, data, embe
     name: member.name,
     caseObj: member.caseObj,
     current: member.current,
-    href: member.current ? undefined : hrefFor(member.caseObj),
+    href: member.current || onEmbeddedCaseChange ? undefined : hrefFor(member.caseObj),
+    onSelect: !member.current && onEmbeddedCaseChange ? () => {
+      if (!editor || editor.confirmDiscard()) onEmbeddedCaseChange(hrefFor(member.caseObj));
+    } : undefined,
     onRotate: member.current && rotateCurrentCase ? async () => {
       if (!editor || editor.confirmDiscard()) await rotateCurrentCase();
     } : undefined,
@@ -447,14 +500,14 @@ export default function AlgCaseView({ puzzle, set, caseObj: caseProp, data, embe
   }
 
   const renderDetail = (editor?: InlineCaseEditorParts) => (
-    <div className={`alg-case-detail${editor ? ' alg-case-inline-editor' : ''}${useF2lOrientationGrid ? ' is-f2l-orientation-grid' : ''}`}>
+    <div ref={motionRoot} className={`alg-case-detail${editor ? ' alg-case-inline-editor' : ''}${useF2lOrientationGrid ? ' is-f2l-orientation-grid' : ''}`}>
       <div className="alg-case-detail-head">
         <Link href={backHref} className="alg-case-detail-back" prefetch={false}>
           <ArrowLeft size={16} />
           <span className="sr-only">{tr({ zh: '返回', en: 'Back' })}</span>
         </Link>
         <h1 className="alg-case-detail-title">
-          {editor ? editor.name : primary}
+          {editor ? editor.name : <span data-alg-shared-title={primary}>{primary}</span>}
           {showSub && <span className="alg-meta-head-sub">{sub}</span>}
           <Link href={backHref} className="alg-meta-head-open" prefetch={false} title={tr({ zh: '在列表中打开', en: 'Open in the list' })}>
             <ExternalLink size={14} />
@@ -543,6 +596,17 @@ export default function AlgCaseView({ puzzle, set, caseObj: caseProp, data, embe
         {editor?.actions && <div className="alg-case-inline-actions">{editor.actions}</div>}
       </div>
 
+      {!embedded && <nav className="alg-case-navigation" aria-label={tr({ zh: '切换 case', en: 'Navigate cases' })}>
+        {([['previous', adjacent.previous], ['next', adjacent.next]] as const).map(([direction, target]) => {
+          const label = direction === 'previous' ? tr({ zh: '上一条', en: 'Previous' }) : tr({ zh: '下一条', en: 'Next' });
+          const content = <>{direction === 'previous' && <ChevronLeft size={16} />}{label}{direction === 'next' && <ChevronRight size={16} />}</>;
+          return target ? <Link key={direction} href={hrefFor(target)} prefetch={false} className="alg-case-navigation-link"
+            onClick={event => { if (editor && !editor.confirmDiscard()) event.preventDefault(); }}
+            aria-label={`${label}: ${primaryCaseName(puzzle, set, target)}`}>{content}</Link>
+            : <span key={direction} className="alg-case-navigation-link" aria-disabled="true">{content}</span>;
+        })}
+      </nav>}
+
       {editor?.error && <div className="alg-case-inline-status">{editor.error}</div>}
       {editor && effectiveViewAngle !== 'default' && <p>{tr({ zh: '切回默认角度可编辑公式，未保存的修改会保留。', en: 'Return to the default angle to edit algorithms. Your unsaved changes are kept.' })}</p>}
       <div ref={editorArea}>
@@ -559,26 +623,25 @@ export default function AlgCaseView({ puzzle, set, caseObj: caseProp, data, embe
             editing={!!editor && effectiveViewAngle === 'default'}
             setupEditor={editor?.setup}
             byNo={byNo}
-            jump={{ kind: 'link', href: hrefFor }}
+            jump={onEmbeddedCaseChange ? { kind: 'callback', onJump: target => {
+              if (!editor || editor.confirmDiscard()) onEmbeddedCaseChange(hrefFor(target));
+            } } : { kind: 'link', href: hrefFor }}
             scrambleKind={scrambleKind}
             onScrambleKindChange={setScrambleKind}
             viewAngle={effectiveViewAngle}
             orientation={effectiveOrientation}
             algsAfter={(!editor || effectiveViewAngle !== 'default') ? renderCommunityAlgs(!editor) : undefined}
+            renderMetadata={metadata => <CaseDetailsTabs metadata={metadata} advanced={editor &&
+              <fieldset className="alg-case-inline-fields alg-admin-modal-body" disabled={editor.busy}>{editor.advanced}</fieldset>} />}
           />
         </div>
       ) : (
         <div className="alg-case-detail-lean is-paired-player">
-          <AlgCaseRelationCards
-            items={leanRelationCards(editor)}
-            puzzle={puzzle}
-            set={set}
-            sq1BlackTop={sq1BlackTop}
-            viewAngle={effectiveViewAngle}
-            orientation={effectiveOrientation}
-          />
           <div className={`alg-case-detail-lean-algs is-paired-player${useF2lOrientationGrid ? ' is-f2l-orientation-grid' : ''}${editor ? ' is-editing' : ''}`}>
-            {editor && <div hidden={effectiveViewAngle !== 'default'}>{editor.algorithms}</div>}
+            {editor && <div hidden={effectiveViewAngle !== 'default'}>{editor.algorithms(
+              <AlgCaseRelationCards items={leanRelationCards(editor)} puzzle={puzzle} set={set}
+                sq1BlackTop={sq1BlackTop} viewAngle={effectiveViewAngle} orientation={effectiveOrientation} />,
+            )}</div>}
             {(!editor || effectiveViewAngle !== 'default') && displayedOrientations.map(({ oriAlgs, oi }) => {
               const orientedSetup = oriAdjustSetup(caseObj.setup, oi);
               const requestedAlgIdx = selectedAlgByOri[oi] ?? 0;
@@ -610,7 +673,7 @@ export default function AlgCaseView({ puzzle, set, caseObj: caseProp, data, embe
                 return <Fragment key={`${oi}:${i}`}>{row}</Fragment>;
               });
               return (
-                <div key={oi} className="alg-case-detail-ori">
+                <div key={oi} data-alg-motion-ori={oi} className="alg-case-detail-ori">
                   {multiOri && <div className="alg-case-detail-ori-label">
                     <AlgImageDownloadButton build={() => caseImageBatch({
                       puzzle, set, cases: [caseObj], title: primary,
@@ -624,9 +687,9 @@ export default function AlgCaseView({ puzzle, set, caseObj: caseProp, data, embe
                     {shortOriName(oriNames![oi])}
                   </div>}
                   <div className="alg-case-detail-ori-main alg-player-list-layout">
-                    {selectedEntry && (
+                    {(selectedEntry || oi === 0) && (
                       <div className="alg-case-detail-ori-player alg-player-list-player">
-                        <AlgPlayer
+                        {selectedEntry && <AlgPlayer
                           alg={selectedAlg}
                           puzzle={puzzle}
                           set={set}
@@ -635,7 +698,9 @@ export default function AlgCaseView({ puzzle, set, caseObj: caseProp, data, embe
                           size={useF2lOrientationGrid ? 220 : 260}
                           autoPlay={playRequest > 0}
                           playRequest={playRequest}
-                        />
+                        />}
+                        {oi === 0 && <AlgCaseRelationCards items={leanRelationCards(editor)} puzzle={puzzle} set={set}
+                          sq1BlackTop={sq1BlackTop} viewAngle={effectiveViewAngle} orientation={effectiveOrientation} />}
                       </div>
                     )}
                     <div className="alg-case-detail-ori-algs alg-player-list-options">
@@ -664,9 +729,10 @@ export default function AlgCaseView({ puzzle, set, caseObj: caseProp, data, embe
       )}
 
       </div>
-      {editor && <fieldset className="alg-case-inline-fields alg-admin-modal-body" disabled={editor.busy}>
-        {editor.advanced}
-      </fieldset>}
+      {!m && <CaseDetailsTabs metadata={<div className="alg-meta-facts">
+        {editor?.subgroup ? <div className="alg-meta-subgroup-editor">{editor.subgroup}</div>
+          : caseObj.subgroup && <div className="alg-meta-row"><span className="alg-meta-key">{tr({ zh: '子集', en: 'Subset' })}</span><span className="alg-meta-val">{caseObj.subgroup}</span></div>}
+      </div>} advanced={editor && <fieldset className="alg-case-inline-fields alg-admin-modal-body" disabled={editor.busy}>{editor.advanced}</fieldset>} />}
     </div>
   );
 

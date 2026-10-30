@@ -13,10 +13,10 @@
   },
   "translation": {
     "language": "zh-Hans",
-    "version": 1,
+    "version": 2,
     "title": "WDC 负责人任命公告（2021 年 2 月）",
-    "content": "很高兴宣布新的委员会负责人 Sebastiano Tronto。他将担任 WCA 纪律委员会（WDC）负责人，此前已是委员会成员。\n\n根据[委员会与团队动议](https://www.worldcubeassociation.org/documents/motions/10.2020.0%20-%20Committees%20and%20Teams.pdf)第 4 节，由理事会选出，并经现任委员会负责人及高级代表投票批准。\n\n祝 Sebastiano 顺利履行新职责。理事会还收到 Alaqmaar Gandhi 的申请。感谢 Alaqmaar 申请，两份申请均可在[此处](https://drive.google.com/drive/folders/1s0YwsXQRSTQZnU5peAsgMMx5DdWfJ4mn?usp=sharing)查看。",
-    "translatedAt": "2026-10-22T06:07:32.458Z",
+    "content": "很高兴宣布新的委员会负责人 Sebastiano Tronto。他将担任 WCA 纪律委员会（WDC）负责人，此前已是委员会成员。\n\n根据[委员会与团队动议](https://www.worldcubeassociation.org/documents/motions/10.2020.0%20-%20Committees%20and%20Teams.pdf)第 4 节，由董事会选出，并经现任委员会负责人及高级代表投票批准。\n\n祝 Sebastiano 顺利履行新职责。董事会还收到 Alaqmaar Gandhi 的申请。感谢 Alaqmaar 申请，两份申请均可在[此处](https://drive.google.com/drive/folders/1s0YwsXQRSTQZnU5peAsgMMx5DdWfJ4mn?usp=sharing)查看。",
+    "translatedAt": "2026-10-25T09:29:00.613Z",
     "translator": "Codex / subscription",
     "sourceHash": "8c636510d099a1c5019169830e8b238b35019a158503a183383bf70c21fb99ca"
   },
@@ -36,7 +36,29 @@
       "verdict": "pass",
       "scope": "完整官方日志正文的原译文语义对照；不代表外部事实核验、外链全文覆盖或公开译载许可。"
     },
-    "unresolvedNotes": []
+    "unresolvedNotes": [],
+    "complianceRevision": {
+      "at": "2026-10-25T09:29:00.613Z",
+      "previousTranslationHash": "b2bd01b43b7f68a9841de98439681c41d62f458ba67abe33780694652e543bc0",
+      "report": "../wca-translation-compliance-2026-10-25.json",
+      "scope": "Targeted source comparison; independent prior evidence remains bound to the previous hash."
+    },
+    "recheck": {
+      "reviewer": "/root/review_logs",
+      "reviewedAt": "2026-10-26T11:10:07.703Z",
+      "report": "../wca-translation-review-2026-10-26/final-report.json",
+      "sourceHash": "8c636510d099a1c5019169830e8b238b35019a158503a183383bf70c21fb99ca",
+      "reviewedTranslationHash": "297fd860b1f19ca09a4e9fc94b06da14d6c955f1053d95fa7f5c1bcc181a35a7",
+      "verdict": "pass",
+      "scope": "复用已通过的旧版全文独立审校；人工阅读旧版与现版全部文字差异及对应英文段落，确认本轮之前的差异限于官方机构名称或 Guidelines 的“指南”译法；另复核本轮项目名命中语境。"
+    },
+    "currentReview": {
+      "round": "2026-10-26",
+      "proposal": "docs/wca-translation-review-2026-10-26/logs/disciplinary-wdc-leader-announcement-february-2021.json",
+      "sourceConcern": false,
+      "notes": [],
+      "inputTranslationHash": "297fd860b1f19ca09a4e9fc94b06da14d6c955f1053d95fa7f5c1bcc181a35a7"
+    }
   },
   "publication": {
     "status": "not_authorized"

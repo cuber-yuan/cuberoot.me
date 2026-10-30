@@ -18,7 +18,7 @@
  *      XCross 及以上才补 pt_cross_C4E0(gz 20MB,见 ensureXCrossTables)。
  */
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Info, X, SlidersHorizontal, ArrowLeft, ArrowRight, ChevronRight, ChevronDown } from 'lucide-react';
 import { CompactSelect } from './CompactSelect';
@@ -31,7 +31,7 @@ import { CUBE_FILL, CUBE_ON_FILL, CUBE_COLOR_LETTER_FOR_FACE, type CubeFace } fr
 import { orientedFaceColors } from '@cuberoot/shared/timer';
 import CubeColorChip from './CubeColorChip';
 import { useModalBackdrop } from './useModalDismiss';
-import { usePopoverDismiss } from './usePopoverDismiss';
+import { TimerRoomDialog } from './TimerRoomDialog';
 import { usePanelClamp } from './usePanelClamp';
 import { createContext, useContext } from 'react';
 import { createRustCrossPool, FR_NOT_HTR, HTR_NOT_DR, HTR2_NOT_HTR, type MovesTimed, type RustCrossPool, type SolItem, TABLE_BYTES, TABLE_SETS, XCROSS_TABLES } from './stage-solver/rust-cross-client';
@@ -39,9 +39,11 @@ import { onXCrossProgress, type XCrossProgress } from './stage-solver/rust-cross
 import { getRustCrossPool, dropRustCrossPool, isRustCrossPoolReady, poolSizeForDevice, type PoolNeed } from './stage-solver/rust-cross-pool';
 import { normalizeWcaScramble as normalizeScramble } from '@cuberoot/shared/normalize-wca-scramble';
 import { bestErgonomicOrientationIndex, rotateSolutionY } from './stage-solver/rotate-solution';
+import { rankXCrossSolutions } from './stage-solver/xcross-ranking';
 import { VARIANT_STAGES } from '@cuberoot/shared/timer/scramble-variants';
 import { countQtm } from '@cuberoot/shared/scramble-length';
 import './StageSolver.css';
+import './timer-room.css';
 
 function fmtMs(ms: number): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${Math.round(ms)}ms`;
@@ -403,12 +405,15 @@ interface Props {
   /** gen 行内:更紧凑的间距 + 略小播放器。 */
   compact?: boolean;
   expandedSolutions?: boolean;
-  settingsSlot?: HTMLElement | null;
+  /** Opt-in experimental ranking; ordinary callers retain length order. */
+  practicalSolutions?: boolean;
+  settingsSlot?: HTMLElement | null; navigationSlot?: HTMLElement | null;
+  scrambleEditAction?: ReactNode;
   onPrevScramble?: () => void;
   onNextScramble?: () => void;
 }
 
-export default function StageSolver({ scramble, lang, initialMethod = 'std', initialStage = 0, initialFace, onSelectionChange, initialSlot = '', onSlotChange, initialBase = '', onBaseChange, compact = false, expandedSolutions = false, settingsSlot, onPrevScramble, onNextScramble, onDismissChange, onBlockingChange }: Props) {
+export default function StageSolver({ scramble, lang, initialMethod = 'std', initialStage = 0, initialFace, onSelectionChange, initialSlot = '', onSlotChange, initialBase = '', onBaseChange, compact = false, expandedSolutions = false, practicalSolutions = false, settingsSlot, navigationSlot, scrambleEditAction, onPrevScramble, onNextScramble, onDismissChange, onBlockingChange }: Props) {
   const t = (zh: string, en: string) => (lang === 'zh' ? zh : en);
 
   // 视角格 / 解法头的目标描述(块类方法按 method+stage 给语义,其余 = 该面十字)。
@@ -505,10 +510,7 @@ export default function StageSolver({ scramble, lang, initialMethod = 'std', ini
     return () => onBlockingChange?.(false);
   }, [infoOpen, settingsOpen, onBlockingChange]);
   const settingsId = useId();
-  const settingsRef = useRef<HTMLDivElement>(null);
   const solutionControlsRef = useRef<HTMLDivElement>(null);
-  const settingsTriggerRef = useRef<HTMLButtonElement>(null);
-  usePopoverDismiss(settingsOpen, () => setSettingsOpen(false), settingsRef, settingsTriggerRef);
   // 18 格 → 54-bit allowed:格 i 覆盖 move [3i,3i+2];lo=低 32 位、hi=高 22 位。
   const crMask = useMemo(() => {
     let lo = 0, hi = 0;
@@ -811,13 +813,14 @@ export default function StageSolver({ scramble, lang, initialMethod = 'std', ini
     setMovesLoading(true);
     setMoves(null);
     setSelSol(0);
+    const practical = practicalSolutions && method === 'std' && (stage === 1 || stage === 2) && !useCrRef.current;
 
     // 流式累积:支持流式的引擎(std 6 面 cross/xcross/F2L + 受限 54-move xcross)每枚举到
     // 一条解就经 onPartial 推来。同长解在一个 DFS 深度内几乎同时枚举完(亚帧),整批刷会「一次蹦出」;
     // 这里把「到达」与「揭示」解耦——逐帧少量铺开成肉眼可见的瀑布,跨深度的真实时间间隔原样保留。
     // 同 HTM 再按 QTM 升序;Array.sort 稳定 → 原到达序(长度升序)兜底。
     const sortSols = (xs: SolItem[]) =>
-      [...xs].sort((a, b) => (moveLen(a.m) - moveLen(b.m)) || (countQtm(a.m) - countQtm(b.m)));
+      practical ? xs : [...xs].sort((a, b) => (moveLen(a.m) - moveLen(b.m)) || (countQtm(a.m) - countQtm(b.m)));
     const acc: SolItem[] = [];
     const seen = new Set<string>();
     let bestLen = Infinity;
@@ -869,7 +872,7 @@ export default function StageSolver({ scramble, lang, initialMethod = 'std', ini
       const res = kind === 'std'
         ? (useCrRef.current
           ? await getXcrPool().solveXCrossRestrictMoves(scr, f, crMaskRef.current.lo, crMaskRef.current.hi, crMaxRotRef.current, slack, cap, engineStage, combo, onPartial)
-          : await pool.solveMoves(scr, engineStage, f, { extra: slack, cap, combo, mask: movesMask }, onPartial))
+          : await pool.solveMoves(scr, engineStage, f, { extra: slack, cap, combo, mask: movesMask, practical }, practical ? undefined : onPartial))
         : kind === 'f2leo'
           ? await pool.solveF2leoMoves(scr, method === 'pseudo_f2leo', f, stage, { extra: slack, cap, combo, mask: movesMask })
           : kind === 'daisy'
@@ -890,6 +893,7 @@ export default function StageSolver({ scramble, lang, initialMethod = 'std', ini
                       ? await pool.solveFrMoves(scr, f, { extra: slack, cap })
                       : await pool.solveVariantMoves(scr, VARIANT_ID[method as 'pair' | 'eo' | 'pseudo' | 'pseudo_pair'], f, stage, { extra: slack, cap, combo, base, mask: movesMask });
       if (movesReq.current === my) {
+        if (practical) res.sols = rankXCrossSolutions(scr, res.sols, limit);
         // 最终权威结果(已去重/排序/截断)接管累积集,瀑布继续排空到它为止(同集合同序 → 无跳动)。
         acc.length = 0;
         acc.push(...res.sols);
@@ -907,7 +911,7 @@ export default function StageSolver({ scramble, lang, initialMethod = 'std', ini
     } finally {
       if (movesReq.current === my) setMovesLoading(false);
     }
-  }, [method, stage, limit, slack]);
+  }, [method, stage, limit, slack, practicalSolutions]);
 
   const clickFace = useCallback((f: number) => {
     wantAuto.current = false;
@@ -1161,7 +1165,6 @@ export default function StageSolver({ scramble, lang, initialMethod = 'std', ini
   const settingsButton = (
     <>
         <button
-          ref={settingsTriggerRef}
           type="button"
           className="stsv-settings-toggle"
           onClick={() => setSettingsOpen((open) => !open)}
@@ -1169,14 +1172,20 @@ export default function StageSolver({ scramble, lang, initialMethod = 'std', ini
           title={t('求解设置', 'Solver settings')}
           aria-expanded={settingsOpen}
           aria-controls={settingsId}
+          aria-haspopup="dialog"
         >
           <SlidersHorizontal size={18} />
         </button>
+    </>
+  );
+  const navigationButtons = (
+    <>
         {onPrevScramble && <button type="button" className="stsv-settings-toggle" data-no-swipe
           onClick={onPrevScramble} aria-label={t('上一个打乱', 'Previous scramble')}
           title={t('上一个打乱', 'Previous scramble')}>
           <ArrowLeft size={18} aria-hidden="true" />
         </button>}
+        {scrambleEditAction}
         {onNextScramble && <button type="button" className="stsv-settings-toggle" data-no-swipe
           onClick={onNextScramble} aria-label={t('下一个打乱', 'Next scramble')}
           title={t('下一个打乱', 'Next scramble')}>
@@ -1238,6 +1247,8 @@ export default function StageSolver({ scramble, lang, initialMethod = 'std', ini
           </div>
         )}
         {settingsSlot ? createPortal(settingsButton, settingsSlot) : settingsButton}
+        {navigationSlot ? createPortal(navigationButtons, navigationSlot)
+          : settingsSlot ? createPortal(navigationButtons, settingsSlot) : navigationButtons}
         {/* 6 视角对比:点格选视角;最优(min)视角带 best 标记。与方法、阶段和设置入口同排展示。 */}
         {status === 'ready' && (
           <div className="stsv-angles">
@@ -1287,7 +1298,9 @@ export default function StageSolver({ scramble, lang, initialMethod = 'std', ini
       </div>
 
       {settingsOpen && (
-        <div ref={settingsRef} id={settingsId} className="stsv-settings" data-site-surface="panel" role="region" aria-label={t('求解设置', 'Solver settings')}>
+        <TimerRoomDialog title={t('求解设置', 'Solver settings')} language={lang}
+          className="stsv stsv-settings-dialog" onClose={() => setSettingsOpen(false)}>
+        <div id={settingsId} className="stsv-settings">
           <div className="stsv-settings-limits">
             {/* 最大步数 = 比该面最优多几步(相对最优,跨面一致;cross 阶段也不会因绝对大值爆炸)。 */}
             <label className="stsv-control">
@@ -1424,6 +1437,7 @@ export default function StageSolver({ scramble, lang, initialMethod = 'std', ini
           ) : null}
 
         </div>
+        </TimerRoomDialog>
       )}
 
       {(status === 'loading' || xLoading) && (

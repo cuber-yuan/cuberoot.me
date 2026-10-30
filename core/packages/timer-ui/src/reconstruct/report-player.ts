@@ -26,9 +26,9 @@ export function reportPlayback(state:ReportPlayerState,total:number,totalMs:numb
   const control=(id:string,label:string,action:ReportAction,disabled:boolean,icon:string)=>buttonNode(id,label,action,`reconstruct-pb-btn${id==='play'?' is-play':''}`,{disabled,icon});
   return groupNode('playback',[
     groupNode('main',[
-      groupNode('top',[textNode('caption',tr({zh:'回放',en:'replay'}),'reconstruct-playback-cap'),groupNode('controls',[
+      groupNode('top',[groupNode('controls',[
         hasGyro?{id:'gyro',kind:'toggle',text:tr({zh:'陀螺仪',en:'Gyro'}),value:state.posed,action:{type:'gyro'}}:null,
-        groupNode('speeds',[textNode('label',tr({zh:'速度',en:'Speed'}),'reconstruct-playback-speed-cap'),...REPLAY_SPEEDS.map(value=>buttonNode(String(value),value+'x',{type:'speed',value},`reconstruct-playback-speed-btn ${state.speed===value?'active':''}`,{selected:state.speed===value}))],'reconstruct-playback-speed','row'),
+        groupNode('speeds',REPLAY_SPEEDS.map(value=>buttonNode(String(value),value+'x',{type:'speed',value},`reconstruct-playback-speed-btn ${state.speed===value?'active':''}`,{selected:state.speed===value})),'reconstruct-playback-speed','row'),
       ],'reconstruct-playback-controls','row')],'reconstruct-playback-top','row'),
       {id:'cube',kind:'slot'},
       groupNode('counter',[{id:'elapsed',kind:'slot'},textNode('total',' / '+reportSeconds(totalMs))],'reconstruct-playback-counter','row'),

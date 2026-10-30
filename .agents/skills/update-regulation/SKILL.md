@@ -84,6 +84,10 @@ export default function XPage() {
 
 ## 国际化
 
+WCA 官网用语以 [Weblate 简体中文项目](https://translate.worldcubeassociation.org/projects/wca/-/zh_Hans/)为主要翻译参考；先查 `https://api.cuberoot.me/v1/wca/translations?q=<URL编码查询>&limit=5&v=1`，按英文、中文或 key 查询；核对 ready/stale、上下文、版本和状态。未命中或服务不可用再去 Weblate。镜像数据由官方同步，不人工维护译文副本。规则语义以适用版本英文为准，按条款号查下述对照。先读参考 MD 的“官方资源与来源优先级”“AI 如何高效检索”，遵循 `i18n` skill 的在线查证流程；权限失败时用同提交的 WCA 官方 GitHub locale 文件后备，记录来源，不凭语感另造译名。
+
+机构名称查参考中的“官方机构名称”及 Weblate 对应条目。WIC 固定为“廉政委员会”，历史 WDC/WAC 保留当时名称与缩写；官方用词与校订说明不同时先核对版本和语境，保留疑点理由。
+
 翻译前先读 [`WCA 英中翻译参考`](../../../core/packages/client/public/regulation/wca-translation-reference.md)，再按条款号查同目录 `wca-regulations-bilingual.md`。后者随 `reg:clauses` 自动从 `_full.json` 生成；仅重导出现有数据用 `pnpm -F @cuberoot/client reg:clauses --from-json`。人工参考是网页 `/regulation/translation` 与下载共用的唯一正文；规则改版后需复核其中的术语、基线日期和已知原译疑点，不能自动覆盖成人工已审校。公共发现入口在 `/llms.txt`，仓库发现入口在根 `AGENTS.md` 和 `i18n` skill。
 
 遵循 `i18n` Skill,仅 en + zh-Hans;文案用 `tr`/`T`/`useT` 或 locale JSON,禁止内联语言三元;不恢复繁体字段、生成器或已删除的 `zh:*` 检查命令。

@@ -385,6 +385,9 @@ function snapCrossAufBeforePause(
   if (at < 0 || at >= counted.length - 1) return rawEnd;
   const next = counted[at + 1];
   if (!/^U(?:2'?|')?$/.test(next.m)) return rawEnd;
+  // A later setup turn belongs to F2L even if the solver pauses again after it.
+  // Only a fast follow-through can still be part of the cross gesture.
+  if (next.ts - counted[at].endTs > 300) return rawEnd;
   const followingTs = counted[at + 2]?.ts ?? totalMs;
   return followingTs - next.endTs >= 1000 ? next.endIdx : rawEnd;
 }
@@ -482,11 +485,11 @@ function restoreCrossAtBoundaries(recon: ReconTextResult, lines: ReconTextLine[]
     return { ...line, moves,
       moveRanges: line.moveRanges ? [
         ...entries.map(({ token, source }) => source < 0
-          ? { ...line.moveRanges![0], token, endTs: line.moveRanges![0].ts, endIdx: line.moveRanges![0].startIdx - 1 }
+          ? { ...line.moveRanges![0], token, endTs: line.moveRanges![0].ts, endIdx: line.moveRanges![0].startIdx - 1, rotationMs: undefined, boundaryRegrip: undefined }
           : token === line.moveRanges![source].token
           ? line.moveRanges![source] : { ...line.moveRanges![source], token }),
         ...(correction ? [{ ...last!, token: correction, ts: last!.endTs,
-          startIdx: last!.endIdx + 1, endIdx: last!.endIdx }] : []),
+          startIdx: last!.endIdx + 1, endIdx: last!.endIdx, rotationMs: undefined, boundaryRegrip: undefined }] : []),
       ] : undefined,
       wasteGroups: line.wasteGroups ? [...entries.map(entry => entry.source < 0 ? null : line.wasteGroups![entry.source]),
         ...(correction ? [null] : [])] : undefined,
@@ -529,6 +532,11 @@ function orientInspectionForCross(recon: ReconTextResult): ReconTextResult {
   if (!recon.crossColor) return recon;
   const state = applyOneToken(solved(3), `${recon.scramble} ${recon.inspection}`);
   if (state.D[4] === recon.crossColor) return recon;
+  const cross = recon.lines.find(line => line.kind === 'cross');
+  if (cross?.moves.some(move => /^(?:[rludfb]|[RLUDFB]w)(?:2'?|')?$/.test(move))) {
+    const afterCross = applyOneToken(state, cross.moves.join(' '));
+    if (afterCross.D[4] === recon.crossColor && isCross(afterCross)) return recon;
+  }
   const rotation = ['x', "x'", 'x2', 'z', "z'"].find(rotation =>
     applyOneToken(state, rotation).D[4] === recon.crossColor);
   if (!rotation) return recon;
@@ -547,6 +555,14 @@ function orientInspectionForCross(recon: ReconTextResult): ReconTextResult {
 /** Choose reading frames across whole stages; never rewrite a matched library body. */
 function preferF2lSideTurns(recon: ReconTextResult): ReconTextResult {
   const yaws = ['', 'y', 'y2', "y'"];
+  // A matched outer-turn pair followed by a measured regrip still keeps its
+  // physical moves when the whole pair is renamed into a side-turn frame.
+  // Do not apply this to library wide/slice fingertricks.
+  const flexible = new Set(recon.lines.filter((line, i) => line.kind === 'f2l'
+    && line.libraryCorrection && line.moves.every(token => /^[UDFBLR](?:2'?|')?$/.test(token))
+    && recon.lines[i + 1]?.kind === 'f2l'
+    && recon.lines[i + 1].moveRanges?.[0]?.boundaryRegrip));
+  const locked = (line: ReconTextLine) => !!line.libraryCorrection && !flexible.has(line);
   const mapped = (line: ReconTextLine, yaw: number) => line.moves.map(token => {
     if (!yaw) return token;
     const move = conjugateReconToken(token, facePermFor(yaws[yaw]));
@@ -554,7 +570,7 @@ function preferF2lSideTurns(recon: ReconTextResult): ReconTextResult {
     return /^[rludfb]/.test(token) ? move.replace(/^([RLUDFB])w/, (_, face: string) => face.toLowerCase()) : move;
   });
   const cost = (line: ReconTextLine, moves: string[]) => {
-    if (line.kind !== 'f2l' || line.libraryCorrection) return 0;
+    if (line.kind !== 'f2l' || locked(line)) return 0;
     let score = 0;
     for (const face of ['F', 'B']) {
       let side = 0, up = 0;
@@ -610,8 +626,9 @@ function preferF2lSideTurns(recon: ReconTextResult): ReconTextResult {
   for (const { line } of parts) {
     // An unmatched last layer has no library frame to return to. Keep the
     // chosen reading frame across its boundary instead of inventing a regrip.
-    const choices = line.kind === 'cross' || !line.libraryCorrection ? [0, 1, 2, 3] : [0];
-    const keepFrame = !line.libraryCorrection && (line.kind === 'oll' || line.kind === 'pll');
+    const choices = line.kind === 'cross' || !locked(line) ? [0, 1, 2, 3] : [0];
+    const keepFrame = (!line.libraryCorrection && (line.kind === 'oll' || line.kind === 'pll'))
+      || (line.kind === 'f2l' && line.moveRanges?.[0]?.boundaryRegrip === true);
     paths = choices.flatMap(yaw => {
       const eligible = paths.filter(path => !keepFrame || !path.yaws.length || path.yaws.at(-1) === yaw);
       if (!eligible.length) return [];
@@ -635,7 +652,7 @@ function preferF2lSideTurns(recon: ReconTextResult): ReconTextResult {
     const first = line.moveRanges?.[0];
     return { ...line, moves,
       moveRanges: line.moveRanges ? [
-        ...(delta && first ? [{ ...first, token: yaws[delta], endTs: first.ts, endIdx: first.startIdx - 1 }] : []),
+        ...(delta && first ? [{ ...first, token: yaws[delta], endTs: first.ts, endIdx: first.startIdx - 1, rotationMs: undefined, boundaryRegrip: undefined }] : []),
         ...line.moveRanges.map((range, j) => ({ ...range, token: moves[j + (delta ? 1 : 0)] })),
       ] : undefined,
       wasteGroups: line.wasteGroups ? [...(delta ? [null] : []), ...line.wasteGroups] : undefined,
@@ -708,6 +725,39 @@ function omitSolvedTailRotations(recon: ReconTextResult): ReconTextResult {
   }];
   return { ...recon, lines,
     text: [...(recon.inspection ? [`${recon.inspection} // insp`] : []), ...lines.map(formatReconLine)].join('\n') };
+}
+
+/** Simplified notation keeps only the net final AUF, but owns every raw turn. */
+function simplifyFinalAuf(recon: ReconTextResult): ReconTextResult {
+  const line = recon.lines.at(-1);
+  if (!line || !['oll', 'pll'].includes(line.kind)) return recon;
+  let from = line.moves.length;
+  while (from > 0 && /^U(?:2'?|')?$/.test(line.moves[from - 1])) from--;
+  if (line.moves.length - from < 2 || !line.wasteGroups?.slice(from).some(group => group != null)) return recon;
+  const quarters = line.moves.slice(from).reduce((sum, token) => sum +
+    (token.includes('2') ? (token.endsWith("'") ? -2 : 2) : token.endsWith("'") ? -1 : 1), 0);
+  const amount = ((quarters % 4) + 4) % 4;
+  const token = amount ? quarterToken('U', quarters) : null;
+  const tail = line.moveRanges?.slice(from);
+  let ranges = line.moveRanges?.slice(0, from);
+  if (tail?.length) {
+    const merged = retainOmittedRanges([tail[0]], tail.slice(1));
+    if (!merged) return recon;
+    if (token) ranges = [...ranges!, { ...merged[0], token }];
+    else {
+      const retained = retainOmittedRanges(ranges, tail);
+      if (retained === null) return recon;
+      ranges = retained;
+    }
+  }
+  const moves = [...line.moves.slice(0, from), ...(token ? [token] : [])];
+  const lines = [...recon.lines.slice(0, -1), { ...line, moves, moveRanges: ranges,
+    wasteGroups: [...(line.wasteGroups?.slice(0, from) ?? []), ...(token ? [null] : [])],
+    algorithmGroups: line.algorithmGroups?.filter(group => group.from < from)
+      .map(group => ({ ...group, to: Math.min(group.to, from) })),
+  }];
+  return { ...recon, lines, text: [...(recon.inspection ? [`${recon.inspection} // insp`] : []),
+    ...lines.map(formatReconLine)].join('\n') };
 }
 
 /** Cross-down can rename an already matched algorithm. Restore its library yaw
@@ -891,9 +941,9 @@ export function simplifyF2lRotations(source: ReconTextResult): ReconTextResult {
   let lines: ReconTextLine[];
   try { lines = restoreCrossAtBoundaries(recon, expanded).map(withoutF2lZ); }
   catch { return recon; }
-  if (recon === source && lines.length === recon.lines.length && lines.every((line, i) => line === recon.lines[i])) return omitBoundaryRotationLoops(omitSolvedTailRotations(restoreLibraryYaw(preferF2lSideTurns(recon))));
-  return omitBoundaryRotationLoops(omitSolvedTailRotations(restoreLibraryYaw(preferF2lSideTurns({ ...recon, lines,
-    text: [...(recon.inspection ? [`${recon.inspection} // insp`] : []), ...lines.map(formatReconLine)].join('\n') }))));
+  if (recon === source && lines.length === recon.lines.length && lines.every((line, i) => line === recon.lines[i])) return simplifyFinalAuf(omitBoundaryRotationLoops(omitSolvedTailRotations(restoreLibraryYaw(preferF2lSideTurns(recon)))));
+  return simplifyFinalAuf(omitBoundaryRotationLoops(omitSolvedTailRotations(restoreLibraryYaw(preferF2lSideTurns({ ...recon, lines,
+    text: [...(recon.inspection ? [`${recon.inspection} // insp`] : []), ...lines.map(formatReconLine)].join('\n') })))));
 }
 
 export function formatReconLine(line: ReconTextLine): string {
@@ -1023,6 +1073,33 @@ function inverseRotationToken(token: string): string | null {
  * retain their existing inverse-pair convention below.
  */
 const WIDE_TURN_SLACK_MS = 120;
+
+/** Prefer a regrip at the next F2L boundary when an overlapping wide-turn
+ * candidate is followed immediately by the pair's closing turn and a pause.
+ * The two interpretations can be physically indistinguishable in the recording;
+ * this is a notation preference, not evidence that a wide turn did not happen.
+ * Keep the measured pose and playback time intact. */
+export function preferF2lBoundaryRegrips(
+  core: CoreTrack | null, moves: readonly SolveMove[], pairEnds: readonly number[],
+): CoreTrack | null {
+  if (!core || core.frame !== 'scramble') return core;
+  const events = core.events.map((event, eventIdx) => {
+    if (event.notationMs === undefined || !/^[xyz]'?$/.test(event.token)) return event;
+    for (const end of pairEnds) {
+      const before = moves[end - 1], last = moves[end], next = moves[end + 1];
+      if (!before || !last || !next || last.ts - before.ts > 250 || next.ts - last.ts < 500
+        || event.notationMs < before.ts || event.notationMs >= last.ts
+        || event.notationMs - before.ts > WIDE_TURN_SLACK_MS
+        || !WIDE_PAIRS.has(`${before.m} ${event.token}`)
+        || core.events.some((other, i) => i !== eventIdx && other.tMs > before.ts && other.tMs <= last.ts)) continue;
+      // Use a display-only instant in the gap. No encoder move, gyro sample,
+      // physical playback pose or solve timing is changed.
+      return { ...event, notationMs: (last.ts + next.ts) / 2 };
+    }
+    return event;
+  });
+  return { ...core, events };
+}
 
 /** Do not collapse separate same-face gestures before matching their gyro events. */
 function wideGestureMoves(moves: SolveMove[]): ReturnType<typeof htmMoves> {
@@ -1229,6 +1306,7 @@ function weaveRotations(
   lineMoves: RangeMoveItem[],
   rots: readonly HumanRotation[],
   absorbedRotations: Set<number>,
+  boundaryRegrips?: ReadonlySet<number>,
 ): WovenItem[] {
   const out: WovenItem[] = [];
   let cursor = 0;
@@ -1246,6 +1324,7 @@ function weaveRotations(
       startIdx: -1,
       endIdx: -1,
       rotationMs: p.tMs,
+      ...(boundaryRegrips?.has(p.tMs) ? { boundaryRegrip: true as const } : {}),
       ...(p.wide ? { wideRotation: true as const } : {}),
     });
   }
@@ -1269,7 +1348,10 @@ export async function buildReconText(input: ReconTextInput): Promise<ReconTextRe
   const { key: currentKey, zh: currentZh, en: currentEn } = METHODS[input.method ?? 'cfop'].stages[currentIndex];
   const currentStage = { key: currentKey, zh: currentZh, en: currentEn };
   const kinds = ['cross', 'f2l', 'oll', 'pll'] as const;
-  const sourceSpans: Span[] = isCfop ? stepSpans(segs, metrics, slots, moves)
+  // Stage indices are detected in the canonical cross-down frame. A measured
+  // inspection grip can be tilted, so its U face cannot identify final AUF.
+  const stageMoves = isCfop ? normalizeSolve(physical.scramble, physical.moves).moves : moves;
+  const sourceSpans: Span[] = isCfop ? stepSpans(segs, metrics, slots, stageMoves)
     : (methodWalk?.stages ?? []).flatMap((stage, index) => stage.endIdx === null ? [] : [{
       kind: kinds[index] ?? 'pll', key: stage.key, endIdx: stage.endIdx,
       label: input.language === 'zh' ? stage.zh : stage.en,
@@ -1281,7 +1363,13 @@ export async function buildReconText(input: ReconTextInput): Promise<ReconTextRe
   const measuredCore = input.core
     ? conjugateCoreTrack(input.core, facePermFor(input.viewRotation ?? ''))
     : null;
-  const core = markWideCoreEvents(measuredCore, measuredCore?.frame === 'scramble' ? wideGestureMoves(moves) : counted);
+  const pairEnds = isCfop ? sourceSpans.flatMap((span, i) =>
+    span.kind === 'f2l' && sourceSpans[i + 1]?.kind === 'f2l' ? [span.endIdx] : []) : [];
+  const preferredCore = preferF2lBoundaryRegrips(measuredCore, moves, pairEnds);
+  const boundaryRegrips = new Set(preferredCore?.events.flatMap((event, i) =>
+    event.notationMs !== undefined && event.notationMs !== measuredCore?.events[i]?.notationMs
+      ? [event.notationMs] : []) ?? []);
+  const core = markWideCoreEvents(preferredCore, preferredCore?.frame === 'scramble' ? wideGestureMoves(moves) : counted);
   // 中层还原 + 转体。魔方按「相对中心核」报手法,所以一个 `S` 到这里是一对相对面 +
   // 后面每一手都被换了名 —— 那行谱子于是不像任何公式。转体同理,而且它和中层改的是
   // 同一个 ρ,所以一趟走完。只重写**写出来的记号**:计步、识别、参考解仍然吃
@@ -1309,9 +1397,11 @@ export async function buildReconText(input: ReconTextInput): Promise<ReconTextRe
       );
       const fastSameFace = move.endTs - move.ts <= 200;
       if ((families.size > 1 || fastSameFace) && move.startIdx <= end && move.endIdx > end) {
-        // Two quick same-face turns may straddle completed F2L pairs. Do not
-        // move a valid stage boundary into the next pair's broken-cross state.
-        if (isCfop && span.kind === 'f2l' && families.size === 1
+        // Nearby turns may straddle completed F2L pairs. Keep intermediate
+        // pair boundaries out of a broken cross, including opposite-face pairs
+        // inferred as a slice. The final pair may cancel into the last layer.
+        if (isCfop && span.kind === 'f2l'
+          && (families.size === 1 || rawEnd !== segs.f2lEndIdx)
           && !isCross(applyOneToken(solved(3), `${scramble} ${moves.slice(0, move.endIdx + 1).map(item => item.m).join(' ')}`))) continue;
         end = move.endIdx;
       }
@@ -1373,12 +1463,19 @@ export async function buildReconText(input: ReconTextInput): Promise<ReconTextRe
   const phys = input.physical ?? { scramble, moves };
   const physCounted = phys.moves === moves ? counted : htmMoves(phys.moves);
   const viewRot = input.viewRotation ?? '';
+  const crossFace = /^([URFLBD])-cross$/.exec(segs.crossSide ?? '')?.[1];
   const alg = (...parts: string[]) => parts.filter(t => t.trim() !== '').join(' ');
 
   // 每个切点一个局面,顺带复用:第 i 行的「上一行末局面」就是第 i-1 行的末局面。
   // 打乱本身算一次(第 0 个),所以 spans.length + 1 个 pattern。
   const rawUpTo = (end: number) =>
     phys.moves.slice(0, end + 1).map(m => m.m).filter(Boolean).join(' ');
+  // crossSide is a spatial face, not a colour when the source includes a
+  // rotation. Resolve its physical centre at the established cross boundary.
+  const crossFaceHome = crossFace && segs.crossEndIdx != null
+    ? (await patternFromAlg(alg(phys.scramble, rawUpTo(segs.crossEndIdx))))
+      .patternData.CENTERS.pieces['URFLBD'.indexOf(crossFace)]
+    : undefined;
 
   const lines: ReconTextLine[] = [];
   let prevEnd = -1;
@@ -1403,7 +1500,7 @@ export async function buildReconText(input: ReconTextInput): Promise<ReconTextRe
     const turnTokens = tokensForRange(moves, counted, from, span.endIdx);
     const endMs = spanEndMs[spanIdx];
     const mine = rotations.filter(r => r.tMs > prevEndMs && r.tMs <= endMs);
-    const lineMoves = weaveRotations(shownFor(from, span.endIdx), mine, absorbedRotations);
+    const lineMoves = weaveRotations(shownFor(from, span.endIdx), mine, absorbedRotations, boundaryRegrips);
     prevEndMs = endMs;
     const currPattern = await patternFromAlg(alg(phys.scramble, rawUpTo(span.endIdx), viewRot));
 
@@ -1415,13 +1512,16 @@ export async function buildReconText(input: ReconTextInput): Promise<ReconTextRe
       } else if (!isCfop) {
         label = span.label ?? null;
       } else {
+        // Pair rows continue the established cross. Initial cross discovery
+        // and last-layer transitions retain their existing suggestion rules.
+        const labelCrossFace = span.kind === 'f2l' ? crossFaceHome : undefined;
         let effectivePrev = prevPattern;
-        const prevInfo = await detectStage(prevPattern);
+        const prevInfo = await detectStage(prevPattern, labelCrossFace);
         if (!crossIsDone(prevInfo.stage)) {
           const beforePrevPattern = patternHistory.at(-2) ?? patternHistory[0];
-          const beforePrevInfo = await detectStage(beforePrevPattern);
+          const beforePrevInfo = await detectStage(beforePrevPattern, labelCrossFace);
           const isCancelInto = crossIsDone(beforePrevInfo.stage)
-            || (await crossFamilyCancelInto(beforePrevInfo, prevPattern)).length > 0;
+            || (await crossFamilyCancelInto(beforePrevInfo, prevPattern, labelCrossFace)).length > 0;
           if (isCancelInto) {
             const prefix = phys.moves.slice(from, span.endIdx + 1);
             for (let k = 1; k <= prefix.length; k += 1) {
@@ -1433,7 +1533,7 @@ export async function buildReconText(input: ReconTextInput): Promise<ReconTextRe
                 through,
                 viewRot,
               ));
-              if (crossIsDone((await detectStage(candidate)).stage)) {
+              if (crossIsDone((await detectStage(candidate, labelCrossFace)).stage)) {
                 effectivePrev = candidate;
                 break;
               }
@@ -1441,6 +1541,7 @@ export async function buildReconText(input: ReconTextInput): Promise<ReconTextRe
           }
         }
         label = firstLabel(await buildCommentSuggestions({
+          crossFaceHome: labelCrossFace,
           prevPattern: effectivePrev,
           currPattern,
           // 局面是真颜色的,喂给它的动作也必须是同一系的原始记号。
@@ -1498,7 +1599,7 @@ export async function buildReconText(input: ReconTextInput): Promise<ReconTextRe
   return {
     // 原始打乱 + 观察转体。共轭过的那条只在这个模块内部用(识别、切分),不出门。
     scramble: phys.scramble,
-    crossColor: /^([UDFBLR])-cross$/.exec(segs.crossSide ?? '')?.[1],
+    crossColor: crossFaceHome === undefined ? undefined : 'URFLBD'[crossFaceHome],
     methodStages,
     currentStage,
     inspection: viewRot,

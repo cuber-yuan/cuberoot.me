@@ -11,7 +11,7 @@ import { useContentRefreshKey } from '@/hooks/useContentRefreshKey';
  * URL state (?q query, ?topic topics, ?events events, ?sets alg sets, ?methods methods,
  * ?countries countries, ?view list|grid) is managed via nuqs.
  */
-import { Suspense, useMemo, useCallback, useState, useEffect } from 'react';
+import { Suspense, memo, useMemo, useCallback, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useQueryState, useQueryStates, parseAsArrayOf, parseAsString, parseAsStringEnum } from 'nuqs';
 import { useTranslation } from 'react-i18next';
 import { Search, AlertTriangle, Pencil, Trash2, ArrowUp, ArrowDown, Plus, LayoutGrid, List } from '@app-foundation/icons/lucide';
@@ -21,6 +21,7 @@ import { WCA_AUTHOR_BY_CREDIT } from './data/wca-authors';
 import type { GroupId, Site } from './data/types';
 import { GROUPS } from './data/categories';
 import { SITE_ICON_CACHE_STORAGE_PREFIX, siteIconSources } from './site-icons';
+import { captureView, visibleSiteElements, type ViewSnapshot } from './view-transition';
 import { isAdmin } from '@/lib/auth-store';
 import { firstGlyph } from '@/lib/first-glyph';
 import BackHome from '@/components/BackHome';
@@ -50,6 +51,7 @@ function YouTubeBadge() {
 const DEFAULT_GROUP: GroupId = 'competition';
 type ViewMode = 'list' | 'grid';
 const VIEW_MODES: ViewMode[] = ['list', 'grid'];
+const FLIP_TARGETS = '[data-flip-id]';
 
 const GROUP_COLOR: Record<GroupId, string> = {
   competition: '#2f6fd8',
@@ -390,86 +392,13 @@ interface RowProps {
   onMove: (s: Site, dir: -1 | 1) => void;
 }
 
-function SiteRow({ site, lang, admin, reorderable, canMoveUp, canMoveDown, onEdit, onDelete, onMove }: RowProps) {
-  const name = lang === 'zh' ? site.name_zh || site.name : site.name_en || site.name;
-  const desc = lang === 'zh' ? site.desc_zh || site.desc_en : site.desc_en || site.desc_zh;
-  const dead = site.status === 'dead';
-  const wcaAuthor = site.author ? WCA_AUTHOR_BY_CREDIT[site.author] : undefined;
-  const hasExternalLinks = Boolean(site.youtube || site.github);
-  const hasMultipleExternalLinks = Boolean(site.youtube && site.github);
-
-  return (
-    <div className={`site-row${dead ? ' is-dead' : ''}${admin ? ' is-admin' : ''}${hasExternalLinks ? ' has-external-links' : ''}${hasMultipleExternalLinks ? ' has-multiple-external-links' : ''}`} data-site-surface="panel">
-      <div className="site-row-main">
-        <a
-          href={site.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="site-row-primary-link"
-          aria-label={name}
-        />
-        <div className="site-row-icon">
-          {dead ? <AlertTriangle size={20} className="site-dead-icon" /> : <SiteIcon name={name} url={site.url} group={site.group} />}
-        </div>
-        <div className="site-row-title">
-          <span className="site-row-name">{name}</span>
-          <span className="site-row-host">{hostOf(site.url)}</span>
-          {site.tags?.map((t) => (
-            <span key={t} className="site-row-subgroup">{splitLangTag(t)[lang]}</span>
-          ))}
-          {dead && <span className="site-row-dead-badge">{TEXTS.dead[lang]}</span>}
-        </div>
-        <div className="site-row-author" title={site.author || ''}>
-          {wcaAuthor ? (
-            <PersonLink wcaId={wcaAuthor[0]} name={wcaAuthor[1]} isZh={lang === 'zh'} />
-          ) : site.author || ''}
-        </div>
-        <div className="site-row-desc" title={desc || ''}>{desc || ''}</div>
-      </div>
-
-      {hasExternalLinks && (
-        <div className="site-row-external-links">
-          {site.youtube && (
-            // allow-nested-link: sibling of the row overlay anchor
-            <a href={site.youtube} target="_blank" rel="noopener noreferrer" className="site-row-external-link" title="YouTube" aria-label="YouTube">
-              <YouTubeBadge />
-            </a>
-          )}
-          {site.github && (
-            // allow-nested-link: sibling of the row overlay anchor
-            <a href={site.github} target="_blank" rel="noopener noreferrer" className="site-row-external-link" title="GitHub" aria-label="GitHub">
-              <span className="site-row-github-label">GitHub</span>
-            </a>
-          )}
-        </div>
-      )}
-
-      {admin && (
-        <div className="site-row-admin">
-          {reorderable && (
-            <>
-              <button type="button" className="site-admin-btn" disabled={!canMoveUp} title={lang === 'zh' ? '上移' : 'Move up'} onClick={() => onMove(site, -1)}><ArrowUp size={14} /></button>
-              <button type="button" className="site-admin-btn" disabled={!canMoveDown} title={lang === 'zh' ? '下移' : 'Move down'} onClick={() => onMove(site, 1)}><ArrowDown size={14} /></button>
-            </>
-          )}
-          <button type="button" className="site-admin-btn" title={lang === 'zh' ? '编辑' : 'Edit'} onClick={() => onEdit(site)}><Pencil size={14} /></button>
-          <button type="button" className="site-admin-btn site-admin-del" title={lang === 'zh' ? '删除' : 'Delete'} onClick={() => onDelete(site)}><Trash2 size={14} /></button>
-        </div>
-      )}
-
-      {site.alt_urls && site.alt_urls.length > 0 && (
-        <div className="site-row-alts">
-          <span className="site-row-alts-label">{TEXTS.altLink[lang]}:</span>
-          {site.alt_urls.map((u) => (
-            <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="site-row-alt">{linkLabel(u)}</a>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+function entryClass(part: string): string {
+  return `site-row${part} site-card${part}`;
 }
 
-function SiteCard({ site, lang, admin, reorderable, canMoveUp, canMoveDown, onEdit, onDelete, onMove }: RowProps) {
+const SiteEntry = memo(function SiteEntry({ site, lang, admin, reorderable, canMoveUp, canMoveDown, onEdit, onDelete, onMove }: RowProps) {
+  // Keep the same DOM and icon state across layouts; replacing two component
+  // trees was remounting every entry, including all offscreen images and links.
   const name = lang === 'zh' ? site.name_zh || site.name : site.name_en || site.name;
   const desc = lang === 'zh' ? site.desc_zh || site.desc_en : site.desc_en || site.desc_zh;
   const dead = site.status === 'dead';
@@ -478,37 +407,37 @@ function SiteCard({ site, lang, admin, reorderable, canMoveUp, canMoveDown, onEd
   const hasMultipleExternalLinks = Boolean(site.youtube && site.github);
 
   return (
-    <article className={`site-card${dead ? ' is-dead' : ''}${admin ? ' is-admin' : ''}${hasExternalLinks ? ' has-external-links' : ''}${hasMultipleExternalLinks ? ' has-multiple-external-links' : ''}`} data-site-surface="panel">
-      <a href={site.url} target="_blank" rel="noopener noreferrer" className="site-card-primary-link" aria-label={name} />
-      <div className="site-card-body">
-        <div className="site-card-head">
-          <div className="site-card-icon">
+    <article className={`${entryClass('')}${dead ? ' is-dead' : ''}${admin ? ' is-admin' : ''}${hasExternalLinks ? ' has-external-links' : ''}${hasMultipleExternalLinks ? ' has-multiple-external-links' : ''}`} data-site-surface="panel" data-flip-id={`site-${site.id}`}>
+      <a href={site.url} target="_blank" rel="noopener noreferrer" className={entryClass('-primary-link')} aria-label={name} />
+      <div className="site-card-body site-row-main">
+        <div className={entryClass('-head')}>
+          <div className={entryClass('-icon')} data-flip-id={`site-${site.id}-icon`}>
             {dead ? <AlertTriangle size={20} className="site-dead-icon" /> : <SiteIcon name={name} url={site.url} group={site.group} />}
           </div>
-          <div className="site-card-title">
-            <div className="site-card-name-row">
-              <span className="site-card-name">{name}</span>
+          <div className={entryClass('-title')}>
+            <div className={entryClass('-name-row')}>
+              <span className={entryClass('-name')} data-flip-id={`site-${site.id}-name`}>{name}</span>
               {dead && <span className="site-row-dead-badge">{TEXTS.dead[lang]}</span>}
             </div>
-            <span className="site-card-host">{hostOf(site.url)}</span>
+            <span className={entryClass('-host')}>{hostOf(site.url)}</span>
+            {site.tags && site.tags.length > 0 && (
+              <div className={entryClass('-tags')}>
+                {site.tags.map((tag) => <span key={tag} className="site-row-subgroup">{splitLangTag(tag)[lang]}</span>)}
+              </div>
+            )}
           </div>
         </div>
-        {site.tags && site.tags.length > 0 && (
-          <div className="site-card-tags">
-            {site.tags.map((tag) => <span key={tag} className="site-row-subgroup">{splitLangTag(tag)[lang]}</span>)}
-          </div>
-        )}
-        {desc && <p className="site-card-desc">{desc}</p>}
-        <div className="site-card-meta">
-          <span className="site-card-author" title={site.author || ''}>
+        <p className={entryClass('-desc')} title={desc || ''}>{desc || ''}</p>
+        <div className={entryClass('-meta')}>
+          <span className={entryClass('-author')} title={site.author || ''}>
             {wcaAuthor ? <PersonLink wcaId={wcaAuthor[0]} name={wcaAuthor[1]} isZh={lang === 'zh'} /> : site.author || ''}
           </span>
-          <span className="site-card-group">{groupLabel(site.group, lang)}</span>
+          <span className={entryClass('-group')}>{groupLabel(site.group, lang)}</span>
         </div>
       </div>
 
       {hasExternalLinks && (
-        <div className="site-card-external-links">
+        <div className={entryClass('-external-links')}>
           {site.youtube && (
             <a href={site.youtube} target="_blank" rel="noopener noreferrer" className="site-row-external-link" title="YouTube" aria-label="YouTube">
               <YouTubeBadge />
@@ -523,7 +452,7 @@ function SiteCard({ site, lang, admin, reorderable, canMoveUp, canMoveDown, onEd
       )}
 
       {admin && (
-        <div className="site-card-admin">
+        <div className={entryClass('-admin')}>
           {reorderable && (
             <>
               <button type="button" className="site-admin-btn" disabled={!canMoveUp} title={lang === 'zh' ? '上移' : 'Move up'} onClick={() => onMove(site, -1)}><ArrowUp size={14} /></button>
@@ -536,14 +465,14 @@ function SiteCard({ site, lang, admin, reorderable, canMoveUp, canMoveDown, onEd
       )}
 
       {site.alt_urls && site.alt_urls.length > 0 && (
-        <div className="site-card-alts">
+        <div className={entryClass('-alts')}>
           <span className="site-row-alts-label">{TEXTS.altLink[lang]}:</span>
           {site.alt_urls.map((u) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="site-row-alt">{linkLabel(u)}</a>)}
         </div>
       )}
     </article>
   );
-}
+});
 
 function SitesPageInner() {
   const t = useT();
@@ -558,6 +487,34 @@ function SitesPageInner() {
     'view',
     parseAsStringEnum<ViewMode>(VIEW_MODES).withDefault('list').withOptions({ history: 'replace', clearOnDefault: false }),
   );
+  const listRef = useRef<HTMLDivElement>(null);
+  const flipState = useRef<ViewSnapshot | null>(null);
+  const flipAnimation = useRef<Animation[]>([]);
+  const preparedView = useRef<{ state: ViewSnapshot; time: number } | null>(null);
+
+  function prepareView(next: ViewMode) {
+    const list = listRef.current;
+    if (next === viewMode || !list || flipAnimation.current.some(animation => animation.playState === 'running')
+      || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    preparedView.current = { state: captureView(list, next), time: performance.now() };
+  }
+
+  function changeViewMode(next: ViewMode, animate: boolean) {
+    if (next === viewMode) return;
+    const list = listRef.current;
+    // Capture the visible intermediate frame before ending a previous transition.
+    // This lets a quick reversal continue from where the cards actually are.
+    flipState.current = null;
+    if (list && animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const prepared = preparedView.current;
+      flipState.current = prepared && performance.now() - prepared.time < 1000 && !flipAnimation.current.some(animation => animation.playState === 'running')
+        ? prepared.state : captureView(list, next);
+    }
+    preparedView.current = null;
+    flipAnimation.current.forEach(animation => animation.cancel());
+    flipAnimation.current = [];
+    void setViewMode(next);
+  }
 
   const [params, setQuery] = useQueryStates(
     {
@@ -946,6 +903,93 @@ function SitesPageInner() {
     selectedEventIds, lang, fuse,
   ]);
 
+  useLayoutEffect(() => {
+    preparedView.current = null;
+    const invalidate = () => { preparedView.current = null; };
+    // A hover snapshot is only reusable while the actual geometry is unchanged.
+    window.addEventListener('scroll', invalidate, true);
+    window.addEventListener('resize', invalidate);
+    const list = listRef.current;
+    const observer = new ResizeObserver(invalidate);
+    if (list) {
+      observer.observe(list);
+      list.addEventListener('load', invalidate, true);
+    }
+    document.fonts.addEventListener('loadingdone', invalidate);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('scroll', invalidate, true);
+      window.removeEventListener('resize', invalidate);
+      list?.removeEventListener('load', invalidate, true);
+      document.fonts.removeEventListener('loadingdone', invalidate);
+    };
+  }, [viewMode, filtered, admin, lang]);
+
+  useLayoutEffect(() => {
+    const state = flipState.current;
+    flipState.current = null;
+    const list = listRef.current;
+    if (!state || !list) return;
+
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (reducedMotion.matches) return;
+    // The directory has hundreds of entries. Only tween rows that intersect the
+    // viewport in either layout, including all of their shared child elements.
+    const inViewport = (bounds: DOMRect) => bounds.bottom > 0 && bounds.top < window.innerHeight;
+    const visibleBefore = new Set<Element | null>([...state].filter(([, bounds]) => inViewport(bounds)).map(([element]) => element.closest('article')));
+    const visibleAfter = new Set(visibleSiteElements(list));
+    const roots = Array.from(list.children).filter(element => visibleAfter.has(element) || visibleBefore.has(element));
+    // Only the icon and name move between layouts. Resizing a text-bearing
+    // ancestor either stretches glyphs or forces layout on every animation frame.
+    const targets = roots.flatMap(element => [...element.querySelectorAll(FLIP_TARGETS)]);
+    if (targets.length === 0) return;
+    list.setAttribute('data-view-animating', '');
+    roots.forEach(element => element.setAttribute('data-view-transition', ''));
+    const clearTransition = () => {
+      list.removeAttribute('data-view-animating');
+      roots.forEach(element => element.removeAttribute('data-view-transition'));
+    };
+    // Batch all destination reads before writing transforms. Flip's size fitting
+    // inserts matrix probes even with zero-duration scale tweens, forcing repeated
+    // layout. These shared elements only need translation, never size fitting.
+    const offsets = new Map(targets.map(element => {
+      const before = state.get(element);
+      const after = element.getBoundingClientRect();
+      return [element, { x: before ? before.left - after.left : 0, y: before ? before.top - after.top : 0 }];
+    }));
+    // Native transform animations keep running on the compositor while the
+    // shared corner observer updates paint on the main thread.
+    const animations = targets.map(element => {
+      const offset = offsets.get(element)!;
+      return state.has(element)
+        ? element.animate([
+          { transform: `translate(${offset.x}px, ${offset.y}px)` },
+          { transform: 'translate(0, 0)' },
+        ], { duration: 320, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' })
+        : element.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200 });
+    });
+    const details = roots.flatMap(element => [...element.querySelectorAll('.site-row-host, .site-row-author, .site-row-desc')]);
+    animations.push(...details.map(element => element.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200 })));
+    flipAnimation.current = animations;
+    let disposed = false;
+    void Promise.allSettled(animations.map(animation => animation.finished)).then(() => {
+      if (!disposed) clearTransition();
+    });
+    const finish = () => {
+      disposed = true;
+      animations.forEach(animation => animation.cancel());
+      clearTransition();
+    };
+    window.addEventListener('resize', finish);
+    reducedMotion.addEventListener('change', finish);
+    return () => {
+      finish();
+      flipAnimation.current = [];
+      window.removeEventListener('resize', finish);
+      reducedMotion.removeEventListener('change', finish);
+    };
+  }, [viewMode, filtered, admin]);
+
 
   function applySaved(saved: Site) {
     setSites((prev) => {
@@ -962,7 +1006,7 @@ function SitesPageInner() {
     setCreating(false);
   }
 
-  async function handleDelete(s: Site) {
+  const handleDelete = useCallback(async (s: Site) => {
     if (!window.confirm(TEXTS.confirmDel[lang])) return;
     try {
       await deleteSite(s.id);
@@ -970,9 +1014,9 @@ function SitesPageInner() {
     } catch (e) {
       window.alert(e instanceof Error ? e.message : String(e));
     }
-  }
+  }, [lang]);
 
-  async function handleMove(s: Site, dir: -1 | 1) {
+  const handleMove = useCallback(async (s: Site, dir: -1 | 1) => {
     if (!sites) return;
     const groupRows = sites.filter((x) => x.group === s.group);
     const idx = groupRows.findIndex((x) => x.id === s.id);
@@ -992,7 +1036,7 @@ function SitesPageInner() {
       window.alert(e instanceof Error ? e.message : String(e));
       listSites().then(setSites).catch(() => {});
     }
-  }
+  }, [sites]);
 
   return (
     <div className="sites-page">
@@ -1043,10 +1087,10 @@ function SitesPageInner() {
               )}
             </div>
             <div className="sites-view-toggle" role="group" aria-label={t('视图', 'View')}>
-              <button type="button" className={`sites-view-btn${viewMode === 'list' ? ' is-active' : ''}`} onClick={() => void setViewMode('list')} aria-label={t('列表视图', 'List view')} aria-pressed={viewMode === 'list'} title={t('列表视图', 'List view')}>
+              <button type="button" className={`sites-view-btn${viewMode === 'list' ? ' is-active' : ''}`} onPointerEnter={() => prepareView('list')} onPointerDown={() => prepareView('list')} onFocus={() => prepareView('list')} onClick={(event) => changeViewMode('list', event.detail > 0)} aria-label={t('列表视图', 'List view')} aria-pressed={viewMode === 'list'} title={t('列表视图', 'List view')}>
                 <List size={16} />
               </button>
-              <button type="button" className={`sites-view-btn${viewMode === 'grid' ? ' is-active' : ''}`} onClick={() => void setViewMode('grid')} aria-label={t('卡片视图', 'Card view')} aria-pressed={viewMode === 'grid'} title={t('卡片视图', 'Card view')}>
+              <button type="button" className={`sites-view-btn${viewMode === 'grid' ? ' is-active' : ''}`} onPointerEnter={() => prepareView('grid')} onPointerDown={() => prepareView('grid')} onFocus={() => prepareView('grid')} onClick={(event) => changeViewMode('grid', event.detail > 0)} aria-label={t('卡片视图', 'Card view')} aria-pressed={viewMode === 'grid'} title={t('卡片视图', 'Card view')}>
                 <LayoutGrid size={16} />
               </button>
             </div>
@@ -1224,15 +1268,13 @@ function SitesPageInner() {
         ) : filtered.length === 0 ? (
           <div className="sites-empty">{TEXTS.noResults[lang]}</div>
         ) : (
-          <div className={`sites-list${viewMode === 'grid' ? ' is-grid' : ''}`}>
-            {viewMode === 'list' && (
-              <div className="sites-list-head" aria-hidden>
-                <span />
-                <span>{TEXTS.colName[lang]}</span>
-                <span>{TEXTS.colAuthor[lang]}</span>
-                <span>{TEXTS.colDesc[lang]}</span>
-              </div>
-            )}
+          <div ref={listRef} className={`sites-list${viewMode === 'grid' ? ' is-grid' : ''}`}>
+            <div className="sites-list-head" aria-hidden>
+              <span />
+              <span>{TEXTS.colName[lang]}</span>
+              <span>{TEXTS.colAuthor[lang]}</span>
+              <span>{TEXTS.colDesc[lang]}</span>
+            </div>
             {filtered.map((s, i) => {
               const rowProps = {
                 site: s,
@@ -1245,7 +1287,7 @@ function SitesPageInner() {
                 onDelete: handleDelete,
                 onMove: handleMove,
               } satisfies RowProps;
-              return viewMode === 'list' ? <SiteRow key={s.id} {...rowProps} /> : <SiteCard key={s.id} {...rowProps} />;
+              return <SiteEntry key={s.id} {...rowProps} />;
             })}
           </div>
         )}

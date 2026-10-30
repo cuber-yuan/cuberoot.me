@@ -2,8 +2,9 @@ import type { ReconstructHost } from '@cuberoot/timer-ui/reconstruct-report';
 import BoolToggle from '@/components/BoolToggle';
 import ReconCaseLink from '@/components/ReconCaseLink';
 import { ReconLineDiagramProvider } from '@/components/ReconLineDiagrams';
+import { ScramblePreview2D } from '@/components/ScramblePreview2D';
 import { reconInspectionOrientations, reconWasteBrackets } from '@/lib/recon-alg-utils';
-import { createElement } from 'react';
+import { createElement, Fragment } from 'react';
 import dynamic from 'next/dynamic';
 import { useIsAdmin } from '@/lib/auth-store';
 import { tr } from '@/i18n/tr';
@@ -12,6 +13,7 @@ import { encodeReplayUrl } from '@/app/[lang]/timer/_lib/share/encode';
 import { createServerReplayShare } from '@/app/[lang]/timer/_lib/share/server';
 
 const ReconIntakeAction = dynamic(() => import('@/components/recon/ReconIntakeAction'), { ssr: false });
+const ReconCaptureAction = dynamic(() => import('@/components/recon/ReconCaptureAction'), { ssr: false });
 
 /** Website-only host capabilities for both full details and the inline recap. */
 export function useWebReconstructHost(): ReconstructHost {
@@ -20,6 +22,7 @@ export function useWebReconstructHost(): ReconstructHost {
   const host: ReconstructHost = {
     localize: tr,
     LineDiagramProvider: ReconLineDiagramProvider,
+    renderScrambleDiagram: scramble => createElement(ScramblePreview2D, { event: '333', scramble, size: 14, enlargeable: true }),
     inspectionColors: moves => reconInspectionOrientations(`${moves} // insp`)[0]?.colors,
     wasteBrackets: reconWasteBrackets,
     // Keep the timer mounted so visiting a case does not dispose its Bluetooth session.
@@ -38,7 +41,10 @@ export function useWebReconstructHost(): ReconstructHost {
     onEnableGyro: () => updateSettings({ recordGyro: true }),
     BoolToggle,
   };
-  if (admin) host.renderIntakeAction = (solve, snapshot) =>
-    createElement(ReconIntakeAction, { solve, snapshot, host });
+  if (admin) {
+    host.renderIntakeAction = (solve, snapshot) =>
+      createElement(Fragment, null, createElement(ReconIntakeAction, { solve, snapshot, host }),
+        createElement(ReconCaptureAction, { solve }));
+  }
   return host;
 }

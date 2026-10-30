@@ -105,6 +105,10 @@
 .reconstruct-move-row:last-child {
   border-bottom: none;
 }
+.reconstruct-move-header {
+  font-family: var(--font-sans);
+  font-weight: 500;
+}
 .reconstruct-move-row.slow {
   background: var(--muted);  background: color-mix(in srgb, var(--destructive) 10%, transparent);
   color: var(--signal-warning);
@@ -375,16 +379,12 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 10px;
 }
-.reconstruct-playback-cap {
-  font-size: 11px; letter-spacing: 0.08em;
-  color: var(--faint-foreground);
-}
-.reconstruct-playback-speed-cap {
-  font-size: 11px; color: var(--muted-foreground); margin-right: 2px;
-}
+.reconstruct-playback-speed-cap { color: var(--muted-foreground); margin-right: 2px; }
+.reconstruct-playback-controls .bool-toggle-label,
+.reconstruct-playback-speed-cap { font-size: 13px; }
 
 .reconstruct-playback-cube {
   display: flex;
@@ -718,24 +718,20 @@
 .reconstruct-bld-memo-val { font-family: var(--font-mono); letter-spacing: 0.05em; }
 
 .rc-summary {
-  display: flex; flex-wrap: wrap; margin: 10px 0 14px; padding: 0;
-  border: 1px solid var(--border-default);  border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
-  border-radius: 8px; overflow: hidden;
+  display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 0 18px; padding: 0;
 }
 .rc-summary-cell {
-  flex: 1 1 96px; min-width: 96px; padding: 8px 12px;
-  border-left: 1px solid var(--border-default);  border-left: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+  flex: 1 1 0; min-width: 0; padding: 12px;
 }
-.rc-summary-cell:first-child { border-left: 0; }
 .rc-summary dt {
-  font-size: 11px; color: var(--muted-foreground); margin: 0 0 2px;
+  font-size: 12px; color: var(--muted-foreground); margin: 0 0 6px;
   letter-spacing: 0.02em;
 }
 .rc-summary dd {
   margin: 0; font-size: 13px; color: var(--foreground);
   font-variant-numeric: tabular-nums;
 }
-.rc-summary-big { font-size: 19px; font-weight: 600; line-height: 1.2; }
+.rc-summary .rc-summary-big { font-size: 24px; font-weight: 600; line-height: 1.2; }
 .rc-summary-pen {
   margin-left: 5px; font-size: 11px; font-weight: 600;
   color: var(--destructive);
@@ -746,8 +742,9 @@
 }
 
 @media (max-width: 480px) {
-  .rc-summary-cell { flex-basis: 33.33%; min-width: 0; }
-  .rc-summary-big { font-size: 16px; }
+  .rc-summary { gap: 4px; }
+  .rc-summary-cell { padding: 8px 6px; }
+  .rc-summary .rc-summary-big { font-size: 20px; }
 }
 
 /* ── 「复盘对不对?」 ──────────────────────────────────────────────────
@@ -778,10 +775,6 @@
   background: var(--muted);  background: color-mix(in srgb, var(--destructive) 14%, transparent);
 }
 .rc-feedback-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
-.rc-feedback-info {
-  display: inline-flex; align-items: center;
-  color: var(--faint-foreground); cursor: help;
-}
 
 /* 「这把没录姿态」——只在真猜过的时候出现,所以按提示写,不做成警告条(没有框)。
    图标不跟着文字换行:自己一列,文字在旁边整块折。 */
@@ -803,7 +796,18 @@
 /* ── 时间轴:一步两段,亮 = 在拧,暗 = 在看 ────────────────────────────
    段的位置就是它在时间上的位置,所以不能用 flex 均分 —— 一律绝对定位。
    全页只有一根:回放那根(阶段名 + 阶段用时 + 游标,可点着跳)。 */
-.stl { width: 100%; }
+.stl { position: relative; width: 100%; }
+.stl-track-wrap { position: relative; }
+.stl-tooltip {
+  position: absolute; z-index: 2; bottom: 100%; transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 3px;
+  width: max-content; max-width: calc(100vw - 16px); box-sizing: border-box;
+  margin-bottom: 4px; padding: 6px 8px;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: var(--background); color: var(--foreground);
+  font-size: 12px; pointer-events: none;
+}
+.stl-tooltip-moves { font-family: var(--font-mono); overflow-wrap: anywhere; }
 .stl-track {
   position: relative; width: 100%; height: 12px;
   border-radius: 6px; overflow: hidden;
@@ -859,13 +863,14 @@ button.stl-track:focus-visible { outline: 2px solid var(--ring); outline-offset:
 
 /* ── 分步动作列表 ─────────────────────────────────────────────────────
    动作 + 标注 + 徽章。没有卡片框,层级全靠留白和字重。 */
-.sml { position: relative; }
+.sml { position: relative; --sml-move-size: 13px; }
 .sml, .timer-live-stage {
   -webkit-user-select: text;
   user-select: text;
   -webkit-touch-callout: default;
 }
-.sml-head { display: flex; justify-content: flex-end; }
+.sml-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.sml-head > .rc-feedback { margin: 0; }
 .sml-copy {
   appearance: none; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
@@ -880,8 +885,6 @@ button.stl-track:focus-visible { outline: 2px solid var(--ring); outline-offset:
 .sml-copy:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 
 .sml-group + .sml-group { margin-top: 12px; }
-/* 打乱是**起点**,不是这把的一步:动作压一档色,和下面真正拧的那些分开。 */
-.sml-scramble .sml-moves { color: var(--muted-foreground); }
 .sml-group-head {
   display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;
   margin: 0 0 4px; font-size: 11px; font-weight: 600;
@@ -889,6 +892,14 @@ button.stl-track:focus-visible { outline: 2px solid var(--ring); outline-offset:
 }
 
 .sml-line { display: block; }
+.sml-line .recon-case-line {
+  align-items: flex-start;
+  font-size: var(--sml-move-size);
+  line-height: 1.7;
+}
+/* Center the thumbnail against the first text line, even when text wraps. */
+.sml-line .sml-diagram { position: relative; top: calc((1.7em - 28px) / 2); }
+.sml-scramble .sml-diagram { top: calc((1.7em - 21px) / 2); }
 .sml-line + .sml-line { margin-top: 6px; }
 .sml-line[data-state='future'] { opacity: 0.42; }
 .sml-line[data-state='now'] .sml-moves { color: var(--accent); }
@@ -898,7 +909,7 @@ button.stl-track:focus-visible { outline: 2px solid var(--ring); outline-offset:
 /* Inline text keeps the trailing stage comment on the same clipboard line. */
 .sml-body { display: block; }
 .sml-moves {
-  font-family: var(--font-mono); font-size: 13px; line-height: 1.7;
+  font-family: var(--font-mono); font-size: var(--sml-move-size, 13px); line-height: 1.7;
   color: var(--foreground); word-break: break-word;
   text-align: left;
 }
@@ -916,6 +927,7 @@ button.stl-track:focus-visible { outline: 2px solid var(--ring); outline-offset:
 }
 
 @media (max-width: 480px) {
+  .sml { --sml-move-size: 12px; }
   .sml-moves { font-size: 12px; }
   .sml-label { font-size: 11px; }
 }

@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import path from "node:path";
 import dns from "node:dns";
 import { PLATFORM_CANONICAL_REWRITES } from "./lib/platform-routes";
+import { usesLocalStats, PUBLISHED_STATS_ORIGIN } from "@cuberoot/shared/stats-base";
 
 // Force IPv4 first for upstream rewrites — node fetch's default IPv6-first
 // order causes intermittent `getaddrinfo ENOTFOUND` on api.cuberoot.me proxy
@@ -14,6 +15,14 @@ const isProd = process.env.NODE_ENV === "production";
 // way; standalone + outputFileTracingRoot break Vercel's Turbopack path
 // resolution (vercel/next.js#88579 — doubles path, manifest ENOENT).
 const isVercel = process.env.VERCEL === "1";
+
+if (process.env.NODE_ENV === 'development') {
+  const source = process.env.NEXT_PUBLIC_STATS_SOURCE;
+  if (source && source !== 'local' && source !== 'published') {
+    throw new Error('NEXT_PUBLIC_STATS_SOURCE must be local or published');
+  }
+  console.info(`[stats] source=${usesLocalStats() ? 'local (repository stats/; missing files fail without remote fallback)' : `published (${PUBLISHED_STATS_ORIGIN})`}`);
+}
 
 const nextConfig: NextConfig = {
   // The build command requires native tsgo AFTER Next generates .next/types.
@@ -209,11 +218,8 @@ const nextConfig: NextConfig = {
     ];
   },
 
-  // Default rewrites run BEFORE app-router route handlers, which would shadow
-  // our local /stats/* and /tools/* catch-alls (app/stats/[...slug]/route.ts).
-  // Use the object form with `afterFiles` so route handlers win, and rewrites
-  // only kick in if no route matched — but here we want neither: both are
-  // catch-alls so route handler always matches; rewrites kept ONLY for /v1/*.
+  // Keep external proxies limited to /v1. afterFiles runs before dynamic
+  // routes, so the local capture catch-all is explicitly excluded below.
   async rewrites() {
     return {
       beforeFiles: [
@@ -295,7 +301,7 @@ const nextConfig: NextConfig = {
           ? (process.env.LOCAL_DOMAINS ?? "")
               .split(",")
               .map((d) => d.trim())
-              .filter(Boolean)
+              .filter((d) => d && d !== 'recon-capture-local')
               .map((d) => ({
                 source: `/v1/${d}/:path*`,
                 destination: `http://127.0.0.1:${process.env.LOCAL_API_PORT || '3001'}/v1/${d}/:path*`,
@@ -303,7 +309,9 @@ const nextConfig: NextConfig = {
           : []),
         // Dev: proxy backend so loadAlg() etc. don't trip CORS from 127.0.0.1.
         // In prod, apiUrl() builds absolute https://api.cuberoot.me URLs directly.
-        { source: "/v1/:path*", destination: "https://api.cuberoot.me/v1/:path*" },
+        // The capture-only local handler must reach its dynamic route, including
+        // in production where it returns 404. Never fall back to the live API.
+        { source: "/v1/:path((?!recon-capture-local(?:/|$)).*)?", destination: "https://api.cuberoot.me/v1/:path*" },
       ],
       fallback: [],
     };

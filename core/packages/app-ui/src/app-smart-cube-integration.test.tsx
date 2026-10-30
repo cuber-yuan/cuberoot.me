@@ -149,6 +149,52 @@ afterEach(async () => {
 });
 
 describe('installed App GAN lifecycle integration', () => {
+  it('keeps the selected content when changing source and opens recall in the shared training surface', async () => {
+    const clickText = async (selector: string, text: string) => {
+      const button = [...document.querySelectorAll<HTMLButtonElement>(selector)].find(node => node.textContent?.trim() === text)!;
+      expect(button).toBeDefined();
+      await act(async () => button.click());
+    };
+    await act(async () => container.querySelector<HTMLButtonElement>('.timer-practice-control--content button')!.click());
+    await clickText('[role="menuitem"]', 'CFOP');
+    await clickText('[role="menuitem"]', 'PLL');
+    await settle();
+    expect((memory.data as TimerStoreData).settings.event).toBe('pll');
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Scramble source"]')!.click());
+    await clickText('[role="option"]', 'Manual input');
+    expect((memory.data as TimerStoreData).settings.event).toBe('pll');
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Practice method"]')!.click());
+    await clickText('[role="option"]', 'Recall');
+    const frame = container.querySelector<HTMLIFrameElement>('iframe')!;
+    const url = new URL(frame.src);
+    expect(url.pathname).toContain('/timer');
+    expect(url.searchParams.get('event')).toBe('pll');
+    expect(url.searchParams.get('training')).toBe('/alg/3x3/pll/run');
+    expect(url.searchParams.get('train.mode')).toBe('memo');
+  });
+
+  it('edits and persists layout while blocking cube auto-start, and Back exits editing', async () => {
+    const edit = container.querySelector<HTMLButtonElement>('[aria-label="Edit layout"]')!;
+    await act(async () => edit.click());
+    expect(container.querySelector('[data-layout-editing]')).not.toBeNull();
+    const handle = container.querySelector<HTMLButtonElement>('[aria-label="Timer digits · Drag vertically"]')!;
+    expect(handle).not.toBeNull();
+    await act(async () => handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })));
+    await settle();
+    expect((memory.data as TimerStoreData).settings.soloLayout.timerGap).toBe(24);
+    const scrambleBefore = container.querySelector('.scramble-moves')!.textContent;
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowRight', key: 'ArrowRight', bubbles: true })));
+    await settle();
+    expect(container.querySelector('.scramble-moves')!.textContent).toBe(scrambleBefore);
+    await act(async () => move('R', 1100));
+    await act(async () => move("R'", 1300));
+    expect(phase).toBe('idle');
+    expect(saved()).toHaveLength(0);
+    await act(async () => backListener?.());
+    expect(container.querySelector('[data-layout-editing]')).toBeNull();
+    expect(container.querySelector('[aria-label="Edit layout"]')).not.toBeNull();
+  });
+
   it('continues from an unfinished cube into the next training target without a reset', async () => {
     await act(async () => root.unmount());
     const data = createTimerStoreData(Date.now(), 'continuous-session', 'en');
@@ -229,7 +275,7 @@ describe('installed App GAN lifecycle integration', () => {
     await act(async () => container.querySelector<HTMLButtonElement>('.shell-stat-rail')!.click());
     expect(container.querySelector('.timing-surface')).toBe(timerNode);
     expect(container.querySelector('.timer-workspace[data-panel-open]')).not.toBeNull();
-    expect(container.querySelector('.history-view .app-titlebar')).not.toBeNull();
+    expect(container.querySelector('.history-view .shell-panel-tabs')).not.toBeNull();
     await act(async () => nav[0].click());
     expect(container.querySelector('.timing-surface')).toBe(timerNode);
     await act(async () => container.querySelector<HTMLButtonElement>('.shell-stat-rail')!.click());
@@ -255,8 +301,8 @@ describe('installed App GAN lifecycle integration', () => {
     const category = dialog.querySelector<HTMLSelectElement>('.settings-category-select')!;
     await act(async () => { category.value = 'appearance'; category.dispatchEvent(new Event('change', { bubbles: true })); });
     await act(async () => dialog.querySelector<HTMLButtonElement>('.tfp-trigger')!.click());
-    const inter = [...document.querySelectorAll<HTMLButtonElement>('.tfp-item')].find(node => node.textContent?.includes('Inter'))!;
-    await act(async () => inter.click());
+    const sans = [...document.querySelectorAll<HTMLButtonElement>('.tfp-item')].find(node => node.textContent?.includes('SF Pro'))!;
+    await act(async () => sans.click());
     await settle();
     expect((memory.data as TimerStoreData).settings.timerFont).toBe('sans');
     await act(async () => dialog.querySelector<HTMLButtonElement>('.settings-modal-close')!.click());
@@ -285,7 +331,7 @@ describe('installed App GAN lifecycle integration', () => {
     expect(dialog).not.toBeNull();
     expect(disconnect).not.toHaveBeenCalled();
     const reset = [...dialog.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent?.includes('Reset cube'))!;
+      .find((button) => button.textContent === 'Reset')!;
     await act(async () => reset.click());
     expect(resetState).toHaveBeenCalledOnce();
     await act(async () => backListener?.());
@@ -342,13 +388,13 @@ describe('installed App GAN lifecycle integration', () => {
     const dialog = document.querySelector<HTMLElement>('.timer-smart-cube-device__modal')!;
     expect(dialog.textContent).toContain('GAN16ui');
     expect(dialog.textContent).not.toContain('Connected, unsolved');
-    expect(dialog.textContent).toContain('72%');
+    expect(dialog.querySelector('.timer-smart-cube-device__battery')?.getAttribute('aria-label')).toBe('Battery 72%');
     expect(dialog.textContent).not.toContain('gan-v4');
     expect(dialog.textContent).not.toContain('Last move');
     const button = (label: string) => [...dialog.querySelectorAll<HTMLButtonElement>('button')]
       .find((candidate) => candidate.textContent?.includes(label))!;
 
-    await act(async () => button('Reset cube').click());
+    await act(async () => button('Reset').click());
     expect(resetDeviceState).toHaveBeenCalledOnce();
     expect(resetState).not.toHaveBeenCalled();
     expect(requestState).not.toHaveBeenCalled();
@@ -394,6 +440,9 @@ describe('installed App GAN lifecycle integration', () => {
     ['touch', '.timer-display-value'], ['mouse', '.timer-display-value'],
     ['touch', '.scramble-moves'], ['mouse', '.scramble-moves'],
   ])('uses the shared %s press lifecycle on %s', async (pointerType, selector) => {
+    // Manual timing owns input only after the cube disconnects.
+    await act(async () => setRadio({ ...radio, phase: 'idle', deviceName: '', facelets: '' }));
+    await settle();
     const clipboard = vi.spyOn(host, 'writeClipboardText');
     const scramble = container.querySelector<HTMLElement>('.scramble-moves')!;
     const originalScramble = scramble.textContent;
@@ -604,8 +653,8 @@ it('records one exact Stackmat reading with its starting scramble and keeps the 
 it('blocks cube starts in full statistics and Back closes the dialog before history', async () => {
   await act(async () => { wideViewport = true; mediaListeners.forEach(fn => fn()); });
   await act(async () => container.querySelector<HTMLButtonElement>('.shell-stat-rail')!.click());
-  const view = container.querySelector<HTMLSelectElement>('[aria-label="Results view"]')!;
-  await act(async () => { view.value='stats'; view.dispatchEvent(new Event('change',{bubbles:true})); });
+  const view = [...container.querySelectorAll<HTMLButtonElement>('.shell-panel-tab')].find(button => button.textContent === 'Stats')!;
+  await act(async () => view.click());
   const full=[...container.querySelectorAll<HTMLButtonElement>('button')].find(button=>button.textContent==='Full stats')!;
   await act(async () => full.click());
   expect(document.querySelector('.stats-modal')).not.toBeNull();

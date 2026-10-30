@@ -17,6 +17,9 @@ import {
 
 interface TimerControllerOptions {
   inputBlocked?: () => boolean;
+  smartCubeActive?: () => boolean;
+  trainingStartMode?: () => TimerMachineConfig['trainingStartMode'];
+  canManualArmTraining?: () => boolean;
   canStart?: boolean;
   enabled?: boolean;
   holdMs: number;
@@ -27,7 +30,7 @@ interface TimerControllerOptions {
 }
 
 export interface TimerController {
-  armFromCube(): boolean;
+  armFromCube(atMs?: number): boolean;
   cancelArm(): boolean;
   machine: TimerMachineState;
   nowMs: number;
@@ -44,6 +47,9 @@ export interface TimerController {
 
 export function useTimerController({
   inputBlocked,
+  smartCubeActive,
+  trainingStartMode,
+  canManualArmTraining,
   canStart = true,
   enabled = true,
   holdMs,
@@ -61,6 +67,12 @@ export function useTimerController({
   const onTransitionRef = useRef(onTransition);
   const inputBlockedRef = useRef(inputBlocked);
   inputBlockedRef.current = inputBlocked;
+  const smartCubeActiveRef = useRef(smartCubeActive);
+  smartCubeActiveRef.current = smartCubeActive;
+  const trainingStartModeRef = useRef(trainingStartMode);
+  trainingStartModeRef.current = trainingStartMode;
+  const canManualArmTrainingRef = useRef(canManualArmTraining);
+  canManualArmTrainingRef.current = canManualArmTraining;
   const canStartRef = useRef(canStart);
   const enabledRef = useRef(enabled);
   const configRef = useRef<TimerMachineConfig>({
@@ -82,6 +94,7 @@ export function useTimerController({
   }, []);
 
   const apply = useCallback((action: TimerMachineAction): TimerMachineTransition => {
+    configRef.current.trainingStartMode = trainingStartModeRef.current?.();
     const transition = transitionTimer(machineRef.current, action, configRef.current);
     machineRef.current = transition.state;
     setMachine(transition.state);
@@ -131,14 +144,19 @@ export function useTimerController({
     return () => window.cancelAnimationFrame(frame);
   }, [machine.phase]);
 
-  const pressDown = useCallback((atMs = performance.now()): boolean => (
-    !inputBlockedRef.current?.() && enabledRef.current
-    && timerCanHandleAttemptPress(machineRef.current.phase, canStartRef.current)
-    && apply({ type: 'press-down', nowMs: atMs }).accepted === true
-  ), [apply]);
+  const pressDown = useCallback((atMs = performance.now()): boolean => {
+    if (inputBlockedRef.current?.() || !enabledRef.current) return false;
+    if (trainingStartModeRef.current?.() === 'manual') {
+      return canStartRef.current && !!canManualArmTrainingRef.current?.()
+        && apply({ type: 'arm-from-cube', nowMs: atMs }).accepted === true;
+    }
+    return enabledRef.current
+    && timerCanHandleAttemptPress(machineRef.current.phase, canStartRef.current, smartCubeActiveRef.current?.())
+    && apply({ type: 'press-down', nowMs: atMs }).accepted === true;
+  }, [apply]);
 
   const pressUp = useCallback((atMs = performance.now()): boolean => {
-    if (inputBlockedRef.current?.() || !enabledRef.current) return false;
+    if (inputBlockedRef.current?.() || smartCubeActiveRef.current?.() || !enabledRef.current) return false;
     if (!canStartRef.current && machineRef.current.phase !== 'running') {
       clearHoldTimeout();
       apply({ type: 'cancel-arm' });
@@ -153,9 +171,9 @@ export function useTimerController({
     return apply({ type: 'cancel-press' }).accepted === true;
   }, [apply, clearHoldTimeout]);
 
-  const armFromCube = useCallback((): boolean => {
+  const armFromCube = useCallback((atMs?: number): boolean => {
     if (!enabledRef.current || !canStartRef.current) return false;
-    return apply({ type: 'arm-from-cube', nowMs: performance.now() }).accepted === true;
+    return apply({ type: 'arm-from-cube', nowMs: performance.now(), atMs }).accepted === true;
   }, [apply]);
 
   const cancelArm = useCallback((): boolean => {

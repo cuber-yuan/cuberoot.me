@@ -10,8 +10,11 @@
  * synchronous custom SVG renderer, so no need to pull in cubing/twisty (which
  * triggers the search worker code path that conflicts with Turbopack prerender).
  */
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { renderScramblePreviewSvg } from '@/components/scramble-preview-svg';
+import { DiagramPreview } from '@/components/DiagramPreview';
+import { tr } from '@/i18n/tr';
+import './visual-cube.css';
 import { magicSvgAspect } from '@cuberoot/puzzle-render-core/magic-svg';
 // mask-core, NOT puzzle-mask: this component only parses a mask string, it never
 // expands pieces — so it must not pull the derived tables (lib/puzzle-image/data)
@@ -26,6 +29,7 @@ interface Props {
   event: string;
   scramble: string;
   size?: number;
+  enlargeable?: boolean;
   clockColors?: Record<string, string>;
   sq1Colors?: Record<string, string>;
   megaColors?: Record<string, string>;
@@ -47,6 +51,7 @@ export function ScramblePreview2D({
   event,
   scramble,
   size = 60,
+  enlargeable = false,
   clockColors,
   sq1Colors,
   megaColors,
@@ -55,6 +60,8 @@ export function ScramblePreview2D({
   mask,
   puzzleDescription,
 }: Props) {
+  const [expanded, setExpanded] = useState(false);
+  const thumbnail = useRef<HTMLButtonElement>(null);
   const customSvg = useMemo(() => {
     const renderMask: MaskRenderOptions | undefined = (() => {
       const rm = toRenderMask(mask);
@@ -107,6 +114,21 @@ export function ScramblePreview2D({
       dangerouslySetInnerHTML={{ __html: customSvg }}
     />
   );
+  if (enlargeable) {
+    const title = tr({ zh: '打乱平面展开图', en: 'Scramble net' });
+    return <>
+      <button ref={thumbnail} type="button" aria-label={title} aria-haspopup="dialog"
+        style={{ display: 'inline-flex', padding: 0, border: 0, background: 'transparent', cursor: 'zoom-in' }}
+        onClick={event => { event.stopPropagation(); setExpanded(true); }}>
+        {inner}
+      </button>
+      {expanded && thumbnail.current && <DiagramPreview source={thumbnail.current} title={title} onClose={() => setExpanded(false)}>
+          <div className="puzzle-art" role="img" aria-label={title}
+            style={{ width: '100%', maxWidth: 300, aspectRatio: `${hostStyle.width} / ${hostStyle.height}`, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'auto' }}
+            dangerouslySetInnerHTML={{ __html: customSvg }} />
+      </DiagramPreview>}
+    </>;
+  }
   if (fullSizeLink && fullSizeHref) {
     return (
       <a

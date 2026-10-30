@@ -1,6 +1,6 @@
 import { loadAlg } from '@cuberoot/shared/alg';
-import { CUBE_ORIENTATIONS, orientedFaceColors } from '@cuberoot/shared/timer';
-import { AllFaces, CubeData, Face, makeMasking, Masking, parseAlgorithm } from '@cuberoot/visualcube';
+import { CUBE_ORIENTATIONS } from '@cuberoot/shared/timer';
+import { Masking } from '@cuberoot/visualcube';
 import { cubeColorGroups, crossColorFromReconText } from '@cuberoot/timer-ui/CubeColorChip';
 import { applyMoves, applyScramble, type CubeFaces } from '@cuberoot/shared/timer/reconstruct/state';
 import { parseScramble } from '@cuberoot/puzzle-solvers/cube-moves';
@@ -9,28 +9,11 @@ import { isCross } from '@cuberoot/shared/timer/reconstruct/cfop-detect';
 import { FACE_COLOR_KEY } from '@cuberoot/shared/timer/reconstruct/orient';
 import { cleanForPlayer } from './recon-alg-utils';
 import { algCaseDetailHref, buildCaseSlugMap } from './alg_case_link';
+import { maskedReconFacelets } from './recon-diagram-mask';
 
 const color = (face: keyof CubeFaces) => FACE_COLOR_KEY[face][0].toUpperCase();
 const rotate = (state: CubeFaces, alg: string) => applyMoves(state, 3, parseScramble(alg));
 const slots = ['FR', 'FL', 'BR', 'BL'] as const;
-
-/** Reuse the single-pair mask (cross + FR pair), mapped to this pair's actual cubies. */
-function maskedF2lFacelets(setup: string, canonical: CubeFaces): string | undefined {
-  const maskRotation = CUBE_ORIENTATIONS.find(option => {
-    const shown = orientedFaceColors(option.value);
-    return shown[canonical.D[4]] === 'D' && shown[canonical.F[4]] === 'F' && shown[canonical.R[4]] === 'R';
-  });
-  if (!maskRotation) return;
-  const mask = new CubeData(3, makeMasking(Masking.PAIR, 3));
-  for (const turn of parseAlgorithm(maskRotation.value)) mask.turn(turn);
-  const cube = new CubeData(3, Object.fromEntries(AllFaces.map(face => [face,
-    mask.faces[face].map(visible => visible ? color(Face[face] as keyof CubeFaces).toLowerCase() : 'd'),
-  ])));
-  // Canonical orientation identifies the masked cubies only. Display the actual
-  // pre-line grip, so the adjacent moves still refer to the pictured faces.
-  for (const turn of parseAlgorithm(setup)) cube.turn(turn);
-  return AllFaces.map(face => cube.faces[face].join('')).join('');
-}
 
 export interface ReconF2lAnnotations {
   links: Map<number, Map<string, string>>;
@@ -81,7 +64,7 @@ export async function reconF2lAnnotations(scramble: string, text: string, onDiag
         pair.includes(color(faces.F[4])) && pair.includes(color(faces.R[4])));
       const canonical = orientation?.faces;
       if (orientation) {
-        const facelets = maskedF2lFacelets(beforeSetup, orientation.faces);
+        const facelets = maskedReconFacelets(beforeSetup, orientation.faces, Masking.PAIR);
         if (facelets) diagrams.set(lineIndex, [...(diagrams.get(lineIndex) ?? []), { colors: pair, facelets }]);
       }
       if (crossLine) continue;
@@ -106,25 +89,32 @@ export async function reconF2lAnnotations(scramble: string, text: string, onDiag
   // Drawing uses only the recorded state. Publish it before any library I/O;
   // the library is needed solely to turn fingerprints into case links.
   onDiagrams?.(diagrams);
-  const file = await loadAlg('3x3', 'f2l');
-  const slugs = buildCaseSlugMap(file.cases, 'f2l');
-  const hrefByState = new Map<string, Set<string>>();
-  for (const c of file.cases) {
-    const slug = c.id == null ? undefined : slugs.byId.get(c.id);
-    if (!slug || !c.setup) continue;
-    // Match the library's case setup, not algorithms that can solve multiple cases.
-    const reference = applyScramble(3, c.setup);
-    for (const auf of ['', 'U', 'U2', "U'"]) {
-      const key = f2lSlotFingerprint(rotate(reference, auf), 'FR');
-      if (!key) continue;
-      const hrefs = hrefByState.get(key) ?? new Set<string>();
-      hrefs.add(algCaseDetailHref('3x3', 'f2l', slug));
-      hrefByState.set(key, hrefs);
+  const indexCases = async (set: 'f2l' | 'adv-f2l') => {
+    const file = await loadAlg('3x3', set);
+    const slugs = buildCaseSlugMap(file.cases, set);
+    const hrefByState = new Map<string, Set<string>>();
+    for (const c of file.cases) {
+      const slug = c.id == null ? undefined : slugs.byId.get(c.id);
+      if (!slug || !c.setup) continue;
+      // Case setup, not an algorithm that may solve several different cases.
+      const reference = applyScramble(3, c.setup);
+      for (const auf of ['', 'U', 'U2', "U'"]) {
+        const key = f2lSlotFingerprint(rotate(reference, auf), 'FR');
+        if (!key) continue;
+        const hrefs = hrefByState.get(key) ?? new Set<string>();
+        hrefs.add(algCaseDetailHref('3x3', set, slug));
+        hrefByState.set(key, hrefs);
+      }
     }
-  }
+    return hrefByState;
+  };
+  const standard = await indexCases('f2l');
+  const needsAdvanced = [...links.values()].some(pairs => [...pairs.values()].some(key => !standard.has(key)));
+  // Advanced lookup must not make already identified standard cases disappear.
+  const advanced = needsAdvanced ? await indexCases('adv-f2l').catch(() => new Map<string, Set<string>>()) : new Map<string, Set<string>>();
   for (const [line, pairs] of links) {
     for (const [pair, key] of pairs) {
-      const hrefs = hrefByState.get(key);
+      const hrefs = standard.get(key) ?? advanced.get(key);
       if (hrefs?.size === 1) pairs.set(pair, [...hrefs][0]);
       else pairs.delete(pair);
     }

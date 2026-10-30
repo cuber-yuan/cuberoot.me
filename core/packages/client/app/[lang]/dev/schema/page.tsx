@@ -42,6 +42,13 @@ const DOMAINS: { key: DomainKey; dot: string; name: Bi; sub: Bi }[] = [
 ];
 
 const TABLES: Table[] = [
+  { name: 'calendar_competitions', domain: 'studio', origin: '0299', naturalKey: true, purpose: { zh: '比赛与个人日程唯一关联，防止重复加入和删除后恢复', en: 'Unique competition-to-event links, including deleted events' } },
+  { name: 'recon_captures', domain: 'recon', origin: '0298', purpose: { zh: '私有原片与原始魔方记录绑定、完整性和时间对齐状态', en: 'Private original video and cube recording bindings, integrity and alignment state' } },
+  { name: 'recon_capture_revisions', domain: 'recon', origin: '0298', purpose: { zh: '视频采集样本的人工对齐锚点版本', en: 'Human alignment anchor revisions for video captures' } },
+  { name: 'career_applications', domain: 'community', origin: '0295', purpose: { zh: '管理员可查看的招聘申请及附件', en: 'Private career applications and attachments for administrators' } },
+  { name: 'site_assistant_shares', domain: 'community', origin: '0294', purpose: { zh: '用户主动创建的单条文字分享；可撤销，注销级联删除', en: 'Explicit single-message public snapshots; revocable, cascade on account deletion' } },
+  { name: 'wca_translation_sync', domain: 'comp', origin: '0289', purpose: { zh: '官方译文同步版本、来源许可与失败状态', en: 'Official translation sync provenance, licenses and failure state' } },
+  { name: 'wca_translation_units', domain: 'comp', origin: '0289', purpose: { zh: '可检索的官方英中条目与翻译状态', en: 'Searchable official English–Chinese units and translation states' } },
   { name: 'recon_intake', domain: 'recon', origin: '0286', purpose: { zh: '复盘收录、原始记录、批注、确认版本和领取租约', en: 'Reconstruction intake, recordings, annotations, approvals and leases' } },
   { name: 'recon_intake_revisions', domain: 'recon', origin: '0286', purpose: { zh: '原始批注与人工预期的版本历史', en: 'Version history of annotations and human expectations' } },
   { name: 'recon_intake_runs', domain: 'recon', origin: '0286', purpose: { zh: '复盘待办的不可变测试报告', en: 'Immutable intake test reports' } },
@@ -579,6 +586,15 @@ const TABLES: Table[] = [
 ];
 
 const MIGRATIONS: { n: number; slug: string; desc: Bi }[] = [
+  { n: 299, slug: 'calendar_competitions', desc: { zh: '个人比赛日程唯一关联与删除记录', en: 'Personal competition event identity and deletion records' } },
+  { n: 298, slug: 'recon_capture', desc: { zh: '私有视频采集样本、原始动作绑定和人工时间对齐版本', en: 'Private video captures, original move bindings and human alignment revisions' } },
+  { n: 297, slug: 'recon_intake_source', desc: { zh: '记录复盘收录来源及快照，防止重复收录', en: 'Record reconstruction intake source and snapshot to prevent duplicates' } },
+  { n: 296, slug: 'wechat_instructor_payouts', desc: { zh: '微信讲师提现转账状态与账号注销保护', en: 'WeChat instructor payout transfer state and account deletion protection' } },
+  { n: 295, slug: 'career_applications', desc: { zh: '招聘申请与私人附件', en: 'Private career applications and attachments' } },
+  { n: 294, slug: 'assistant_message_shares', desc: { zh: '可撤销的聊天单条消息公开分享', en: 'Revocable public single-message shares' } },
+  { n: 293, slug: 'workspace_remove_checklist_categories', desc: { zh: '移除清单分类字段，保留清单名称、事项与共享权限', en: 'Remove checklist categories while retaining names, items and sharing permissions' } },
+  { n: 292, slug: 'workspace_schedules', desc: { zh: '可复用团队排期、分组任务及里程碑', en: 'Reusable team schedules, grouped tasks and milestones' } },
+  { n: 291, slug: 'workspace_checklists', desc: { zh: '按分类共享公司与项目清单，完成状态和版本冲突保护', en: 'Categorized company and project checklists with completion and version checks' } },
   { n: 288, slug: 'multiple_home_features', desc: { zh: '首页支持多个独立置顶内容', en: 'Multiple independent homepage features' } },
   { n: 287, slug: 'alg_mark_tombstones', desc: { zh: '保留学习标记清除时间，阻止旧设备迟到写入复活标记', en: 'Retain learning-mark deletion timestamps to reject stale device writes' } },
   { n: 282, slug: 'workspace_account_deletion', desc: { zh: '员工账号注销：清理私有数据、撤销权限并保留匿名团队记录', en: 'Employee account deletion: purge private data and retain anonymous team records' } },
@@ -870,6 +886,7 @@ const MIGRATIONS: { n: number; slug: string; desc: Bi }[] = [
   { n: 275, slug: 'recon_favorites', desc: { zh: '所有登录用户可收藏复盘，按账号持久保存。', en: 'Persistent reconstruction favorites for every signed-in account.' } },
   { n: 274, slug: 'dev_preview_health', desc: { zh: '独立记录开发网址的连通验收与检查时间，过期不显示可用。', en: 'Track independent preview connectivity checks; stale evidence does not imply availability.' } },
   { n: 272, slug: 'remote_access', desc: { zh: '员工远程连接申请、负责人审批及主机同步确认。', en: 'Employee remote access requests, host-owner approval and host acknowledgements.' } },
+  { n: 289, slug: 'wca_translations', desc: { zh: 'WCA 官方英中翻译与来源状态，原子同步及检索。', en: 'Official WCA English–Chinese translations with provenance, atomic sync and retrieval.' } },
 ];
 
 const DOMAIN_KEYS = ['all', ...DOMAINS.map((d) => d.key)] as const;

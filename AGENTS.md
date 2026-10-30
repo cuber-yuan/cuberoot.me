@@ -182,6 +182,8 @@ H11 在本机仅允许源码实现、静态检查和不接触 H11 表文件的�
 
 ## 代码风格
 
+- **厂商与培训机构 logo（维护者要求，2026-10-26）**：不加白色或其他装饰性描边、外框、光晕；原素材自带的白色轮廓也应使用无描边版本替换。保留品牌原色与标志形状，优先复用真实 SVG 矢量资源，不把 PNG 嵌入 SVG 冒充矢量。统一复用 `CubingBrandLabel` 和 `public/images/brands/` 资源，新增品牌或机构时同样遵循；logo 内部有意义的白色图形不视为装饰描边。
+
 - **界面与文案精简（维护者要求，2026-10-19）**：不要重复内容、常驻提示和阅读套话。同一信息只展示一次，不重复标题、名称或说明；不添加“点击即可…”等常驻操作提示，以及“请阅读以下内容”“温馨提示”等无实际信息的引导套话。必要说明放到设置、按需帮助或交互时的短暂反馈中，正文只保留用户完成任务所需的信息。
 
 - 页面层级优先用留白、间距和排版区分；分隔线仅在确实帮助辨识内容边界时使用。导航、标题和工具栏已有清晰布局时保持简洁，去掉多余的装饰性横线。
@@ -269,8 +271,9 @@ H11 在本机仅允许源码实现、静态检查和不接触 H11 表文件的�
 - 全站只 en + zh-Hans。守卫:hook `block-handwritten-trad` + CI `i18n-removal-guard`(含 en/zh key 对齐)。
 - 文案走 `tr({en,zh})` / `<T en zh/>` / `useT()`;长文/复用走 `t()` + `en.json`/`zh.json`;HTML lang `en`/`zh-Hans`。
 - 禁内联 `isZh`/`i18n.language` 文案三元(`isZh ? '中' : 'EN'`);`isZh` 仅可作 util 参数。守卫:hook + CI ratchet。细则调 skill `i18n`。
-- 魔方术语 zh 以 `client/app/[lang]/wiki/glossary.json` 为准,禁直译;陷阱表+黑名单守卫见 skill `i18n`。
-- 翻译 WCA 规则、公告或意外事件记录前，先读 [WCA 英中翻译参考](core/packages/client/public/regulation/wca-translation-reference.md)，再按条款号查同目录 `wca-regulations-bilingual.md`；网页入口 `/regulation/translation`。保留版本、主体、义务强弱和处罚范围，原译疑点单列，不把对齐语料视为已逐句审核。一般社区术语仍查词典。
+- 一般社区魔方术语 zh 查 `client/app/[lang]/wiki/glossary.json`，WCA 专名与规则语境按下条官方来源核对，禁凭语感直译；陷阱表+黑名单守卫见 skill `i18n`。
+- 翻译 WCA 规则、公告或意外事件记录前，先读 [WCA 英中翻译参考](core/packages/client/public/regulation/wca-translation-reference.md)，再按条款号查同目录 `wca-regulations-bilingual.md`；机构、菜单和页面用语直接查 WCA Weblate 简体中文项目（如 WIC = 廉政委员会）。网页入口 `/regulation/translation`。保留版本、主体、义务强弱和处罚范围，历史 WDC/WAC 不替换成当前机构或缩写，原译疑点单列，不把对齐语料视为已逐句审核。一般社区术语仍查词典。
+- WCA 官网翻译以 [Weblate 简体中文项目](https://translate.worldcubeassociation.org/projects/wca/-/zh_Hans/)为主要来源，规则含义仍以适用版本英文为准。AI 优先查 `https://api.cuberoot.me/v1/wca/translations?q=<URL编码查询>&limit=5&v=1`，核对 ready/stale 和来源；未命中或服务不可用再查 Weblate，最后使用同提交的官方 GitHub locale 文件后备。不手改服务器镜像，不自造官方译名。具体检索步骤和权限边界在上述 MD 与 `i18n` skill 中维护。
 - 教程项目选择器的 ivy 中文短名固定为「枫叶」,禁加通用品类后缀。
 - 站内违禁词表 `.codex/banned-words.json`(hook `block-banned-words` 写入即拦,`.codex/` 自身豁免);用户说「添加违禁词:x」= 往该表加 `{word,use,why}` 一条。行内豁免注释 `allow-banned-word`。
 

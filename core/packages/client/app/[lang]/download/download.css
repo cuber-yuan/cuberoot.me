@@ -8,6 +8,9 @@
 .download-nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 36px; }
 .download-home { display: inline-flex; align-items: center; gap: 8px; color: var(--muted-foreground); text-decoration: none; }
 .download-home:hover { color: var(--foreground); }
+.download-settings.theme-toggle-inline { width: 44px; height: 44px; padding: 0; justify-content: center; }
+.download-settings > svg { width: 22px; height: 22px; }
+.download-settings:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
 .download-page h1 { margin: 0 0 32px; font-size: 1.7rem; font-weight: 700; }
 .download-app { display: flex; align-items: center; gap: 20px; margin-bottom: 36px; }
 .download-app-icon { width: 80px; height: 80px; flex-shrink: 0; border-radius: 18px; }
@@ -44,6 +47,13 @@
 .download-upcoming { margin-top: 40px; border-top: 1px solid var(--border-default); padding-top: 16px; }
 .download-platform { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px 24px; padding: 12px 0; color: var(--muted-foreground); font-size: .9rem; }
 .download-platform > :last-child { color: var(--faint-foreground); }
+.download-windows { margin: 32px 0; }
+.download-release-manager { margin-top: 20px; }
+.download-release-manager label { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
+.download-release-platform { align-self: flex-start; font: inherit; }
+.download-release-notes { width: 100%; box-sizing: border-box; font: inherit; resize: vertical; }
+.download-release-manager code { overflow-wrap: anywhere; }
+.download-release-manager li { margin: 12px 0; }
 @media (max-width: 420px) {
   .download-actions { flex-direction: column; align-items: flex-start; }
 }

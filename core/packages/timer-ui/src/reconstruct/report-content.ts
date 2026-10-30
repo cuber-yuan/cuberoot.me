@@ -123,7 +123,6 @@ export function reportStepTable(cols:Col[],sequences:Map<string,string[]>,rotati
   }),cell('total','–'),'sa-row-avg');
   const open=cols.find(c=>c.key===state.openColumn);
   return groupNode('analysis',[
-    textNode('analysis-title',tr({zh:'分步分析',en:'Step analysis'}),'sa-title'),
     !hideBar&&cols.some(c=>(c.stepMs??0)>0)&&{id:'step-bar',kind:'bar',text:tr({zh:'各步用时占比',en:'Time per step'}),segments:cols.filter(c=>(c.stepMs??0)>0).map(c=>({id:c.key,fraction:(c.stepMs??0)/cols.reduce((sum,c)=>sum+Math.max(0,c.stepMs??0),0),tone:c.tone,label:c.label+' '+sec(c.stepMs)+'s'}))},
     {id:'step-table',kind:'table',className:'sa-table',columns:[...cols.map(c=>buttonNode(c.key,c.label,{type:'column',key:c.key},'sa-col-btn',{
       disabled:!(sequences.get(c.key)?.length),selected:state.openColumn===c.key,tone:c.tone,
@@ -147,16 +146,22 @@ export function reportReferences(reference:ReferenceResult,tr:ReconstructLocaliz
 export function reportRawMoves(solve:Solve,wasted:ReadonlySet<number>,tr:ReconstructLocalize) {
   const moves=solve.moves??[];
   if(!moves.length)return textNode('no-moves',tr({zh:'这把没有蓝牙动作记录。',en:'No bluetooth moves recorded for this solve.'}),'reconstruct-empty');
-  return groupNode('raw-list',moves.map((m,i)=>{
+  const header = groupNode('header', [
+    textNode('idx', '#', 'reconstruct-move-idx'),
+    textNode('move', tr({zh:'动作',en:'Move'}), 'reconstruct-move-token'),
+    textNode('ts', tr({zh:'时间 (s)',en:'Time (s)'}), 'reconstruct-move-ts'),
+    textNode('gap', tr({zh:'间隔 (s)',en:'Gap (s)'}), 'reconstruct-move-gap'),
+  ], 'reconstruct-move-row reconstruct-move-header', 'row');
+  return groupNode('raw-list',[header,...moves.map((m,i)=>{
     const gap=i?m.ts-moves[i-1].ts:null;
-    return {...groupNode(String(i),[textNode('idx',String(i+1),'reconstruct-move-idx'),textNode('move',m.m,'reconstruct-move-token'),textNode('ts',`t=${sec(m.ts)}s`,'reconstruct-move-ts'),textNode('gap',gap==null?'—':`Δ=+${sec(gap)}s`,'reconstruct-move-gap')],`reconstruct-move-row${gap!=null&&gap>500?' slow':''}${wasted.has(i)?' wasted':''}`,'row'),title:wasted.has(i)?tr({zh:'废步:这一段转完回到了之前的状态',en:'wasted: this run returns to a prior state'}):undefined};
-  }),'reconstruct-move-list');
+    return {...groupNode(String(i),[textNode('idx',String(i+1),'reconstruct-move-idx'),textNode('move',m.m,'reconstruct-move-token'),textNode('ts',sec(m.ts),'reconstruct-move-ts'),textNode('gap',gap==null?'—':sec(gap),'reconstruct-move-gap')],`reconstruct-move-row${gap!=null&&gap>500?' slow':''}${wasted.has(i)?' wasted':''}`,'row'),title:wasted.has(i)?tr({zh:'废步:这一段转完回到了之前的状态',en:'wasted: this run returns to a prior state'}):undefined};
+  })],'reconstruct-move-list');
 }
 export function reportFeedback(state:ReportUIState,tr:ReconstructLocalize) {
   return groupNode('feedback',[
     textNode('question',tr({zh:'复盘对不对?',en:'Reconstruction correct?'}),'rc-feedback-q'),
     ...[true,false].map(value=>buttonNode(String(value),value?tr({zh:'切分是对的',en:'The split is right'}):tr({zh:'切分不对',en:'The split is wrong'}),{type:'feedback',value},`rc-feedback-btn${state.feedback===value?value?' is-on':' is-off':''}`,{selected:state.feedback===value,icon:value?'thumb-up':'thumb-down'})),
-    {...textNode('hint','ⓘ','rc-feedback-info'),title:tr({zh:'阶段边界是从动作流推出来的,不是魔方报的。推错了这里说一声 —— 不影响任何数字,只是留个记号。',en:'The stage boundaries are inferred from the turn stream, not reported by the cube. Say so if they are wrong — it changes no number, it just leaves a marker.'})},
+    {...textNode('hint',tr({zh:'复盘反馈说明',en:'About reconstruction feedback'})),icon:'info',title:tr({zh:'阶段边界是从动作流推出来的,不是魔方报的。推错了这里说一声 —— 不影响任何数字,只是留个记号。',en:'The stage boundaries are inferred from the turn stream, not reported by the cube. Say so if they are wrong — it changes no number, it just leaves a marker.'})},
   ],'rc-feedback','row');
 }
 export function reportNoGyro(recordGyro:boolean,canEnable:boolean,tr:ReconstructLocalize) {

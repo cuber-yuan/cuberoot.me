@@ -29,6 +29,12 @@ pnpm setup:local
 devsite add cuberoot "C:/实际项目目录/core" http://127.0.0.1:3000/zh -- "C:/实际Node目录/node.exe" "C:/实际项目目录/core/scripts/local-dev.ts"
 ```
 
+## 复盘提交门禁与并行任务
+
+`pre-commit` 对复盘源码、样本和依赖锁文件等受保护输入运行完整 ground-truth 回归。没有其他复盘工作时，沿用工作区内容指纹凭证；当其他任务有未提交的复盘文件时，通过独立 index 检出本次实际暂存树到临时目录，独立执行 `pnpm install --offline --frozen-lockfile --ignore-scripts`、`build:deps` 和完整回归，验证后清理。需要本机已有对应依赖缓存；安装或验证失败仍阻止提交。快照不使用会受 `export-ignore` 影响的归档导出。
+
+快照验证不会 stash、覆盖或代为暂存其他文件，也不复用原工作区的 `node_modules` 链接，不上传临时快照的报告。通过凭证绑定 Node、平台和暂存树；验证期间暂存树变化时拒绝提交。`git commit --only` / `-a` 使用 Git 提供的临时 index，而快照内的测试清除这些 Git 环境变量。被提交的同一个受保护文件仍不允许一部分暂存、一部分未暂存；需要先明确该文件的提交边界。
+
 ## 多方法复盘的公共动作重建
 
 智能魔方复盘在基础分析返回后，用公式库辅助纠正已明确识别的 OLL / PLL（含 EPLL）行；只读取对应 case 的候选，失败或每个公式集加载超过 2.5 秒时保留原谱子。匹配双方均剥离两端 U 调整与观察转体，输出保留原复盘的边界动作，不引入库公式的 AUF。对于藏在中层、双层组合中的 AUF，枚举前后 U 调整并以原动作的完整变换反推；这些调整不计入主体匹配分数，且最终整行仍须完全等效。仅在文字重合或局部等效覆盖达到 60%、领先次选至少 8 个百分点，且角、棱及中心位置的完整变换完全一致时替换。候选可绕 y 换算执行方向；不可解析、候选歧义或只有阶段相同而变换不同均不替换。公式括号与废步分组独立保存，不简化 `R3`、`R2'` 等手法写法。
@@ -95,7 +101,19 @@ pnpm --filter @cuberoot/client dev
 # → http://127.0.0.1:3000/
 ```
 
-本地 Web 的 `/v1/*` 通过 Next rewrites 代理线上 API；`/tools/`、`/stats/` 使用现役 Next route handler，静态资源的发布边界见 `.github/workflows/sync_toolkit.yml`。
+本地 Web 的 `/v1/*` 默认通过 Next rewrites 代理线上 API；修改业务数据时使用 `LOCAL_DOMAINS` 选择本地 API 域，步骤见 [`core/apps/api/scripts/README.md`](../core/apps/api/scripts/README.md)。
+
+统计数据（选手、报名、比赛、打乱统计等）默认在本地和生产都读取 `static.cuberoot.me` 已发布的快照，不要求开发者准备本地 `stats/`。Web 与共享加载器复用 `@cuberoot/shared/stats-base`；直接访问开发站点 `/stats/*` 也遵循同一来源。服务器快照仍有上游同步间隔，不等于实时报名状态。
+
+需要预览本地生成但尚未发布的数据时，在 `core/` 启动：
+
+```sh
+NEXT_PUBLIC_STATS_SOURCE=local pnpm --filter @cuberoot/client dev
+```
+
+也可在 `core/packages/client/.env.development.local` 设置 `NEXT_PUBLIC_STATS_SOURCE=local`，不要提交此个人配置。未设置或设为 `published` 即读服务器；切换后重启开发服务并刷新页面，清除页面内存中的旧索引。启动终端显示 `[stats] source=...`。该配置只在开发环境生效，生产始终读已发布数据。使用非默认端口时通过 `PORT` 设置端口，让服务端渲染也读取同一开发服务。
+
+本地模式严格读取仓库 `stats/`，文件缺失或读取失败会返回明确错误并在终端记录，不回退服务器；本地响应不缓存。自动化测试使用固定样本，不依赖线上最新快照。`NEXT_PUBLIC_STATIC_ORIGIN` 只控制模型、音乐等非统计资源，不再控制统计来源；`/tools/` 保持现有规则。静态资源发布边界见 `.github/workflows/sync_toolkit.yml`。
 
 `dev`、`dev:clean`、`dev:safe` 和 `local-dev.ts` 都通过 Turborepo Watch 启动：先按依赖顺序执行 Web 依赖的 `dev:build`，再启动 Next；共享包源码改动后自动重新构建，Next 自身负责热更新。`dev:build` 只登记需要输出 `dist` 的 TypeScript 共享包，复用各包的 `build`，不运行 WASM 建表或统计任务。新增同类编译包时，在该包添加 `dev:build` 脚本即可由 workspace 依赖图纳入。保持终端运行，Ctrl+C 同时退出监听和开发服务器。
 

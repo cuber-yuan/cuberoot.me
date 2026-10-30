@@ -4,6 +4,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ReconLineDiagramProvider } from '@/components/ReconLineDiagrams';
 import type { ReconF2lAnnotations } from '@/lib/recon-f2l-links';
+import { applyScramble } from '@cuberoot/shared/timer/reconstruct/state';
+import { FACE_COLOR_KEY } from '@cuberoot/shared/timer/reconstruct/orient';
 
 const mocks = vi.hoisted(() => ({ annotations: vi.fn(), load: vi.fn(), unmount: vi.fn() }));
 vi.mock('@/lib/recon-f2l-links', () => ({ reconF2lAnnotations: mocks.annotations }));
@@ -14,9 +16,9 @@ vi.mock('@cuberoot/shared/timer/reconstruct/library-correction', () => ({
   identifyLibraryCase: async () => ({ sticker: { kind: 'raw', tag: 'recognized', attrs: {} } }),
 }));
 vi.mock('@/lib/alg_thumb_plan', () => ({ cubeThumbParams: (_puzzle: string, _set: string, sticker: { tag: string }) => ({ mask: sticker.tag || 'fallback', view: 'oll' }) }));
-vi.mock('@/components/VisualCube', () => ({ VisualCube: (props: { faceletColors?: string; mask?: string }) => {
+vi.mock('@/components/VisualCube', () => ({ VisualCube: (props: { faceletColors?: string; mask?: string; setup?: string; local?: boolean }) => {
   useEffect(() => () => mocks.unmount(), []);
-  return createElement('span', { 'data-diagram': props.faceletColors ?? props.mask });
+  return createElement('span', { 'data-diagram': props.faceletColors ?? props.mask ?? 'cube', 'data-setup': props.setup, 'data-local': props.local });
 } }));
 let root: Root, host: HTMLDivElement;
 let requests: Array<{ publish: (diagrams: ReconF2lAnnotations['diagrams']) => void; finish: (value: ReconF2lAnnotations) => void }>;
@@ -35,6 +37,24 @@ beforeEach(() => {
   host = document.createElement('div'); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
+
+it.each(['W cross', 'Y Cross', 'R pscross', 'B xcross', 'G xxcross', 'O xxxcross', '十字'])('renders %s from the exact pre-line state without a library request', async label => {
+  await render(`x2 y' // inspection\nR U // ${label}`, 'F R', 1);
+  const image = host.querySelector('[data-diagram]');
+  expect(image).not.toBeNull();
+  const facelets = image!.getAttribute('data-diagram')!;
+  const actual = applyScramble(3, "F R x2 y'");
+  const actualColors = (['U', 'R', 'F', 'D', 'L', 'B'] as const)
+    .flatMap(face => actual[face].map(color => FACE_COLOR_KEY[color][0]));
+  expect(facelets).toHaveLength(54);
+  expect([...facelets].filter(color => color === 'd')).toHaveLength(41);
+  expect([...facelets].filter(color => color === (label === '十字' ? 'w' : label[0].toLowerCase()))).toHaveLength(5);
+  [...facelets].forEach((color, index) => {
+    if (color !== 'd') expect(color).toBe(actualColors[index]);
+  });
+  expect(image?.getAttribute('data-local')).toBe('true');
+  expect(mocks.load).not.toHaveBeenCalled();
+});
 
 it('keeps the same F2L image mounted while later turns and asynchronous annotations update', async () => {
   await render('R // RG');

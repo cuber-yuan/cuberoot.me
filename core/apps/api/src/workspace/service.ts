@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { ADMIN_WCA_IDS, isAdminWcaId } from '@cuberoot/shared/admin';
 import { canReadReport, reportReadScope, canWriteProject, decideReportChange, isWorkDate, isResultUrl, type WorkspaceActor, type ReportState } from '@app-foundation/workspace-policy';
 import type { QueryRunner } from '../db/connection.js';
+import { reportHoursInput } from './report-hours.js';
+import { planningService } from './planning.js';
 
 export type Actor = WorkspaceActor & { name: string; memberId?: number };
 export type Identity = { uid: number; isAdmin: boolean; name: string };
@@ -19,7 +21,7 @@ const reportInput = z.object({ id: uuid, projectId: uuid.nullable().default(null
 const commentInput = z.object({ id: uuid, reportId: uuid, body: z.string().trim().min(1).max(2000) });
 const now = () => Math.floor(Date.now() / 1000);
 const key = (actor: Actor) => `${actor.kind}:${actor.id}`;
-export type Report = ReportState & { id: string; name: string; projectName: string | null; projectActive: boolean | null; progress: string; resultUrl: string; help: string; next: string; createdAt: number; updatedAt: number };
+export type Report = ReportState & { id: string; name: string; projectName: string | null; projectActive: boolean | null; progress: string; resultUrl: string; help: string; next: string; startHour?: number | null; endHour?: number | null; createdAt: number; updatedAt: number };
 const reportColumns = `r.id, r.member_id AS "memberId", r.project_id AS "projectId", r.work_date::text AS "workDate", r.status, r.visibility, r.version, r.payload, r.created_at AS "createdAt", r.updated_at AS "updatedAt", m.name, p.name AS "projectName", p.active AS "projectActive"`;
 const reportFrom = 'workspace_reports r JOIN workspace_members m ON m.id=r.member_id LEFT JOIN workspace_projects p ON p.id=r.project_id';
 const flatten = (row: Report & { payload: Pick<Report, 'progress'|'resultUrl'|'help'|'next'> }): Report => { const { payload, ...rest } = row; return { ...rest, ...payload }; };
@@ -85,6 +87,11 @@ export function createWorkspaceService(query: QueryRunner, transact: Transaction
     return {report,comments,revisions};
   }
   async function directory(q: QueryRunner) { return q('SELECT id,name,(active OR admin_access) AS active FROM workspace_members WHERE user_id IS NOT NULL ORDER BY id'); }
+  function planning(q: QueryRunner, a: Actor) {
+    return planningService(q, { memberId: employee(a).id, admin: a.kind === 'admin', manager: a.role === 'manager' || a.kind === 'admin',
+      projectWrite: id => projectWrite(q, a, id), audit: (action, id) => audit(q, a, action, id),
+      fail: (message, status) => { throw new WorkspaceError(message, status); } });
+  }
   return {
     async get(identity: Identity, action: string, search: URLSearchParams) {
       return transact(async query => {
@@ -98,6 +105,8 @@ export function createWorkspaceService(query: QueryRunner, transact: Transaction
           return {projects:await Promise.all(projects.map(async p=>({...p,memberIds:a.kind==='admin'?(await query<{id:number}>('SELECT member_id AS id FROM workspace_project_members WHERE project_id=?',[p.id])).map(m=>m.id):[]})))};
         }
         case 'detail': return detail(query,a,search.get('id')??'');
+        case 'checklists': return planning(query, a).checklists(search);
+        case 'schedules': return planning(query, a).schedules(search);
         case 'reports': {
           const filter=await readFilter(query,a);let clause=filter.sql;const params=filter.params;
           if(search.get('mine')==='true') {clause+=' AND r.member_id=?';params.push(employee(a).id);} else clause+=" AND r.status='submitted'";
@@ -116,6 +125,10 @@ export function createWorkspaceService(query: QueryRunner, transact: Transaction
     async post(identity: Identity, action: string, input: unknown) {
       return write(identity,async(q,a)=>{
         switch(action){
+          case 'checklist': return planning(q, a).saveChecklist(input);
+          case 'checklist-delete': return planning(q, a).deleteChecklist(input);
+          case 'schedule': return planning(q, a).saveSchedule(input);
+          case 'schedule-delete': return planning(q, a).deleteSchedule(input);
           case 'member': {
             admin(a);const data=memberInput.parse(input);
             const [user]=await q('SELECT id FROM app_users WHERE id=? AND merged_into_user_id IS NULL AND NOT forum_banned',[data.userId]);if(!user)throw new WorkspaceError('CubeRoot 用户不存在 / User unavailable',404);
@@ -136,7 +149,12 @@ export function createWorkspaceService(query: QueryRunner, transact: Transaction
             const [previous]=await q<ReportState>('SELECT member_id AS "memberId", project_id AS "projectId", work_date::text AS "workDate",status,visibility,version FROM workspace_reports WHERE id=?',[d.id]);
             const decision=decideReportChange(author,previous??null,d);if(decision!=='allow')throw new WorkspaceError(decision,decision==='not-author'?403:409);
             await projectWrite(q,a,d.projectId);
-            const payload={progress:d.progress,resultUrl:d.resultUrl,help:d.help,next:d.next};const time=now();
+            const hours=reportHoursInput.parse(input);
+            const [existing]=await q<{payload:{startHour?:number|null;endHour?:number|null}}>('SELECT payload FROM workspace_reports WHERE id=?',[d.id]);
+            const payload={progress:d.progress,resultUrl:d.resultUrl,help:d.help,next:d.next,
+              startHour:hours.startHour===undefined ? existing?.payload.startHour??null : hours.startHour,
+              endHour:hours.endHour===undefined ? existing?.payload.endHour??null : hours.endHour};const time=now();
+            reportHoursInput.parse(payload);
             await q('INSERT INTO workspace_reports(id,member_id,project_id,work_date,status,visibility,version,payload,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=EXCLUDED.status,visibility=EXCLUDED.visibility,version=EXCLUDED.version,payload=EXCLUDED.payload,updated_at=EXCLUDED.updated_at',[d.id,author.id,d.projectId,d.workDate,d.status,d.visibility,d.version+1,payload,time,time]);
             const saved=(await detail(q,a,d.id)).report;
             await q('INSERT INTO workspace_revisions(report_id,version,snapshot,created_at) VALUES (?,?,?,?)',[d.id,saved.version,saved,time]);await audit(q,a,'report.save',d.id);return {id:d.id,version:saved.version};

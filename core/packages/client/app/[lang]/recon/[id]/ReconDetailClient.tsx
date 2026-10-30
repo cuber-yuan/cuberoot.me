@@ -4,7 +4,6 @@ import { reconVideoGroups } from '@/lib/recon-video-url';
 import { loadBiliVideo, loadVideoTitle } from '@/lib/recon-video-cover';
 import { WcaPersonTeamBadge } from '@/components/WcaPersonTeamBadge';
 import { useContentRefreshKey } from '@/hooks/useContentRefreshKey';
-import { useCopy } from '@/hooks/useCopy';
 
 /**
  * /recon/[id] — full detail page, ported from packages/client-vite/src/pages/recon/ReconDetailPage.tsx.
@@ -49,7 +48,7 @@ import { CompCell } from '@/components/CompCell/CompCell';
 import { Flag } from '@/components/Flag';
 import { localizeCompName } from '@/lib/comp-localize';
 import { displayCity } from '@/lib/city-display';
-import { cleanForPlayer, countMovesExpanded } from '@/lib/recon-alg-utils';
+import { cleanForPlayer, countMovesExpanded, removeReconWaste } from '@/lib/recon-alg-utils';
 import ScrambleStatistics from '@/components/ScrambleStatistics';
 import {
   extractPersonCompetitionResults, fetchAttempts, fetchCubingAttempts, fetchScrambles, fetchWcaResults, matchRoundType,
@@ -71,12 +70,13 @@ import { useAuthStore, useAuthUser, useIsAdmin } from '@/lib/auth-store';
 import { ownerKey as computeOwnerKey } from '@cuberoot/shared/account';
 import { RecordBadge } from '@/components/RecordBadge';
 import ReconPlayerCanvas from '@/components/recon/ReconPlayerCanvas';
-import SolutionView from '@/components/SolutionView';
+import { getPuzzleId } from '@/lib/recon-utils';
+import { ReconNotationBlock } from '@/components/ReconNotationBlock';
 import { canonicalSq1Alg, formatScrambleForEvent, compactSq1Solution } from '@cuberoot/shared/sq1-notation';
 import {
   buildNormalizedSolution, findCrossLineIndex, hasNormalizableCrossMove,
 } from '@/lib/recon-norm-cross-extract';
-import { computeAllStats, buildCaptionHeader } from '@/lib/recon-stats';
+import { computeAllStats, buildCaptionHeader, computeStm } from '@/lib/recon-stats';
 import {
   DiscussionComposer, DiscussionEditBox, UserHeadline, AuthorName, ItemMenu, UserAvatarFallback,
 } from '@/components/Discussion';
@@ -278,7 +278,9 @@ export default function ReconDetailClient({ initialSolve, initialSameScramble }:
                     <CompCell compId={solve.compWcaId ?? ''} compName={solve.comp} country={solve.country} isZh={isZh} date={solve.date ?? null} />
                   </Link>
                 ) : <CompCell compId={solve.compWcaId ?? ''} compName={solve.comp} country={solve.country} isZh={isZh} date={solve.date ?? null} />}
-                {solve.round && (isZh ? `，${localizeRound(solve.round, t)}` : `, ${localizeRound(solve.round, t)}`)}
+                {solve.round && tr({ zh: `，${localizeRound(solve.round, t)}`, en: `, ${localizeRound(solve.round, t)}` })}
+                {solve.groupId && tr({ zh: ` ${solve.groupId} 组`, en: ` Group ${solve.groupId}` })}
+                {solve.solveNum != null && tr({ zh: ` 第 ${solve.solveNum} 把`, en: ` Attempt ${solve.solveNum}` })}
               </span>
             </span>
           )}
@@ -324,12 +326,12 @@ function ReconDetailBody({ scramble, solutionText, solve, comments, onUpdate, in
 }) {
   const [sameCompHasRows, setSameCompHasRows] = useState(false);
   const [sameSessionHasRows, setSameSessionHasRows] = useState(false);
-  const { copied: scrambleCopied, copy: copyScramble } = useCopy();
   const { t, i18n } = useTranslation();
   const isZh = i18n.language === 'zh';
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const playerRef = useRef<any>(null);
   const [crossNormalized, setCrossNormalized] = useState(false);
+  const [wasteRemoved, setWasteRemoved] = useState(false);
   const imageRef = useRef<HTMLDivElement>(null);
   const downloadImage = async (style: ReconImageStyle | 'both', font: ReconImageFont) => {
     if (!imageRef.current) throw new Error('Reconstruction image unavailable');
@@ -347,7 +349,12 @@ function ReconDetailBody({ scramble, solutionText, solve, comments, onUpdate, in
     [solutionText, canToggle],
   );
   const isSq1 = solve.event === 'sq1';
-  const rawDisplayText = crossNormalized && normalizedText ? normalizedText : solutionText;
+  const puzzleId = getPuzzleId(solve.event);
+  const scrambleCubeOrder = /^[2-7]x[2-7]x[2-7]$/.test(puzzleId) ? parseInt(puzzleId, 10) : null;
+  const orientedText = crossNormalized && normalizedText ? normalizedText : solutionText;
+  const wasteFreeText = useMemo(() => scrambleCubeOrder === 3
+    ? removeReconWaste(orientedText, scramble) : null, [scrambleCubeOrder, orientedText, scramble]);
+  const rawDisplayText = wasteRemoved && wasteFreeText !== null ? wasteFreeText : orientedText;
   // 展示层转 compact 简写(保留每行 // 注释),旧数据 / 手输可能存量为 canonical 记号。
   const displayText = useMemo(
     () => isSq1 ? compactSq1Solution(rawDisplayText) : rawDisplayText,
@@ -355,8 +362,8 @@ function ReconDetailBody({ scramble, solutionText, solve, comments, onUpdate, in
   );
   const crossLineIdx = useMemo(() => findCrossLineIndex(displayText), [displayText]);
   const captionHeader = useMemo(
-    () => solutionText ? buildCaptionHeader(solutionText, (isBldEvent(solve.event) ? solve.execTime : solve.rawTime) ?? 0, solve.event) : '',
-    [solutionText, solve.event, solve.execTime, solve.rawTime],
+    () => solutionText ? wasteRemoved ? `${computeStm(rawDisplayText, solve.event)}STM` : buildCaptionHeader(solutionText, (isBldEvent(solve.event) ? solve.execTime : solve.rawTime) ?? 0, solve.event) : '',
+    [solutionText, solve.event, solve.execTime, solve.rawTime, wasteRemoved, rawDisplayText],
   );
 
   // SQ1 renders with the cuber WebGL engine (Sq1ReconPlayer, same as /sim &
@@ -401,6 +408,7 @@ function ReconDetailBody({ scramble, solutionText, solve, comments, onUpdate, in
         {/* 有解法 → 播放复盘;无解法(只录了 WCA 成绩 + 打乱)→ alg 为空,
             player 停在 setup(打乱)后的 3D 状态,至少能看到这个打乱。 */}
         <ReconPlayerCanvas
+          showScrambleNet={!scrambleCubeOrder}
           event={solve.event}
           scramble={scramble}
           displayText={displayText}
@@ -413,39 +421,16 @@ function ReconDetailBody({ scramble, solutionText, solve, comments, onUpdate, in
       }
       <div className="detail-content-pane">
         {solutionText && (
-          <ExternalLinks event={solve.event} scramble={playerScramble} alg={solutionText} solveId={solve.id} copyText={fullCopyText} shareTarget={shareTarget} onDownload={solve.recordType !== 'timing' ? downloadImage : undefined} />
+          <ExternalLinks event={solve.event} scramble={playerScramble} alg={rawDisplayText} solveId={solve.id} copyText={fullCopyText} shareTarget={shareTarget} onDownload={solve.recordType !== 'timing' ? downloadImage : undefined} />
         )}
 
         {solve.recordType !== 'timing' && (scramble || solutionText) && (
           <div className="detail-section detail-scramble-solution" ref={imageRef}>
-            {captionHeader && (
-              <div className="detail-caption-header">{captionHeader}</div>
-            )}
-            <div className="detail-scramble-line">
-              {scramble ? <>{displayScramble}{optimalScrambleTag}</> : tr({ zh: '暂无打乱', en: 'No scramble available' })}
-              {scramble && <> <button
-                type="button"
-                className="normalized-cross-copy"
-                aria-label={scrambleCopied ? tr({ zh: '已复制', en: 'Copied' }) : tr({ zh: '复制打乱', en: 'Copy scramble' })}
-                title={scrambleCopied ? tr({ zh: '已复制', en: 'Copied' }) : tr({ zh: '复制打乱', en: 'Copy scramble' })}
-                onClick={() => copyScramble(scramble)}
-              >
-                {scrambleCopied ? <Check size={14} /> : <Copy size={14} />}
-              </button></>}
-            </div>
-            {solutionText && (
-              <SolutionView
-                autoWaste
-                text={displayText}
-                event={solve.event}
-                scramble={scramble}
-                sourceText={solutionText}
-                playerRef={playerRef}
-                crossLineIdx={canToggle ? crossLineIdx : -1}
-                crossNormalized={crossNormalized}
-                onToggleCross={() => setCrossNormalized(v => !v)}
-              />
-            )}
+            <ReconNotationBlock captionHeader={captionHeader} scramble={scramble} scrambleCubeOrder={scrambleCubeOrder}
+              displayScramble={displayScramble} optimalScrambleTag={optimalScrambleTag} solutionText={solutionText}
+              displayText={displayText} rawDisplayText={rawDisplayText} solve={solve} playerRef={playerRef}
+              canToggle={canToggle} crossLineIdx={crossLineIdx} crossNormalized={crossNormalized} setCrossNormalized={setCrossNormalized}
+              canRemoveWaste={wasteFreeText !== null} wasteRemoved={wasteRemoved} setWasteRemoved={setWasteRemoved} />
           </div>
         )}
 
@@ -706,9 +691,11 @@ function StatsGrid({ solve }: { solve: ReconSolve }) {
   ];
 
   const validItems = items.filter(([, v]) => v != null && v !== '' && v !== 0);
-  validItems.push(
-    [tr({ zh: '起表耗时', en: 'Pickup' }), <span title={tr({ zh: '起表到第一步', en: 'Timer start to first move' })}>{solve.pickupTime == null ? '—' : `${solve.pickupTime.toFixed(3)}s`}</span>],
-    [tr({ zh: '拍表耗时', en: 'Putdown' }), <span title={tr({ zh: '最后一步到拍表', en: 'Last move to timer stop' })}>{solve.putdownTime == null ? '—' : `${solve.putdownTime.toFixed(3)}s`}</span>],
+  if (solve.pickupTime != null) validItems.push(
+    [tr({ zh: '起表耗时', en: 'Pickup' }), <span title={tr({ zh: '起表到第一步', en: 'Timer start to first move' })}>{solve.pickupTime.toFixed(3)}s</span>],
+  );
+  if (solve.putdownTime != null) validItems.push(
+    [tr({ zh: '拍表耗时', en: 'Putdown' }), <span title={tr({ zh: '最后一步到拍表', en: 'Last move to timer stop' })}>{solve.putdownTime.toFixed(3)}s</span>],
   );
   if (validItems.length === 0) return null;
 
@@ -752,7 +739,6 @@ function VideoSourceGroup({ urls }: { urls: string[] }) {
   const sourceKey = urls.join('\n');
   useEffect(() => {
     const links = sourceKey.split('\n');
-    if (links.length < 2) return;
     let alive = true;
     for (const url of links) {
       void loadVideoTitle(url).then(title => {
@@ -781,11 +767,13 @@ function VideoSourceGroup({ urls }: { urls: string[] }) {
   // choice takes precedence and is never replaced by a late region response.
   const active = sources.find(source => source.url === selectedUrl)
     ?? (!hasChoice || country !== null ? preferred : undefined);
+  const activeTitle = active ? titles[active.url]?.trim() : undefined;
   if (!sources.length) return null;
 
   return (
     <div className="detail-video-player">
       {active ? <VideoEmbed key={active.url} url={active.url} /> : <div className="detail-video-wrap" aria-busy="true" />}
+      {activeTitle && <p className="detail-video-title">{activeTitle}</p>}
       {hasChoice && <div className="detail-video-switches">
         {sources.filter(source => source !== active).map(source => {
           const title = titles[source.url] || source.url;
@@ -1100,7 +1088,7 @@ function ao5Mean(vals: number[]): number {
 }
 
 function SameCompEventTable({ solve, onHasRows }: { solve: ReconSolve; onHasRows: (v: boolean) => void }) {
-  const { t, i18n } = useTranslation();
+  const { i18n } = useTranslation();
   const isZh = i18n.language === 'zh';
   const [official, setOfficial] = useState<WcaResultsRow[] | null>(null);
   const [officialComps, setOfficialComps] = useState<WcaCompetition[] | null>(null);
@@ -1248,7 +1236,6 @@ function SameCompEventTable({ solve, onHasRows }: { solve: ReconSolve; onHasRows
 
   return (
     <div className="detail-section">
-      <div className="detail-section-label">{t('recon.sameCompEvent')}</div>
       <div className="same-comp-event-table-wrap">
         <div className="wp-table-scroll">
           <table className="wp-bycomp-table same-comp-event-table" style={{ '--att-cols': nAtt } as React.CSSProperties}>
@@ -1467,11 +1454,6 @@ function SameSessionTable({ solve, onHasRows }: { solve: ReconSolve; onHasRows: 
 
   return (
     <div className="detail-section">
-      <div className="detail-section-label">
-        {solve.official === 'practice'
-          ? tr({ zh: '同场练习还原', en: 'Same Session' })
-          : tr({ zh: '同场比赛还原', en: 'Same Competition' })}
-      </div>
       <div className="same-comp-event-table-wrap">
         <div className="wp-table-scroll">
           <table className="wp-bycomp-table same-comp-event-table" style={{ '--att-cols': nAtt } as React.CSSProperties}>

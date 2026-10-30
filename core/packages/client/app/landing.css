@@ -19,7 +19,7 @@
 
 .landing-page {
     color-scheme: light dark;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: var(--font-sans);
     background-color: var(--bg);
     color: var(--text);
     min-height: 100vh;
@@ -233,6 +233,8 @@ body:has(.page-notice-wrap) .landing-page .brand-line {
 }
 .landing-page .landing-pinned-recons {
     grid-column: span 2;
+    width: 100%;
+    max-width: 542px;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-auto-rows: max-content;
@@ -242,10 +244,10 @@ body:has(.page-notice-wrap) .landing-page .brand-line {
     overflow-y: auto;
 }
 .landing-page .landing-training-links {
-    grid-column: span 2;
     display: flex;
     flex-wrap: wrap;
-    align-self: start;
+    align-self: stretch;
+    flex-shrink: 0;
     gap: 8px;
 }
 .landing-page .landing-training-links > .landing-card {
@@ -255,11 +257,23 @@ body:has(.page-notice-wrap) .landing-page .brand-line {
     gap: 6px;
     border-radius: 10px;
 }
-.landing-page .landing-training-links .landing-card-name {
+.landing-page .landing-training-links .landing-card-name,
+.landing-page .landing-personal-comps .rc-name {
     font-family: inherit;
-    font-size: 0.875rem;
+    font-size: var(--home-shortcut-font-size, 0.875rem);
+    font-weight: 400;
+    line-height: 1.25;
+    letter-spacing: normal;
     white-space: nowrap;
 }
+.landing-page .landing-calendar-link .landing-card {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 5px;
+    border: 0;
+    background: none;
+}
+.landing-page .landing-calendar-link .landing-card-name { display: none; }
 .landing-pinned-recons .recon-card,
 .landing-pinned-recons .recon-curated-card {
     height: 100%;
@@ -328,6 +342,22 @@ body:has(.page-notice-wrap) .landing-page .brand-line {
     box-sizing: border-box;
     margin: 0 auto 2.5rem;
     padding-inline: 0;
+}
+.landing-page .landing-featured-notices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    width: 100%;
+    max-width: 1100px;
+    margin-bottom: 0.75rem;
+}
+.landing-page .landing-featured-notices:empty { display: none; }
+.landing-page .landing-featured-notices > .landing-featured-news {
+    flex: 1 1 22rem;
+    min-width: 0;
+    max-width: none;
+    margin: 0;
+    box-sizing: border-box;
 }
 .landing-page .landing-featured-news {
     --home-news-color: var(--accent);
@@ -432,6 +462,20 @@ body:has(.page-notice-wrap) .landing-page .brand-line {
     height: 34px;
     color: var(--accent);
 }
+.landing-page .landing-card-icon .record-badge {
+    font-size: 22px;
+}
+
+.landing-page .landing-card-icon-text {
+    font-family: var(--font-mono);
+    font-size: 20px;
+    white-space: nowrap;
+}
+
+.landing-page .landing-card-icon .cubing-icon {
+    font-size: 34px;
+}
+
 .landing-page .landing-card-logo {
     width: 34px;
     height: 34px;
@@ -874,13 +918,123 @@ body:has(.page-notice-wrap) .landing-page .brand-line {
 }
 
 /* ── 页脚 ── */
+.landing-page .landing-footer-layout {
+    --footer-row-height: 32px;
+    --footer-row-gap: 2px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(440px, 1fr);
+    align-items: start;
+    gap: 2rem;
+    width: min(100%, 1100px);
+    margin: 2rem auto 1rem;
+}
+
+.landing-footer-info {
+    min-width: 0;
+    display: grid;
+    gap: var(--footer-row-gap);
+    text-align: left;
+}
+
+.landing-page .landing-footer-info .beian {
+    margin: 0;
+    padding: 0;
+    flex-wrap: wrap;
+    min-height: var(--footer-row-height);
+    justify-content: flex-start;
+    line-height: 20px;
+}
+
+.landing-page .landing-footer-info .footer {
+    min-height: var(--footer-row-height);
+    justify-content: flex-start;
+    line-height: 20px;
+}
+
+.landing-page .landing-footer-info .company-contact {
+    display: contents;
+    text-align: left;
+}
+
+.landing-footer-info .company-contact > span {
+    display: flex;
+    align-items: center;
+    min-height: var(--footer-row-height);
+}
+
 .landing-page .landing-contact-details {
-    width: min(100%, 920px);
-    margin: 1.5rem auto 1rem;
+    min-width: 0;
+    margin: 0;
+}
+
+.landing-contact-details .contact-details-columns {
+    grid-template-columns: 1fr;
+    gap: var(--footer-row-gap);
+}
+
+.landing-contact-details .contact-details-columns > section {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    align-items: center;
+    min-height: var(--footer-row-height);
+    gap: 0.5rem;
+}
+
+.landing-contact-details .contact-column-heading {
+    margin: 0;
+    padding: 0;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--muted-foreground);
+}
+
+.landing-contact-details .contact-app-platform-label .contact-qr-trigger,
+.landing-contact-details .contact-social-logo,
+.landing-contact-details .contact-direct-details dt > :is(a, button) {
+    height: var(--footer-row-height);
+}
+
+.landing-contact-details .contact-column-heading > svg,
+.landing-contact-details .contact-column-heading .contact-details-icon > svg {
+    width: 14px;
+    height: 14px;
+}
+
+.landing-contact-details .contact-app-platform-label .contact-qr-trigger > svg,
+.landing-contact-details .contact-social-logo > svg,
+.landing-contact-details .contact-direct-details .contact-details-icon > svg,
+.landing-contact-details .contact-device-icon > svg,
+.landing-contact-details .contact-mini-icon > svg:first-child {
+    width: 18px;
+    height: 18px;
+}
+
+.landing-contact-details .contact-device-brand > svg,
+.landing-contact-details .contact-mini-icon > svg:last-child {
+    width: 8px;
+    height: 8px;
+}
+
+@media (max-width: 900px) {
+    .landing-page .landing-footer-layout {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.75rem;
+    }
+    .landing-page .landing-contact-details {
+        width: min(100%, 440px);
+        justify-self: start;
+    }
+}
+
+@media (max-width: 520px) {
+    .landing-contact-details .contact-details-columns > section {
+        grid-template-columns: 1fr;
+        gap: 0.25rem;
+    }
 }
 
 .landing-page .footer {
-    margin-top: 0.5rem;
+    margin-top: 0;
     font-size: 0.75rem;
     color: var(--text-sub);
     display: flex;
@@ -960,20 +1114,32 @@ body:has(.page-notice-wrap) .landing-page .brand-line {
 .landing-widget > .forum-feed-preview[aria-busy="true"] {
     min-height: var(--home-widget-placeholder-height);
 }
-.landing-page .landing-personal-comps {
+.landing-page .landing-personal-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
     width: 100%;
     max-width: 1100px;
+    margin-bottom: 0.75rem;
+}
+.landing-page .landing-personal-comps {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
     max-height: 12rem;
-    margin: 0 auto 0.75rem;
+    margin: 0;
     overflow-y: auto;
+    /* Leave room inside the scroll clip for the cards' 1px hover lift. */
+    padding-top: 2px;
+    margin-top: -2px;
 }
 .landing-page .landing-personal-comps:empty { display: none; }
 .landing-page .landing-personal-comps .wp-upcoming-card { padding-inline: 0; }
 .landing-page .landing-personal-comps .reg-cards {
     display: flex;
     flex-wrap: wrap;
-    /* Match the first two columns of the four-column training grid. */
-    width: calc((100% - 1rem) / 2);
+    width: 100%;
     gap: 8px;
 }
 .landing-page .landing-personal-comps .rc-card { min-width: 0; }
@@ -989,6 +1155,7 @@ body:has(.page-notice-wrap) .landing-page .brand-line {
     .landing-page .landing-personal-comps .reg-cards { width: 100%; }
 }
 @media (max-width: 560px) {
+    .landing-page .landing-personal-row { --home-shortcut-font-size: 0.75rem; }
     .landing-page .landing-personal-comps .reg-cards { gap: 4px; }
     .landing-page .landing-personal-comps .rc-main { padding: 6px; gap: 3px; }
     .landing-page .landing-personal-comps .rc-title {
@@ -999,7 +1166,6 @@ body:has(.page-notice-wrap) .landing-page .brand-line {
     }
     .landing-page .landing-personal-comps :is(.rc-flag, .rc-flag-img) { margin-inline-end: 3px; }
     .landing-page .landing-personal-comps .rc-name {
-        font-size: inherit;
         white-space: normal;
     }
     .landing-page .landing-personal-comps .rc-details--compact { font-size: 0.6rem; }

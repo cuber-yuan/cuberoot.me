@@ -2356,12 +2356,13 @@ export default function ReconSubmitForm({ editId }: { editId?: string } = {}) {
                   text={displaySolution}
                   event={form.event}
                   scramble={getReconScramble(form)}
-                  sourceText={form.solution || ''}
+                  sourceText={displaySolution}
                   playerRef={playerRef}
                   crossNormalized={true}
                 />
               ) : (
                 <ReconSolutionField
+                  event={form.event}
                   ref={solutionFieldRef}
                   value={form.solution || ''}
                   onChange={(text) => setField('solution', text)}

@@ -1,5 +1,6 @@
 'use client';
 
+import { installIntroEffects } from '../_shared/intro-effects';
 import { createContext, useContext, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -82,7 +83,7 @@ const HISTORY: HistoryItem[] = [
   },
   {
     year: <>2026<small>·06</small></>, highlight: true,
-    zh: { title: <>仍在高速开发, cuberoot.me 收录此页</>, desc: <>本地快照里最近一条提交是 <strong>2026 年 6 月 5 日</strong>。仓库累计 <strong>约 16,071 次提交、201 位贡献者</strong>, 由 <strong>WCA 软件团队 (WST)</strong> 领衔。同月 <strong>cuberoot.me</strong> 在 <code>/dev</code> 写下这一页, 作为下游数据消费者对它的技术侧写。</> },
+    zh: { title: <>仍在高速开发, cuberoot.me 收录此页</>, desc: <>本地快照里最近一条提交是 <strong>2026 年 6 月 5 日</strong>。仓库累计 <strong>约 16,071 次提交、201 位贡献者</strong>, 由 <strong>WCA 软件组 (WST)</strong> 领衔。同月 <strong>cuberoot.me</strong> 在 <code>/dev</code> 写下这一页, 作为下游数据消费者对它的技术侧写。</> },
     en: { title: <>Still shipping fast — profiled here by cuberoot.me</>, desc: <>The latest commit in this local snapshot is <strong>5 Jun 2026</strong>. The repo has <strong>~16,071 commits from 201 contributors</strong>, led by the <strong>WCA Software Team (WST)</strong>. The same month, <strong>cuberoot.me</strong> wrote this page under <code>/dev</code> as a downstream data consumer's technical profile of it.</> },
   },
 ];
@@ -219,7 +220,7 @@ const WHY_CARDS: WhyCard[] = [
   },
   {
     icon: '★',
-    zh: { title: <>一支团队, 不是一个人</>, desc: <>约 <strong>16,071 次提交、201 位贡献者</strong>, 由 <strong>WCA 软件团队 (WST)</strong> 主导——Jeremy Fleischman、Jonatan Kłosko、Lucas Garron、Stefan Pochmann 等长期投入。<em>和很多单人维护的社区站不同, WCA 官网没有明显的 bus factor</em>。</> },
+    zh: { title: <>一支团队, 不是一个人</>, desc: <>约 <strong>16,071 次提交、201 位贡献者</strong>, 由 <strong>WCA 软件组 (WST)</strong> 主导——Jeremy Fleischman、Jonatan Kłosko、Lucas Garron、Stefan Pochmann 等长期投入。<em>和很多单人维护的社区站不同, WCA 官网没有明显的 bus factor</em>。</> },
     en: { title: <>A team, not one person</>, desc: <>About <strong>16,071 commits from 201 contributors</strong>, led by the <strong>WCA Software Team (WST)</strong> — Jeremy Fleischman, Jonatan Kłosko, Lucas Garron, Stefan Pochmann and others sustained over years. <em>Unlike many one-person community sites, the WCA site has no obvious bus factor</em>.</> },
     code: <><span className="cl-c">// jfly · Jonatan Kłosko · lgarron</span>{'\n'}<span className="cl-c">// WST + 200 contributors</span></>,
   },
@@ -392,80 +393,17 @@ export default function WcaSiteIntroPage() {
     const root = rootRef.current;
     if (!root) return;
 
-    const io = new IntersectionObserver((entries) => {
-      entries.forEach((e) => {
-        if (e.isIntersecting) {
-          e.target.classList.add('visible');
-          io.unobserve(e.target);
-        }
-      });
-    }, { threshold: 0.15, rootMargin: '0px 0px -60px 0px' });
-
-    const targets = root.querySelectorAll<HTMLElement>(
-      '.tl-item, .why-card, .def-card, .logo-card, .future-card, .ts-card, .web-tool, .spotlight, .bar, .cmp-table tr'
-    );
-    targets.forEach((el) => { el.classList.add('fade-up'); io.observe(el); });
-
-    root.querySelectorAll<HTMLElement>('.tl-item').forEach((el, i) => { el.style.transitionDelay = `${Math.min(i * 60, 400)}ms`; });
-    root.querySelectorAll<HTMLElement>('.why-card').forEach((el, i) => { el.style.transitionDelay = `${(i % 3) * 80}ms`; });
-    root.querySelectorAll<HTMLElement>('.logo-card').forEach((el, i) => { el.style.transitionDelay = `${(i % 6) * 60}ms`; });
-    root.querySelectorAll<HTMLElement>('.ts-card').forEach((el, i) => { el.style.transitionDelay = `${(i % 4) * 70}ms`; });
-    root.querySelectorAll<HTMLElement>('.web-tool').forEach((el, i) => { el.style.transitionDelay = `${(i % 4) * 50}ms`; });
-
-    const floats = root.querySelectorAll<HTMLElement>('.float');
-    let mx = 0, my = 0, tx = 0, ty = 0;
-    const onMouse = (e: MouseEvent) => {
-      mx = (e.clientX / window.innerWidth - 0.5) * 2;
-      my = (e.clientY / window.innerHeight - 0.5) * 2;
-    };
-    window.addEventListener('mousemove', onMouse);
-    let raf = 0;
-    const loop = () => {
-      tx += (mx - tx) * 0.06;
-      ty += (my - ty) * 0.06;
-      floats.forEach((el, i) => {
-        const depth = (i % 3 + 1) * 6;
-        el.style.translate = `${tx * depth}px ${ty * depth}px`;
-      });
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-
-    const navLinks = root.querySelectorAll<HTMLAnchorElement>('.nav-links a');
-    const sections = Array.from(root.querySelectorAll<HTMLElement>('section[id]'));
-    const setActive = () => {
-      const y = window.scrollY + 120;
-      let cur = sections[0]?.id;
-      for (const s of sections) if (s.offsetTop <= y) cur = s.id;
-      navLinks.forEach((a) => {
-        a.style.color = a.getAttribute('href') === '#' + cur ? 'var(--cc-bright)' : '';
-      });
-    };
-    window.addEventListener('scroll', setActive, { passive: true });
-    setActive();
-
-    const onAnchorClick = (e: Event) => {
-      const a = e.currentTarget as HTMLAnchorElement;
-      const href = a.getAttribute('href');
-      if (!href || !href.startsWith('#')) return;
-      const id = href.slice(1);
-      const target = id === 'top' ? root : root.querySelector('#' + id);
-      if (target) {
-        e.preventDefault();
-        const top = (target as HTMLElement).getBoundingClientRect().top + window.scrollY - 60;
-        window.scrollTo({ top, behavior: 'smooth' });
-      }
-    };
-    const anchors = root.querySelectorAll<HTMLAnchorElement>('a[href^="#"]');
-    anchors.forEach((a) => a.addEventListener('click', onAnchorClick));
-
-    return () => {
-      io.disconnect();
-      window.removeEventListener('mousemove', onMouse);
-      window.removeEventListener('scroll', setActive);
-      cancelAnimationFrame(raf);
-      anchors.forEach((a) => a.removeEventListener('click', onAnchorClick));
-    };
+    return installIntroEffects(root, {
+      revealSelector: '.tl-item, .why-card, .def-card, .logo-card, .future-card, .ts-card, .web-tool, .spotlight, .bar, .cmp-table tr',
+      activeColor: 'var(--cc-bright)',
+      stagger: () => {
+        root.querySelectorAll<HTMLElement>('.tl-item').forEach((el, i) => { el.style.transitionDelay = `${Math.min(i * 60, 400)}ms`; });
+        root.querySelectorAll<HTMLElement>('.why-card').forEach((el, i) => { el.style.transitionDelay = `${(i % 3) * 80}ms`; });
+        root.querySelectorAll<HTMLElement>('.logo-card').forEach((el, i) => { el.style.transitionDelay = `${(i % 6) * 60}ms`; });
+        root.querySelectorAll<HTMLElement>('.ts-card').forEach((el, i) => { el.style.transitionDelay = `${(i % 4) * 70}ms`; });
+        root.querySelectorAll<HTMLElement>('.web-tool').forEach((el, i) => { el.style.transitionDelay = `${(i % 4) * 50}ms`; });
+      },
+    });
   }, []);
 
   return (
@@ -504,7 +442,7 @@ export default function WcaSiteIntroPage() {
             </h1>
             <p className="hero-sub">
               <L
-                zh={<>worldcubeassociation.org 是<strong>世界魔方协会</strong>的官网, 也是速拧运动<strong>官方成绩 / 排名 / 纪录的唯一真相源</strong>。它是一个 <strong>2008 年起的 Ruby on Rails 单体</strong>, 整站在 <strong>GPL-3.0</strong> 下开源, 由 <strong>WCA 软件团队 (WST)</strong> 领着 200 多位贡献者维护, 现正把前端<strong>迁往独立的 Next.js 应用</strong>。本页是下游数据消费者 cuberoot.me 对它的技术侧写。</>}
+                zh={<>worldcubeassociation.org 是<strong>世界魔方协会</strong>的官网, 也是速拧运动<strong>官方成绩 / 排名 / 纪录的唯一真相源</strong>。它是一个 <strong>2008 年起的 Ruby on Rails 单体</strong>, 整站在 <strong>GPL-3.0</strong> 下开源, 由 <strong>WCA 软件组 (WST)</strong> 领着 200 多位贡献者维护, 现正把前端<strong>迁往独立的 Next.js 应用</strong>。本页是下游数据消费者 cuberoot.me 对它的技术侧写。</>}
                 en={<>worldcubeassociation.org is the site of the <strong>World Cube Association</strong> and the <strong>single source of truth for official speedcubing results / rankings / records</strong>. It's a <strong>Ruby on Rails monolith since 2008</strong>, fully open under <strong>GPL-3.0</strong>, maintained by the <strong>WCA Software Team (WST)</strong> and 200+ contributors, now <strong>migrating its frontend to a standalone Next.js app</strong>. This page is downstream consumer cuberoot.me's technical profile of it.</>}
               />
             </p>
@@ -749,7 +687,7 @@ export default function WcaSiteIntroPage() {
                     <li><strong>Gregor Billing · Philippe Virouleau</strong> — <L zh="千级提交" en="~1k commits each" /></li>
                     <li><strong>Lucas Garron · Stefan Pochmann</strong> — <L zh="cubing.js / BLD 名宿也在列" en="cubing.js / BLD names too" /></li>
                     <li><strong>License</strong> — GPL-3.0</li>
-                    <li><strong><L zh="维护方" en="Maintained by" /></strong> — <L zh="WCA 软件团队 (WST)" en="WCA Software Team (WST)" /></li>
+                    <li><strong><L zh="维护方" en="Maintained by" /></strong> — <L zh="WCA 软件组 (WST)" en="WCA Software Team (WST)" /></li>
                   </ul>
                   <p><L
                     zh={<><strong>和单人站的对比</strong>: 同在 <code>/dev</code> 里的<a href="/dev/cubingchina">粗饼网</a>约 94% 提交出自一个人——那是巧劲, 也是 bus factor。WCA 官网走的是另一条路: <strong>一支持续轮换的团队 + 强 CI + 严格 lint(RuboCop / overcommit)+ 高测试覆盖</strong>, 用流程把"人"这个单点风险摊薄。</>}

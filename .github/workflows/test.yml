@@ -28,6 +28,7 @@ on:
       - '.sync/**'
       - 'scripts/upstream/**'
       - 'ops/nginx/**'
+      - 'ops/maintenance/**'
       - 'ops/vercel-ban-relay/competition-rule.json'
       - 'ops/systemd/cuberoot-drive-compression.service'
       - 'ops/bin/pg-dump-recon.sh'
@@ -36,6 +37,7 @@ on:
       - '.github/workflows/backup_recon.yml'
       - '.github/workflows/best2x2_drift.yml'
       - '.github/workflows/deploy_core.yml'
+      - '.github/workflows/cleanup_api_staging.yml'
       - '.github/workflows/deploy_next.yml'
       - '.github/workflows/elev_backfill.yml'
       - '.github/workflows/icons_drift.yml'
@@ -43,6 +45,7 @@ on:
       - '.github/workflows/sq1_pbl_drift.yml'
       - '.github/workflows/stats.yml'
       - '.github/workflows/test.yml'
+      - '.github/workflows/app_release.yml'
       - '.github/workflows/update_upcoming.yml'
 
 concurrency:
@@ -50,6 +53,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  app-release-contract:
+    name: App release contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            core/scripts/android-release
+            core/packages/shared/src
+            .github/workflows
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+      - name: Check release identities, signing boundaries and atomic publication
+        working-directory: core
+        run: node --test scripts/android-release/*.test.ts
+
   # Keep the workflow-level trigger broad so required checks are still created,
   # then skip expensive jobs when their package dependency closure is untouched.
   changes:
@@ -126,6 +149,7 @@ jobs:
               - '.sync/**'
               - 'scripts/upstream/**'
               - 'ops/nginx/**'
+              - 'ops/maintenance/**'
               - 'ops/vercel-ban-relay/competition-rule.json'
               - 'ops/systemd/cuberoot-drive-compression.service'
               - 'ops/bin/pg-dump-recon.sh'
@@ -133,6 +157,7 @@ jobs:
               - '.github/workflows/backup_recon.yml'
               - '.github/workflows/best2x2_drift.yml'
               - '.github/workflows/deploy_core.yml'
+              - '.github/workflows/cleanup_api_staging.yml'
               - '.github/workflows/deploy_next.yml'
               - '.github/workflows/elev_backfill.yml'
               - '.github/workflows/icons_drift.yml'
@@ -349,9 +374,8 @@ jobs:
       - uses: actions/checkout@v6
         with:
           sparse-checkout-cone-mode: false
-          # 注:cross-solver-worker.js 是 rust_cross_table_sets.test.ts 的比对对象(手维护
-          # worker ↔ TABLE_SETS 契约)。**只列这一个文件** —— 同目录 tables/ 是 30MB+ 的
-          # .bin.gz,整目录拉进来会拖垮 checkout。
+          # Cross tests read the worker and its 50KB startup table. Keep the
+          # larger solver tables outside this sparse checkout.
           sparse-checkout: |
             /.node-version
             /core/
@@ -361,6 +385,7 @@ jobs:
             # Materialize the hook test workdir without checking out solver tables.
             /solver/experiments/cube48opt-rust/README.md
             /docs/double-zbll-trainer.md
+            /docs/benchmarks/assistant-phase1-cases.json
             /docs/generated-artifacts.json
             /docs/generated-artifacts.md
             /docs/platform-capability-manifest.json
@@ -374,12 +399,14 @@ jobs:
             /ops/nginx/platform.cuberoot.me.conf
             /ops/nginx/www.cuberoot.me.conf
             /ops/nginx/purge-api-cache.ts
+            /ops/maintenance/
             /ops/vercel-ban-relay/competition-rule.json
             /ops/systemd/cuberoot-drive-compression.service
             /ops/bin/pg-dump-recon.sh
             /ops/bin/provision-assistant-reader.sql
             /tools/cstimer-scramble/
             /tools/solver/rust-cross/cross-solver-worker.js
+            /tools/solver/rust-cross/tables/pt_cross.bin.gz
             /tools/blddb/data/cornerManmade.json
             /tools/blddb/data/parityManmade.json
             /tools/blddb/data/twistsManmade.json
@@ -623,6 +650,7 @@ jobs:
             # Materialize the hook test workdir without checking out solver tables.
             /solver/experiments/cube48opt-rust/README.md
             /docs/double-zbll-trainer.md
+            /docs/benchmarks/assistant-phase1-cases.json
             /docs/generated-artifacts.json
             /docs/generated-artifacts.md
             /docs/platform-capability-manifest.json
@@ -636,11 +664,13 @@ jobs:
             /ops/nginx/platform.cuberoot.me.conf
             /ops/nginx/www.cuberoot.me.conf
             /ops/nginx/purge-api-cache.ts
+            /ops/maintenance/
             /ops/vercel-ban-relay/competition-rule.json
             /ops/systemd/cuberoot-drive-compression.service
             /ops/bin/pg-dump-recon.sh
             /tools/cstimer-scramble/
             /tools/solver/rust-cross/cross-solver-worker.js
+            /tools/solver/rust-cross/tables/pt_cross.bin.gz
             /tools/blddb/data/cornerManmade.json
             /tools/blddb/data/parityManmade.json
             /tools/blddb/data/twistsManmade.json
@@ -740,6 +770,7 @@ jobs:
             /tools/solver/rust-cross/xcross-table-worker.js
             /tools/solver/rust-cross/cross_solver.js
             /tools/solver/rust-cross/cross_solver_bg.wasm
+            /tools/solver/rust-cross/tables/pt_cross.bin.gz
           filter: blob:none
 
       - uses: pnpm/action-setup@v6
@@ -923,6 +954,7 @@ jobs:
             /tools/solver/rust-cross/xcross-table-worker.js
             /tools/solver/rust-cross/cross_solver.js
             /tools/solver/rust-cross/cross_solver_bg.wasm
+            /tools/solver/rust-cross/tables/pt_cross.bin.gz
           filter: blob:none
       - uses: pnpm/action-setup@v6
         with:
@@ -967,6 +999,7 @@ jobs:
             /tools/solver/rust-cross/xcross-table-worker.js
             /tools/solver/rust-cross/cross_solver.js
             /tools/solver/rust-cross/cross_solver_bg.wasm
+            /tools/solver/rust-cross/tables/pt_cross.bin.gz
           filter: blob:none
 
       - uses: pnpm/action-setup@v6
@@ -1042,7 +1075,7 @@ jobs:
   pr-checks:
     name: PR checks
     if: ${{ always() }}
-    needs: [changes, test, client-tests, mobile, desktop-ui, desktop, analyzer-worker]
+    needs: [changes, test, client-tests, mobile, desktop-ui, desktop, analyzer-worker, app-release-contract]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions: {}

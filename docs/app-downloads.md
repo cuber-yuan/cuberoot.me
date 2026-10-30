@@ -7,12 +7,34 @@
 - 页面复用 `/icons/icon-512.png` 的现有 App 图标；Google Play 入口使用本地托管的官方中英文徽章，素材来源见 `core/packages/client/public/badges/README.md`。
 - `core/packages/client/lib/app-downloads.ts` 集中维护官网分发链接。Google Play 指向公开的 `me.cuberoot.app` 商品页。
 - 下载页读取 `https://static.cuberoot.me/downloads/android/latest.json` 的版本、不可变 APK 地址；首屏和网络失败回退到同源 `latest.apk`。两者均禁止缓存，分别由服务端原子替换，APK 就绪后才更新版本清单。页面保留独立点击统计。
-- Windows、iOS、macOS、HarmonyOS NEXT 仅显示「即将发布」。
+- Windows 提供安装版和免安装 EXE 两个入口，读取同源 `/downloads/windows/latest.json`；尚无有效清单时禁用，不回退到本机旧包。iOS、macOS、HarmonyOS NEXT 仍显示「即将发布」。
 - 官网 APK 使用维护者长期正式上传密钥，不能覆盖 Google Play 不同签名的安装版。页面明确提示 Play 用户继续通过 Play 更新，避免卸载丢失本地记录；本轮没有连接真机，未完成安装/升级及真实业务验收。不得把 debug、unsigned 或 CI 临时签名包用于官网分发。
 - 将验证后的包上传到受控 HTTPS 静态存储，使用带版本号的不可变地址；确认响应、文件大小、SHA-256、续传和国内访问后再切换最新版本指针。安装包不提交源码 Git，不经业务 API 转发。静态文件位于服务器 `/www/wwwroot/toolkit/downloads/android/`，由 `ops/nginx/static.cuberoot.me.conf` 提供附件下载与单段 Range；nginx 配置仍通过 `deploy_nginx.yml` 发布。
 - 发布新包先完成文件校验，再切换链接；撤回时改回已验证旧版或置 `null`，不覆盖同名版本文件。
 
 ## 手动一键 Android 发布
+
+### 管理员官网发布（Android / Windows）
+
+正式入口为 `/admin/releases`（中文 `/zh/admin/releases`）及手动 `app_release.yml`；下载页的管理员链接指向该后台页面。普通 push 继续由 `test.yml` 检查和构建，不发布下载包。旧 `android_release.yml` / Mac 命令保留为独立 Play 和历史制品恢复入口；官网日常发布使用新入口，不交替操作两个发布协调器。
+
+`app_release.yml` 固定已审核 main 提交，使用环境 `app-release`。该环境必须仅允许 main 部署；如配置每次人工审批，网页任务会等待审批，不能宣称无人值守一键发布。授权的管理员发布无需额外审批时不设置 required reviewers。工作流的 `run_number=N` 是正式发布序号，版本为 `1.floor(N/1000).(N%1000)`，Android versionCode 为 `1000000+N`；首次为 `1.0.1 / 1000001`。失败允许跳号，重试同一 run 保持版本；不要删除并重建该工作流以重置序号。发布端拒绝降级及同版本内容替换。Windows 两份 EXE 共用同一版本，全部公网哈希校验通过后才原子替换清单。
+
+环境 secrets（不写源码、不输出日志）：
+
+- `ANDROID_KEYSTORE_BASE64`：现有正式 JKS 的 Base64；必须对应 `ANDROID_RELEASE_CERTIFICATE`，不得新建替代密钥。
+- `ANDROID_STORE_PASSWORD`、`ANDROID_KEY_PASSWORD`、`ANDROID_KEY_ALIAS`：该 JKS 的密码与别名。
+- `APP_RELEASE_SSH_KEY`、`APP_RELEASE_SSH_HOST`（`user@host`）、`APP_RELEASE_KNOWN_HOSTS`：静态站发布 SSH 凭据及预先核验的主机公钥，不在运行时无验证接受新主机密钥。
+
+API 配置 `APP_RELEASE_GITHUB_TOKEN`：限定 `2017YANR02/cuberoot.me`、Contents read / Actions write 的 fine-grained token，仅留在 API 服务器环境，不传给网页。`GET/POST /v1/admin/app-releases` 使用现有 Bearer 登录与 `requireAdmin`，不接受通用 X-Admin-Key。GET 返回 main 提交、最近任务与待确认请求；POST 只接受 UUID、main 的精确 SHA、android/windows/both 和更新说明。main 已变化返回 409，需刷新后重新确认。没有 token 时管理页显示未配置，不假装已发包。
+
+请求回执默认保存在 API 主机持久目录 `/root/core-api/data/app-release-requests.json`，可用 `APP_RELEASE_STATE_PATH` 指定同一共享持久卷；PG advisory transaction lock 协调同机多进程。没有数据库 schema 变更。部署不可清除此文件；如果未来多机运行 API，必须共用该文件或迁入事务存储。网络超时保留 unknown 状态，先根据请求 UUID 在 Actions 核对是否启动，不自动重发。若人工确认 GitHub 从未接收，维护者在持有同一 advisory lock 的维护窗口将该条回执标记 rejected 后才可新建发布，不能以超时为理由直接删除回执。completed 回执永久保留以支持幂等，历史任务从 GitHub 列表淘汰后不会再次阻塞。
+
+这是对原「私钥仅留 Mac」流程的明确变更：维护者已授权将正式签名凭据配置到受保护 CI 环境。代码落地不代表这些 secrets 已配置。构建任务只在签名步骤获得 Android 密钥；发布任务仅获得 SSH 凭据。Windows 当前不做 Authenticode 签名，首次下载可能显示 SmartScreen 提示；Tauri updater 尚未启用，应用内更新入口下载新版供用户安装。
+
+发布任务分别保留 Android/Windows 制品 30 天。官网不可变文件保留在静态服务器；Windows 使用 `/downloads/windows/latest.json`，包含安装版、免安装 EXE 的 URL、大小和 SHA-256。免安装 EXE 需要现有 WebView2，数据仍使用应用数据目录，不承诺移动 EXE 即携带数据。发布前需验证干净 Windows 上安装/启动、登录回跳、覆盖更新与成绩保留；构建通过不替代这些验收。
+
+每个平台独立切换清单，另一平台失败不回退已成功的平台。失败可重跑失败 job，完整重跑已发布 run 会因不可变制品保护而拒绝不同内容。撤回官网入口只能阻止后续下载；已安装用户需要以更高版本发布修正版，不能强制降级。
 
 ### 本机 Mac 点击入口
 
@@ -50,7 +72,7 @@ App「我的」页由宿主提供原生版本和渠道：direct 检查官网清�
 
 ## 基础统计
 
-`POST /v1/downloads/events` 接收 `{ "channel": "play" | "apk", "language": "en" | "zh" }`，返回 `204`。上限 256 字节、每个来源 IP 每分钟 30 次，非法字段返回 `400`，超限返回 `429`。IP 仅用于现有进程内限流，不进入本事件日志。
+`POST /v1/downloads/events` 接收 `{ "channel": "play" | "apk" | "windows-installer" | "windows-portable", "language": "en" | "zh" }`，返回 `204`。上限 256 字节、每个来源 IP 每分钟 30 次，非法字段返回 `400`，超限返回 `429`。IP 仅用于现有进程内限流，不进入本事件日志。
 
 点击普通链接时独立发送 `keepalive` 请求，不等待统计响应、不带账号凭据；统计故障不阻断商店跳转或文件下载。禁用按钮不记录事件。暂不记录页面浏览、访客 ID、完整 URL、Referer、User-Agent 或安装数据。
 

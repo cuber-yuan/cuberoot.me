@@ -44,10 +44,11 @@
     "dev:serve:safe": "node scripts/dev-safe.mjs"
   },
   "dependencies": {
-    "@2017yanr02/continuous-corners": "file:../../vendor/continuous-corners-0.3.1.tgz",
+    "@2017yanr02/continuous-corners": "file:../../vendor/continuous-corners-0.3.2.tgz",
     "@airwallex/components-sdk": "^1.35.1",
+    "@app-foundation/careers-ui": "file:../../vendor/app-foundation/app-foundation-careers-ui-0.1.0.tgz",
     "@app-foundation/icons": "file:../../vendor/app-foundation/app-foundation-icons-0.1.0.tgz",
-    "@app-foundation/navigation-ui": "file:../../vendor/app-foundation/app-foundation-navigation-ui-0.1.2.tgz",
+    "@app-foundation/navigation-ui": "file:../../vendor/app-foundation/app-foundation-navigation-ui-0.2.9.tgz",
     "@app-foundation/registration-ui": "file:../../vendor/app-foundation/app-foundation-registration-ui-0.1.0.tgz",
     "@app-foundation/workspace-policy": "https://github.com/2017YANR02/app-foundation/releases/download/v0.6.0/app-foundation-workspace-policy-0.1.0.tgz",
     "@app-foundation/workspace-ui": "https://github.com/2017YANR02/app-foundation/releases/download/v0.7.0/app-foundation-workspace-ui-0.1.0.tgz",
@@ -103,7 +104,7 @@
     "cstimer_module": "^0.1.5",
     "cubing": "^0.63.3",
     "docx": "^9.7.1",
-    "dompurify": "^3.4.16",
+    "dompurify": "^3.4.17",
     "echarts": "^6.1.0",
     "echarts-for-react": "^3.0.6",
     "fflate": "0.8.3",
@@ -123,7 +124,7 @@
     "mediainfo.js": "^0.3.7",
     "mp4-muxer": "^5.2.2",
     "mp4box": "^2.3.0",
-    "next": "16.3.8",
+    "next": "16.4.1",
     "nuqs": "^2.8.9",
     "opencc-js": "^1.0.5",
     "pbf": "^4.0.1",
@@ -175,6 +176,6 @@
     "svgpath": "^2.6.0",
     "tailwindcss": "^4.2.2",
     "typescript": "^5",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   }
 }

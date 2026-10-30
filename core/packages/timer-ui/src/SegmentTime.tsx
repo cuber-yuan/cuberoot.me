@@ -8,18 +8,16 @@ export function SegmentTime({ text }: { text: string }) {
         <span key={index}>
           {index > 0 && <span aria-hidden="true" className="timer-colon" />}
           {part === 'DNF' || part === 'DNS' ? <>
-            <span className="timer-capital-d">
+            <span className="timer-capital-d" role="img" aria-label="D">
               <span className="timer-capital-d-text">D</span>
-              <svg className="timer-capital-d-segments" viewBox="0 0 600 800" aria-hidden="true" focusable="false">
-                <g fill="currentColor" transform="translate(84 0) skewX(-6)">
-                  <path d="M12 12 82 82 82 350 47 389 12 350Z" />
-                  <path d="m12 450 35-39 35 39v268l-70 70Z" />
-                  <path d="M24 0h312l70 70H94Z" />
-                  <path d="m350 5 145 145v96l-78-78-67-67Z" />
-                  <path d="m425 186 70 70v94l-35 39-35-39Z" />
-                  <path d="m425 450 35-39 35 39v94l-70 70Z" />
-                  <path d="m417 632 78-78v96L350 795v-96Z" />
-                  <path d="M94 730h312l-70 70H24Z" />
+              <svg className="timer-capital-d-segments" viewBox="0 0 585 800" aria-hidden="true" focusable="false">
+                <g fill="currentColor" transform="translate(21 0) skewX(-3)">
+                  <path d="M55 0h330l50 50-50 50H140Z" />
+                  <path d="M45 10 130 95v235l-85 45Z" />
+                  <path d="m45 405 85 45v255l-85 85Z" />
+                  <path d="m435 55 55 55v265l-85-45V95Z" />
+                  <path d="m490 405-85 45v255l30 40 55-55Z" />
+                  <path d="M130 700h275l30 50-50 50H55Z" />
                 </g>
               </svg>
             </span>

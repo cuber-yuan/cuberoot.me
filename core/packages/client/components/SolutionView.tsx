@@ -12,13 +12,14 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { ReconCrossToggle } from '@cuberoot/timer-ui';
+import { useTranslation } from 'react-i18next';
 import { useReconLineDiagrams } from './ReconLineDiagrams';
 import Link from '@/components/ReconCaseLink';
 import { reconCommentLinks } from '@/lib/recon-comment-links';
 import { tr } from '@/i18n/tr';
 import { crossColorFromReconText } from '@/components/CubeColorChip/CubeColorChip';
 import NotationLine, { useNotationCases } from '@cuberoot/timer-ui/recon/NotationLine';
-import { findTokenPositions, syncReconPlayerCursorFromText, reconInspectionOrientations, reconWasteBrackets } from '@/lib/recon-alg-utils';
+import { findTokenPositions, syncReconPlayerCursorFromText, reconInspectionOrientations, reconWasteBrackets, showReconInspectionColors } from '@/lib/recon-alg-utils';
 import { getTextOffsetInElement, snapCaretToLine } from '@cuberoot/timer-ui/recon/text-cursor';
 import './solution_view.css';
 
@@ -61,12 +62,13 @@ export default function SolutionView({ text, event, scramble = '', sourceText = 
   onToggleCross?: () => void;
 }) {
   const preRef = useRef<HTMLPreElement>(null);
+  const { t } = useTranslation();
   const cursorOffsetRef = useRef<number | null>(null);
   // 光标字符偏移 + 当前招式高亮区间(声明式渲染)。text 变化时清空(偏移失效)。
   const [cursorOffset, setCursorOffset] = useState<number | null>(null);
   const [hlRange, setHlRange] = useState<[number, number] | null>(null);
   const plainText = useMemo(() => text.replace(/\r\n?/g, '\n'), [text]);
-  const inspectionColors = useMemo(() => new Map(reconInspectionOrientations(plainText).map(item => [item.line, item.colors])), [plainText]);
+  const inspectionColors = useMemo(() => new Map((showReconInspectionColors(event) ? reconInspectionOrientations(plainText) : []).map(item => [item.line, item.colors])), [plainText, event]);
   const crossColor = useMemo(() => crossColorFromReconText(plainText), [plainText]);
   const linkComments = event === '3x3' || event === '333' || event === 'oh' || event === '333oh';
   const { diagramAt, f2lLinks, f2lLoading, libraryLinks } = useReconLineDiagrams(scramble, sourceText, linkComments);
@@ -176,7 +178,7 @@ export default function SolutionView({ text, event, scramble = '', sourceText = 
         const lineStart = lineStarts[i];
         const toggle = i === crossLineIdx && onToggleCross ? (
           <ReconCrossToggle normalized={crossNormalized} onToggle={onToggleCross}
-            label={crossNormalized ? 'Show original' : 'Normalize cross'} tabIndex={-1} />
+            label={t(crossNormalized ? 'recon.showOriginal' : 'recon.normalizeCross')} tabIndex={-1} />
         ) : null;
 
         const links = linkComments ? reconCommentLinks(line, commentCases, set => libraryLinks.get(i)?.get(set)).flatMap(link => {

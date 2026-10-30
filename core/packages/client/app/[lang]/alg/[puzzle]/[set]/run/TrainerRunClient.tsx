@@ -24,6 +24,7 @@ import {
 } from '@/lib/trainer-store';
 import TimerFontPicker from '@/components/TimerFontPicker';
 import { useTrainerSplitScreen } from '@/hooks/useTrainerSplitScreen';
+import { useSpaceHoldTimer } from '@/hooks/useSpaceHoldTimer';
 import { GestureWheel, useGestureWheel } from '@cuberoot/timer-ui';
 import { useCopy } from '@/hooks/useCopy';
 import { shouldIgnoreTimerTarget } from '@/lib/timer-ignore-target';
@@ -95,7 +96,7 @@ function TrainerResultDialog({ title, onClose, children }: { title: string; onCl
   }, []);
   return (
     <div className="alg-admin-modal-backdrop" {...backdropProps} data-no-timer>
-      <div ref={dialogRef} className="alg-admin-modal" data-site-surface="popover" role="dialog" aria-modal="true" aria-labelledby={titleId}
+      <div ref={dialogRef} className="alg-admin-modal trainer-review-dialog" data-site-surface="popover" role="dialog" aria-modal="true" aria-labelledby={titleId}
         onKeyDown={event => {
           if (event.key !== 'Tab') return;
           const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), [tabindex="0"]')];
@@ -104,7 +105,7 @@ function TrainerResultDialog({ title, onClose, children }: { title: string; onCl
           else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
         }}>
         <div className="alg-admin-modal-head">
-          <h2 id={titleId}>{tr({ zh: '成绩', en: 'Result' })} {title}</h2>
+          <h2 id={titleId}>{title}</h2>
           <ClearButton variant="standalone" onClick={onClose} ariaLabel={tr({ zh: '关闭', en: 'Close' })} />
         </div>
         <div className="alg-admin-modal-body">{children}</div>
@@ -392,6 +393,8 @@ export default function TrainerRunClient() {
   const resetOriSel = useTrainerStore(s => s.resetOriSel);
   const timing = useTrainerStore(s => s.timing);
   const setTiming = useTrainerStore(s => s.setTiming);
+  const [manualTiming, setManualTiming] = useState(false);
+  const cubeConnectedRef = useRef(false);
   const mode = useTrainerStore(s => s.mode);
   const setMode = useTrainerStore(s => s.setMode);
   const lastTrainingMode = useRef<Exclude<TrainerMode, 'memo'>>(mode === 'train' ? 'train' : 'recap');
@@ -434,6 +437,7 @@ export default function TrainerRunClient() {
   const showStats = useTrainerStore(s => s.showStats);
   const setShowStats = useTrainerStore(s => s.setShowStats);
   const [statsExpanded, setStatsExpanded] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const showStageThumb = useTrainerStore(s => s.showStageThumb);
   const setShowStageThumb = useTrainerStore(s => s.setShowStageThumb);
   const pureScramble = useTrainerStore(s => s.pureScramble);
@@ -775,7 +779,7 @@ export default function TrainerRunClient() {
    * 有弹层盖着:计时和全局按键一律让位 —— 空格别在背后起表,←/→ 别在背后翻题。
    * 声明在计时 / 键盘之前,它俩要读它。
    */
-  const overlayOpen = qrOpen || metaCase != null || resultSolve != null || optsOpen;
+  const overlayOpen = qrOpen || metaCase != null || resultSolve != null || optsOpen || historyOpen || (trainingHost != null && statsExpanded);
   const overlayOpenRef = useRef(false);
   overlayOpenRef.current = overlayOpen;
 
@@ -908,7 +912,7 @@ export default function TrainerRunClient() {
 
   const { wheelRef } = useGestureWheel({
     surfaceRef: stageRef,
-    active: stageMounted,
+    active: stageMounted && !recapRoundDone && !overlayOpen,
     // 计时面板内也有按钮(标记条等)— 按它们不应触发按压计时(否则点了直接开始计时)。
     // 设置面板开着时整个 stage 也一并跳过:面板外那一下只该关面板,不该切打乱 / 起表。
     ignoreTarget: (t) => optsOpenRef.current || shouldIgnoreTimerTarget(t),
@@ -961,17 +965,34 @@ export default function TrainerRunClient() {
         }
       }
     },
-    onPressDown: () => {},
-    onPressCancel: () => {},
-    onArmCancel: () => {},
+    onPressDown: () => {
+      if (cubeConnectedRef.current) return;
+      const st = useTrainerStore.getState();
+      if (!st.timing) return;
+      if (st.timerState === TimerState.RUNNING) st.stopTimer();
+      else if (st.timerState === TimerState.NOT_RUNNING) st.getTimerReady(0);
+    },
+    onPressCancel: () => {
+      if (cubeConnectedRef.current) return;
+      const st = useTrainerStore.getState();
+      if (st.timerState !== TimerState.RUNNING) st.setTimerState(TimerState.NOT_RUNNING);
+    },
+    onArmCancel: () => {
+      if (cubeConnectedRef.current) return;
+      const st = useTrainerStore.getState();
+      if (st.timerState === TimerState.READY || st.timerState === TimerState.AWAITING_READY) st.setTimerState(TimerState.NOT_RUNNING);
+    },
     onPressUp: () => {
-      // Untimed practice may advance by tapping; a connected cube owns its clock.
-      if (!useTrainerStore.getState().timing) advanceScramble();
+      if (cubeConnectedRef.current) return;
+      const st = useTrainerStore.getState();
+      if (!st.timing) { advanceScramble(); return; }
+      if (st.timerState === TimerState.READY) st.startTimer();
+      else if (st.timerState === TimerState.AWAITING_READY || st.timerState === TimerState.STOPPING) st.setTimerState(TimerState.NOT_RUNNING);
     },
   });
 
   // stage 之外的页面空白(顶栏边缘、栏间留白、内容下方的 body)也当按压面:
-  // 未连接魔方时单击直接下一个；连接后起停只由魔方触发。sidebar(看成绩要点来点去)、
+  // 手动计时按下准备、松开开始；未计时单击下一题；连接后起停只由魔方触发。sidebar、
   // 弹窗、轮盘与一切交互控件除外;不 preventDefault,移动端滚动不受影响(轮盘手势仍只在 stage 内)。
   useEffect(() => {
     const isBlank = (t: EventTarget | null): boolean => {
@@ -979,8 +1000,16 @@ export default function TrainerRunClient() {
       if (!(t instanceof Element)) return false;
       return t.closest('.trainer-stage, .trainer-sidebar, .alg-admin-modal-backdrop, .gesture-wheel, .room-qr-backdrop, .trainer-round-modal-backdrop') === null;
     };
-    let pressed = false;
+    let pressed: number | null = null;
+    const cancel = () => {
+      if (pressed === null) return;
+      pressed = null;
+      if (cubeConnectedRef.current) return;
+      const st = useTrainerStore.getState();
+      if (st.timerState === TimerState.READY || st.timerState === TimerState.AWAITING_READY || st.timerState === TimerState.STOPPING) st.setTimerState(TimerState.NOT_RUNNING);
+    };
     const down = (e: PointerEvent) => {
+      if (pressed !== null) return;
       if (!sessionReadyRef.current) return;
       if (isMemoRef.current) return;   // 记忆模式没有「点空白 = 下一题」这回事
       if (splitActiveRef.current) return; // 分屏空白不推进任一方,避免归属不明
@@ -988,18 +1017,34 @@ export default function TrainerRunClient() {
       // 设置面板开着时,面板外的按压只该关面板 —— 不该顺带切打乱/触发计时。
       if (optsOpenRef.current) return;
       if (!isBlank(e.target)) return;
-      pressed = !useTrainerStore.getState().timing;
+      if (cubeConnectedRef.current || overlayOpenRef.current) return;
+      if (useTrainerStore.getState().recapRoundDone) return;
+      pressed = e.pointerId;
+      const st = useTrainerStore.getState();
+      if (!st.timing) return;
+      if (st.timerState === TimerState.RUNNING) st.stopTimer();
+      else if (st.timerState === TimerState.NOT_RUNNING) st.getTimerReady(0);
     };
-    const up = () => {
-      if (!pressed) return;
-      pressed = false;
-      if (!useTrainerStore.getState().timing) advanceScramble();
+    const up = (e: PointerEvent) => {
+      if (pressed === null || e.pointerId !== pressed) return;
+      if (cubeConnectedRef.current || overlayOpenRef.current) { cancel(); return; }
+      pressed = null;
+      const st = useTrainerStore.getState();
+      if (!st.timing) { advanceScramble(); return; }
+      if (st.timerState === TimerState.READY) st.startTimer();
+      else if (st.timerState === TimerState.AWAITING_READY || st.timerState === TimerState.STOPPING) st.setTimerState(TimerState.NOT_RUNNING);
     };
     document.addEventListener('pointerdown', down);
     document.addEventListener('pointerup', up);
+    const pointerCancel = (e: PointerEvent) => { if (e.pointerId === pressed) cancel(); };
+    document.addEventListener('pointercancel', pointerCancel);
+    window.addEventListener('blur', cancel);
     return () => {
+      cancel();
       document.removeEventListener('pointerdown', down);
       document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', pointerCancel);
+      window.removeEventListener('blur', cancel);
     };
   }, [advanceScramble]);
 
@@ -1142,14 +1187,24 @@ export default function TrainerRunClient() {
     currentKey,
     currentAttempt: hist.list[hist.idx],
   });
-  // Timing follows the actual connection, never a persisted preference or URL.
+  cubeConnectedRef.current = trainerCube.cube.status.connected;
+  // A connected cube owns timing; manual practice is opt-in for this session.
   useEffect(() => {
-    const enabled = trainerCube.cube.status.connected && !isMemo && !splitActive;
+    const enabled = (trainerCube.cube.status.connected || manualTiming) && !isMemo && !splitActive;
     if (timing !== enabled) {
       if (!enabled) useTrainerStore.getState().setTimerState(TimerState.NOT_RUNNING);
       setTiming(enabled);
     }
-  }, [trainerCube.cube.status.connected, isMemo, splitActive, timing, setTiming]);
+  }, [trainerCube.cube.status.connected, manualTiming, isMemo, splitActive, timing, setTiming]);
+  useSpaceHoldTimer({
+    state: timerState,
+    delayMs: 0,
+    enabled: sessionReady && timing && !trainerCube.cube.status.connected && (!recapRoundDone || timerState === TimerState.STOPPING) && !isMemo && !splitActive && !overlayOpen,
+    getTimerReady: delay => useTrainerStore.getState().getTimerReady(delay),
+    startTimer: () => useTrainerStore.getState().startTimer(),
+    stopTimer: () => useTrainerStore.getState().stopTimer(),
+    setNotRunning: () => useTrainerStore.getState().setTimerState(TimerState.NOT_RUNNING),
+  });
 
   const showLiveTrainerCube = trainerCube.armed
     || (smartCube && trainerCube.practiceMode === 'manual' && trainerCube.cube.status.connected);
@@ -1417,8 +1472,89 @@ export default function TrainerRunClient() {
   const recapQuestionsCompleted = Math.ceil(recapCompleted / recapCasesPerQuestion);
   const recapQuestionsTotal = Math.ceil((recapCur?.total ?? 0) / recapCasesPerQuestion);
 
+  const reviewContent = <>
+        {leftShown && (
+          <aside className="trainer-sidebar is-left">
+            {/* 上一个:刚做完那把(图+名+打乱)+ 标记条,标记打在这把上。第一把之前无成绩,不出。
+                三条一屏 → 上三个:上一屏那三条各一张卡片,每张自带标记条(键盘 1、2、4 仍打最近那条)。 */}
+            {multi && prevTrio.map((e, i) => {
+              const c = findCaseByKey(cases, e.key) ?? null;
+              if (!c) return null;
+              return (
+                <SolveCard
+                  key={`${e.key}-${i}`}
+                  puzzle={puzzle}
+                  set={setSlug}
+                  scramble={shownScramble(e.scramble)}
+                  c={c}
+                  bottomCase={e.bottomKey ? findCaseByKey(cases, e.bottomKey) : undefined}
+                  isZh={isZh}
+                  showThumb={showStageThumb}
+                  onShowCase={setMetaCase}
+                  header={i === 0 ? tr({ zh: '上三个', en: 'Previous 3' }) : undefined}
+                  markSlot={<CaseMarkBar k={caseKey(c)} />}
+                  font={scrambleFont}
+                  // 三张一起换,一起出:走本地渲染。三个 <img> 各等各的往返,
+                  // 落地有先有后 —— 而且这三张刚在主屏上就是本地渲染的,浏览器缓存里没有它们。
+                  localThumb
+                />
+              );
+            })}
+            {!multi && prevCase && (
+              <SolveCard
+                puzzle={puzzle}
+                set={setSlug}
+                scramble={shownScramble(prevSolveScramble)}
+                c={prevCase}
+                bottomCase={prevBottomKey ? findCaseByKey(cases, prevBottomKey) : undefined}
+                localThumb
+                isZh={isZh}
+                showThumb={showStageThumb}
+                onShowCase={setMetaCase}
+                header={prevHeader}
+                markSlot={<CaseMarkBar k={caseKey(prevCase)} />}
+                font={scrambleFont}
+              />
+            )}
+          </aside>
+        )}
+
+        {statsVisible && (
+          <aside className="trainer-sidebar is-right" id="trainer-results" data-no-timer>
+            <StatsList
+              solves={solves}
+              cases={cases}
+              puzzle={puzzle}
+              set={setSlug}
+              observingIdx={resultSolve?.i ?? -1}
+              onPick={i => setResultSolve(solves.find(solve => solve.i === i) ?? null)}
+              onClear={() => {
+                if (confirm(tr({ zh: '清空所有成绩?', en: 'Clear all solves?'
+              })))
+                  clearSolves();
+              }}
+            />
+          </aside>
+        )}
+
+        {/* 不计时:打乱历史列表(点某条 = 跳回看那条打乱)。铺在底部整行 —— 它是一排横向药丸,
+            挤在右栏里只能竖着堆。 */}
+        {historyVisible && (
+          <aside className="trainer-sidebar is-bottom">
+            <HistoryList
+              hist={hist}
+              cases={cases}
+              puzzle={puzzle}
+              set={setSlug}
+              onPick={index => { jumpToHist(index); setHistoryOpen(false); }}
+              onShowCase={(c) => setMetaCase(c)}
+            />
+          </aside>
+        )}
+  </>;
+
   return (
-    <div className="trainer-root">
+    <div className={`trainer-root${trainingHost && !isMemo && !splitActive && !emptySelection ? ' trainer-root--fixed' : ''}${multi ? ' trainer-root--multi' : ''}`}>
       {!isMemo && <SmartCubeRow
         enabled={smartCube} onEnabledChange={setSmartCube} state={trainerCube}
         supported={!splitActive && puzzleHasSmartCube(puzzle)}
@@ -1430,30 +1566,23 @@ export default function TrainerRunClient() {
         {!trainingHost && <Link href={selectHref} className="trainer-back" prefetch={false}>
           {tr({ zh: '选择情况', en: 'Choose cases' })}
         </Link>}
-        {(!trainingHost || scopeSuffix) && <span style={{ fontSize: '1rem', color: 'var(--muted-foreground)' }}>
+        {!trainingHost && <span style={{ fontSize: '1rem', color: 'var(--muted-foreground)' }}>
           {trainingHost ? scopeSuffix : `${puzzle} · ${tr(meta)}${scopeSuffix ? ` · ${scopeSuffix}` : ''}`}
         </span>}
-        {/* The timer hosts one settings entry; progress and printing stay beside this stage. */}
+        {/* The timer hosts one settings entry; progress stays beside this stage. */}
         <SettingsPopover
           label={tr({ zh: '训练设置', en: 'Trainer settings' })}
           className={trainingHost ? 'trainer-opts' : 'trainer-opts trainer-opts--top'}
           triggerClassName="trainer-opts-gear"
           panelClassName="trainer-opts-panel"
+          modal
           iconSize={22}
           open={optsOpen}
           onOpenChange={setOptsOpen}
           ignoreTimer
           hosted
           triggerPrefix={(
-            /* 打印和进度紧凑贴在齿轮左侧:absolute 脱流,齿轮仍精确居中。
-               合练的 case 来自不同 set,不能拿一个 set 契约渲染整份 PDF,先不露错误入口。 */
             <div className="trainer-top-actions">
-              {!isMix && !doubleZbll && printableCases.length > 0 && (
-                <AlgPdfButton
-                  build={buildPdfSheet}
-                  title={tr({ zh: '下载可打印的训练打乱', en: 'Download printable training scrambles' })}
-                />
-              )}
               <Link href="/alg/progress" className="trainer-progress-link" prefetch={false}>
                 {tr({ zh: '进度', en: 'Progress' })}
               </Link>
@@ -1860,6 +1989,9 @@ export default function TrainerRunClient() {
               {/* 极简:侧栏两块各自可隐藏(issue #30)。统计=成绩用时列表,不计时根本
                   没有用时可统计 —— 不计时时连开关一起隐掉,而不是留一个永远关着的死开关。 */}
               <div className="trainer-opts-row trainer-opts-toggles">
+                {!isMemo && <BoolToggle value={timing} onChange={setManualTiming}
+                  disabled={trainerCube.cube.status.connected || splitActive || timerState !== TimerState.NOT_RUNNING}
+                  label={tr({ zh: '计时', en: 'Timing' })} />}
                 {aufSupported && (
                   <>
                     <BoolToggle value={preAuf} onChange={setPreAuf} label="pre-AUF" />
@@ -1965,10 +2097,21 @@ export default function TrainerRunClient() {
                   previewWeight={400}
                 />
               </div>
+              {/* 合练和双底不使用单套公式集的 PDF 契约。 */}
+              {!isMix && !doubleZbll && printableCases.length > 0 && (
+                <div className="trainer-opts-row">
+                  <AlgPdfButton
+                    build={buildPdfSheet}
+                    title={tr({ zh: '下载可打印的训练打乱', en: 'Download printable training scrambles' })}
+                  />
+                </div>
+              )}
               {/* 不计时那句「单击 / 空格 / → 切下一个」不出:那是点哪都能试出来的事。 */}
               {timing && (
                 <div className="trainer-opts-help">
-                  {tr({ zh: '转动开始，完成自动停表', en: 'Turn to start; completion stops the clock' })}
+                  {trainerCube.cube.status.connected
+                    ? tr({ zh: '转动开始，完成自动停表', en: 'Turn to start; completion stops the clock' })
+                    : tr({ zh: '空格或按压开始、停止', en: 'Space or press to start and stop' })}
                 </div>
               )}
               <div className="trainer-opts-help">
@@ -1983,6 +2126,12 @@ export default function TrainerRunClient() {
                     })}
               </div>
         </SettingsPopover>
+        {trainingHost && !timing && !isMemo && !splitActive && (leftShown || historyVisible) && (
+          <button type="button" className="trainer-progress-link timer-training-stats-toggle" data-no-timer
+            aria-haspopup="dialog" onClick={() => setHistoryOpen(true)}>
+            {tr({ zh: '历史', en: 'History' })}
+          </button>
+        )}
         {trainingHost && timing && !isMemo && !splitActive && !emptySelection && (
           <button
             type="button"
@@ -2034,7 +2183,7 @@ export default function TrainerRunClient() {
           onExit={() => { void setSplitParam(null); }}
         />
       ) : (
-      <div className={`trainer-run${leftShown ? ' has-left' : ''}${statsVisible ? ' has-right' : ''}`}>
+      <div className={`trainer-run${!trainingHost && leftShown ? ' has-left' : ''}${!trainingHost && statsVisible ? ' has-right' : ''}`}>
         <div className={`trainer-stage${scramblePending ? ' is-loading' : ''}`} ref={stageRef} aria-busy={scramblePending}>
           {/* head = 图以上的一切(按钮 / 计时数字),body = 图及其以下(图、打乱公式)。
               两段配合 .trainer-run 的 subgrid:主屏与左右两张卡片共用同一套行,
@@ -2182,91 +2331,22 @@ export default function TrainerRunClient() {
           </div>
         </div>
 
-        {leftShown && (
-          <aside className="trainer-sidebar is-left">
-            {/* 上一个:刚做完那把(图+名+打乱)+ 标记条,标记打在这把上。第一把之前无成绩,不出。
-                三条一屏 → 上三个:上一屏那三条各一张卡片,每张自带标记条(键盘 1、2、4 仍打最近那条)。 */}
-            {multi && prevTrio.map((e, i) => {
-              const c = findCaseByKey(cases, e.key) ?? null;
-              if (!c) return null;
-              return (
-                <SolveCard
-                  key={`${e.key}-${i}`}
-                  puzzle={puzzle}
-                  set={setSlug}
-                  scramble={shownScramble(e.scramble)}
-                  c={c}
-                  bottomCase={e.bottomKey ? findCaseByKey(cases, e.bottomKey) : undefined}
-                  isZh={isZh}
-                  showThumb={showStageThumb}
-                  onShowCase={setMetaCase}
-                  header={i === 0 ? tr({ zh: '上三个', en: 'Previous 3' }) : undefined}
-                  markSlot={<CaseMarkBar k={caseKey(c)} />}
-                  font={scrambleFont}
-                  // 三张一起换,一起出:走本地渲染。三个 <img> 各等各的往返,
-                  // 落地有先有后 —— 而且这三张刚在主屏上就是本地渲染的,浏览器缓存里没有它们。
-                  localThumb
-                />
-              );
-            })}
-            {!multi && prevCase && (
-              <SolveCard
-                puzzle={puzzle}
-                set={setSlug}
-                scramble={shownScramble(prevSolveScramble)}
-                c={prevCase}
-                bottomCase={prevBottomKey ? findCaseByKey(cases, prevBottomKey) : undefined}
-                localThumb
-                isZh={isZh}
-                showThumb={showStageThumb}
-                onShowCase={setMetaCase}
-                header={prevHeader}
-                markSlot={<CaseMarkBar k={caseKey(prevCase)} />}
-                font={scrambleFont}
-              />
-            )}
-          </aside>
-        )}
+        {!trainingHost && reviewContent}
 
-        {statsVisible && (
-          <aside className="trainer-sidebar is-right" id="trainer-results" data-no-timer>
-            <StatsList
-              solves={solves}
-              cases={cases}
-              puzzle={puzzle}
-              set={setSlug}
-              observingIdx={resultSolve?.i ?? -1}
-              onPick={i => setResultSolve(solves.find(solve => solve.i === i) ?? null)}
-              onClear={() => {
-                if (confirm(tr({ zh: '清空所有成绩?', en: 'Clear all solves?'
-              })))
-                  clearSolves();
-              }}
-            />
-          </aside>
-        )}
-
-        {/* 不计时:打乱历史列表(点某条 = 跳回看那条打乱)。铺在底部整行 —— 它是一排横向药丸,
-            挤在右栏里只能竖着堆。 */}
-        {historyVisible && (
-          <aside className="trainer-sidebar is-bottom">
-            <HistoryList
-              hist={hist}
-              cases={cases}
-              puzzle={puzzle}
-              set={setSlug}
-              onPick={jumpToHist}
-              onShowCase={(c) => setMetaCase(c)}
-            />
-          </aside>
-        )}
       </div>
       )}
 
       <GestureWheel ref={wheelRef} isZh={isZh} labels={wheelLabels} />
 
+      {trainingHost && (historyOpen || statsExpanded) && !resultSolve && !metaCase && (
+        <TrainerResultDialog title={timing ? tr({ zh: '成绩', en: 'Results' }) : tr({ zh: '历史', en: 'History' })}
+          onClose={() => { setHistoryOpen(false); setStatsExpanded(false); }}>
+          {reviewContent}
+        </TrainerResultDialog>
+      )}
+
       {resultSolve && !metaCase && (
-        <TrainerResultDialog title={`#${resultSolve.i + 1} · ${formatSolveTime(resultSolve)}`} onClose={closeResult}>
+        <TrainerResultDialog title={`${tr({ zh: '成绩', en: 'Result' })} #${resultSolve.i + 1} · ${formatSolveTime(resultSolve)}`} onClose={closeResult}>
           <SolveCard
             puzzle={puzzle}
             set={setSlug}

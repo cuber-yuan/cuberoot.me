@@ -1,9 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { ChevronLeft, Download } from '@app-foundation/icons/lucide';
+import { ChevronLeft, Download, ExternalLink } from '@app-foundation/icons/lucide';
 import Link from '@/components/AppLink';
 import JsonLd, { PUBLISHER } from '@/components/JsonLd';
 import { renderArticleMarkdown } from '@/lib/article-markdown';
+import { T } from '@/i18n/tr';
 import '../regulation.css';
 import './translation.css';
 
@@ -17,12 +18,18 @@ export default async function RegulationTranslation() {
         <Link href="/regulation" prefetch={false} className="back-home" aria-label="返回规则首页 / Back to regulations">
           <ChevronLeft size={16} aria-hidden="true" />
         </Link>
-        <nav className="reg-translation-downloads" aria-label="Markdown 下载 / Markdown downloads">
+        <nav className="reg-translation-downloads" aria-label="翻译资源 / Translation resources">
+          <Link href="/regulation/translation/search" prefetch={false}>
+            <T zh="官方译文查询" en="Search official translations" /> →
+          </Link>
           <a href="/regulation/wca-translation-reference.md" download>
             <Download size={16} aria-hidden="true" />术语参考 / Terminology (.md)
           </a>
           <a href="/regulation/wca-regulations-bilingual.md" download>
             <Download size={16} aria-hidden="true" />条款对照 / Parallel clauses (.md)
+          </a>
+          <a href="https://translate.worldcubeassociation.org/projects/wca/-/zh_Hans/" target="_blank" rel="noopener noreferrer">
+            <ExternalLink size={16} aria-hidden="true" />WCA 官方翻译 / WCA translations
           </a>
         </nav>
         <article className="reg-translation-reference">{renderArticleMarkdown(markdown)}</article>

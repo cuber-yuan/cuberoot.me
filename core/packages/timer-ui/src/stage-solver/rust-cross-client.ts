@@ -7,6 +7,7 @@
 //     First Layer 例外,最终移动表封进 opt_first_layer,避免客户端执行 4490 万态 BFS。
 //   · pt_cross_C4E0 缓存优先，未命中时下载与现场生成竞速；其余 pt_* 下载。
 //   · std 池再拆两段:建池只拉 pt_cross(gz 50KB)就能算纯十字;xcross+ 要的
+//     pt_cross 从引擎同源路径加载，安装宿主随包携带；与 WASM 并行准备。
 //     pt_cross_C4E0(gz 20MB)由 `ensureXCross()` 在用户真的切到那些阶段时才补。
 // 结果:计时器/analyzer 默认视图(标准 · 十字)的冷启动从 ~30MB 降到 ~50KB。
 //
@@ -144,7 +145,7 @@ export interface RustCrossPool {
     scramble: string,
     variant: number,
     face: number,
-    opts?: { extra?: number; cap?: number; combo?: string; mask?: number },
+    opts?: { extra?: number; cap?: number; combo?: string; mask?: number; practical?: boolean },
     onPartial?: (sol: SolItem, len: number) => void,
   ): Promise<MovesTimed>;
   /** or18 式受限最优十字(6面+6宽+3中层+3旋转)单视角步数(含解里整体旋转计数)。
@@ -578,6 +579,7 @@ export function createRustCrossPool(maxSize: number, need: 'cross' | 'cross_rest
       return submit({
         type: 'moves', id: nextId++, scramble, variant, face,
         extra: opts.extra ?? 0, cap: opts.cap ?? 50, combo: opts.combo ?? '',
+        practical: opts.practical ?? false,
         ...(opts.mask != null ? { mask: opts.mask } : {}),
       }, onPartial) as Promise<MovesTimed>;
     },

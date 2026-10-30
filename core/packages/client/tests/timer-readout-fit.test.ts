@@ -38,6 +38,8 @@ describe('shared timer complete-readout fitting', () => {
     await render(penalty);
     const readout = host.querySelector('.timer-display-value')!;
     expect(readout.textContent).toBe(penalty);
+    expect(readout.querySelector('.timer-capital-d-text')?.textContent).toBe('D');
+    expect(readout.querySelectorAll('.timer-capital-d-segments path')).toHaveLength(6);
     expect(readout.querySelector('.timer-capital-d-segments')?.getAttribute('aria-hidden')).toBe('true');
     await render('12.34');
     expect(readout.textContent).toBe('12.34');

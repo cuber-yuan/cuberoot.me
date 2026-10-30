@@ -9467,6 +9467,8 @@ CREATE TABLE IF NOT EXISTS smart_cube_macs (
 -- Smart cube intake queue (0286).
 CREATE TABLE recon_intake (
   id UUID PRIMARY KEY,
+  source_recon_id INTEGER,
+  source_snapshot JSONB,
   submission_hash TEXT NOT NULL UNIQUE,
   recording_hash TEXT NOT NULL,
   content_hash TEXT NOT NULL,
@@ -9484,6 +9486,7 @@ CREATE TABLE recon_intake (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX idx_recon_intake_queue ON recon_intake (status, created_at);
+CREATE UNIQUE INDEX idx_recon_intake_source_recon ON recon_intake (source_recon_id) WHERE source_recon_id IS NOT NULL;
 CREATE TABLE recon_intake_runs (
   id UUID PRIMARY KEY,
   case_id UUID NOT NULL REFERENCES recon_intake(id),
@@ -9503,4 +9506,216 @@ CREATE TABLE recon_intake_revisions (
   actor TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (case_id, revision)
+);
+
+-- Shared company/project checklists; archived lists remain readable.
+CREATE TABLE workspace_checklists (
+  id UUID PRIMARY KEY,
+  project_id UUID REFERENCES workspace_projects(id),
+  name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 80),
+  items JSONB NOT NULL CHECK (jsonb_typeof(items) = 'array'),
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  version INTEGER NOT NULL CHECK (version > 0),
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX workspace_checklists_project ON workspace_checklists(project_id);
+
+-- Reusable team schedules. A schedule belongs to one fixed access scope.
+CREATE TABLE workspace_schedules (
+  id UUID PRIMARY KEY,
+  project_id UUID REFERENCES workspace_projects(id),
+  name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 80),
+  tasks JSONB NOT NULL CHECK (jsonb_typeof(tasks) = 'array'),
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  version INTEGER NOT NULL CHECK (version > 0),
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX workspace_schedules_project ON workspace_schedules(project_id);
+-- Read-only upstream translation mirror; no user data or locally edited translations.
+CREATE TABLE wca_translation_sync (
+  id SMALLINT PRIMARY KEY CHECK (id = 1),
+  synced_at TIMESTAMPTZ,
+  attempted_at TIMESTAMPTZ,
+  error TEXT,
+  digest TEXT,
+  components JSONB NOT NULL DEFAULT '[]'
+);
+INSERT INTO wca_translation_sync (id) VALUES (1);
+
+CREATE TABLE wca_translation_units (
+  component TEXT NOT NULL,
+  unit_id BIGINT NOT NULL,
+  key TEXT NOT NULL,
+  en TEXT NOT NULL,
+  zh TEXT NOT NULL,
+  source_forms JSONB NOT NULL,
+  target_forms JSONB NOT NULL,
+  state INTEGER NOT NULL,
+  usable BOOLEAN NOT NULL,
+  approved BOOLEAN NOT NULL,
+  source_url TEXT NOT NULL,
+  source_updated_at TEXT,
+  checks BOOLEAN NOT NULL,
+  PRIMARY KEY (component, unit_id)
+);
+CREATE INDEX wca_translation_key ON wca_translation_units (lower(key));
+
+-- 0294: explicit public single-message snapshots
+CREATE TABLE site_assistant_shares (
+  id TEXT PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  request_id UUID NOT NULL,
+  question TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (user_id, request_id)
+);
+CREATE TABLE career_applications (
+  id UUID PRIMARY KEY,
+  payload_hash TEXT NOT NULL,
+  position_id TEXT NOT NULL,
+  city TEXT NOT NULL,
+  applicant_name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  email TEXT NOT NULL,
+  education TEXT NOT NULL DEFAULT '',
+  experience TEXT NOT NULL DEFAULT '',
+  channel TEXT NOT NULL DEFAULT '',
+  resume_name TEXT NOT NULL,
+  resume_ext TEXT NOT NULL,
+  resume_data BYTEA NOT NULL,
+  photo_name TEXT,
+  photo_ext TEXT,
+  photo_data BYTEA,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX career_applications_created_idx ON career_applications (created_at DESC, id DESC);
+-- Private video capture references. Drive owns the upload and the original bytes.
+CREATE TABLE recon_captures (
+  id UUID PRIMARY KEY,
+  owner_user_id BIGINT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  source_solve_id TEXT NOT NULL,
+  drive_node_id UUID REFERENCES drive_nodes(id) ON DELETE SET NULL,
+  submission_hash TEXT NOT NULL CHECK (submission_hash ~ '^[a-f0-9]{64}$'),
+  recording_hash TEXT NOT NULL CHECK (recording_hash ~ '^[a-f0-9]{64}$'),
+  input JSONB NOT NULL,
+  status TEXT NOT NULL DEFAULT 'uploading' CHECK (status IN ('uploading', 'needs-review')),
+  revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+  video_sha256 TEXT CHECK (video_sha256 ~ '^[a-f0-9]{64}$'),
+  video_mime TEXT,
+  video_duration_ms DOUBLE PRECISION,
+  sync JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (owner_user_id, submission_hash),
+  CHECK (status = 'uploading' OR (video_sha256 IS NOT NULL AND video_mime IS NOT NULL))
+);
+CREATE INDEX idx_recon_captures_source ON recon_captures (owner_user_id, source_solve_id, created_at DESC);
+CREATE INDEX idx_recon_captures_queue ON recon_captures (status, created_at, id);
+CREATE INDEX idx_recon_captures_drive ON recon_captures (drive_node_id) WHERE drive_node_id IS NOT NULL;
+
+-- Alignment changes retain the original inputs and prior human anchors.
+CREATE TABLE recon_capture_revisions (
+  capture_id UUID NOT NULL REFERENCES recon_captures(id) ON DELETE CASCADE,
+  revision INTEGER NOT NULL,
+  sync JSONB NOT NULL,
+  actor_user_id BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (capture_id, revision)
+);
+
+-- Calendar final schema (0099 + 0101).
+CREATE TABLE IF NOT EXISTS calendar_imports (
+  id          BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  owner_key   VARCHAR(20)  NOT NULL,
+  source      VARCHAR(120) NOT NULL DEFAULT '',
+  event_count INTEGER      NOT NULL DEFAULT 0,
+  created_at  BIGINT       NOT NULL,
+  undone_at   BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_calendar_imports_owner ON calendar_imports(owner_key, id DESC);
+
+CREATE TABLE IF NOT EXISTS calendars (
+  id          BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  import_id   BIGINT REFERENCES calendar_imports(id) ON DELETE SET NULL,
+  owner_key   VARCHAR(20) NOT NULL,
+  name        VARCHAR(80) NOT NULL DEFAULT '',
+  color       VARCHAR(16) NOT NULL DEFAULT 'peacock',
+  tz          VARCHAR(64) NOT NULL DEFAULT 'UTC',
+  is_default  BOOLEAN     NOT NULL DEFAULT FALSE,
+  sort_order  INTEGER     NOT NULL DEFAULT 0,
+  created_at  BIGINT      NOT NULL,
+  updated_at  BIGINT      NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_calendars_owner ON calendars(owner_key, sort_order, id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_calendars_one_default ON calendars(owner_key) WHERE is_default;
+
+CREATE TABLE IF NOT EXISTS calendar_events (
+  id            BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  import_id     BIGINT REFERENCES calendar_imports(id) ON DELETE SET NULL,
+  calendar_id   BIGINT       NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+  owner_key     VARCHAR(20)  NOT NULL,
+  title         VARCHAR(300) NOT NULL DEFAULT '',
+  description   TEXT         NOT NULL DEFAULT '',
+  location      VARCHAR(300) NOT NULL DEFAULT '',
+  all_day       BOOLEAN      NOT NULL DEFAULT FALSE,
+  start_ms      BIGINT       NOT NULL,
+  end_ms        BIGINT       NOT NULL,
+  tz            VARCHAR(64)  NOT NULL,
+  rrule         VARCHAR(200) NOT NULL DEFAULT '',
+  exdates       TEXT         NOT NULL DEFAULT '',
+  series_id     BIGINT       REFERENCES calendar_events(id) ON DELETE CASCADE,
+  occurrence_ms BIGINT,
+  color         VARCHAR(16)  NOT NULL DEFAULT '',
+  reminders     VARCHAR(120) NOT NULL DEFAULT '',
+  created_at    BIGINT       NOT NULL,
+  updated_at    BIGINT       NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_owner_time ON calendar_events(owner_key, start_ms);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_cal_time ON calendar_events(calendar_id, start_ms);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_series ON calendar_events(series_id) WHERE series_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_calendar_events_recurring ON calendar_events(owner_key) WHERE rrule <> '';
+
+CREATE TABLE IF NOT EXISTS calendar_shares (
+  owner_key    VARCHAR(20) PRIMARY KEY,
+  token        VARCHAR(32) NOT NULL UNIQUE,
+  enabled      BOOLEAN     NOT NULL DEFAULT FALSE,
+  detail       VARCHAR(8)  NOT NULL DEFAULT 'busy' CHECK (detail IN ('full', 'busy')),
+  title        VARCHAR(80) NOT NULL DEFAULT '',
+  calendar_ids TEXT        NOT NULL DEFAULT '',
+  tz           VARCHAR(64) NOT NULL DEFAULT 'UTC',
+  created_at   BIGINT      NOT NULL,
+  updated_at   BIGINT      NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS calendar_guests (
+  event_id   BIGINT      NOT NULL REFERENCES calendar_events(id) ON DELETE CASCADE,
+  guest_key  VARCHAR(20) NOT NULL,
+  status     VARCHAR(10) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'declined')),
+  created_at BIGINT      NOT NULL,
+  PRIMARY KEY (event_id, guest_key)
+);
+CREATE INDEX IF NOT EXISTS idx_calendar_guests_key ON calendar_guests(guest_key);
+
+CREATE TABLE IF NOT EXISTS calendar_reminder_log (
+  event_id      BIGINT      NOT NULL REFERENCES calendar_events(id) ON DELETE CASCADE,
+  occurrence_ms BIGINT      NOT NULL,
+  minutes       INTEGER     NOT NULL,
+  user_key      VARCHAR(20) NOT NULL,
+  sent_at       BIGINT      NOT NULL,
+  PRIMARY KEY (event_id, occurrence_ms, minutes, user_key)
+);
+CREATE INDEX IF NOT EXISTS idx_calendar_reminder_log_sent ON calendar_reminder_log(sent_at);
+
+CREATE INDEX IF NOT EXISTS idx_calendar_events_import ON calendar_events(import_id) WHERE import_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_calendars_import ON calendars(import_id) WHERE import_id IS NOT NULL;
+
+-- One identity per personal competition event; NULL remembers an explicitly deleted event.
+CREATE TABLE IF NOT EXISTS calendar_competitions (
+  owner_key VARCHAR(20) NOT NULL,
+  competition_id VARCHAR(64) NOT NULL,
+  event_id BIGINT UNIQUE REFERENCES calendar_events(id) ON DELETE SET NULL,
+  PRIMARY KEY (owner_key, competition_id)
 );

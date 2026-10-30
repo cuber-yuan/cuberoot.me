@@ -3,20 +3,27 @@
 /** @module Official app downloads and platform availability. */
 import { ArrowLeft, Download } from '@app-foundation/icons/lucide';
 import { useEffect, useState } from 'react';
-import { fetchAndroidRelease, type AndroidRelease } from '@cuberoot/shared/android-release';
+import { fetchAndroidRelease, fetchWindowsRelease, type AndroidRelease, type WindowsRelease } from '@cuberoot/shared/android-release';
 import HomeLink from '@/components/HomeLink';
+import AppLink from '@/components/AppLink';
 import HeaderToggles from '@/components/HeaderToggles';
 import { tr, useLang } from '@/i18n/tr';
 import { ANDROID_APK_URL, GOOGLE_PLAY_URL, trackDownload } from '@/lib/app-downloads';
+import { useIsAdmin } from '@/lib/auth-store';
 import './download.css';
 
 export default function DownloadPage() {
   const language = useLang();
+  const isAdmin = useIsAdmin();
   const [release, setRelease] = useState<AndroidRelease | null>(null);
+  const [windows, setWindows] = useState<WindowsRelease | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
-    void fetchAndroidRelease(controller.signal).then(setRelease).catch(() => {}).finally(() => clearTimeout(timeout));
+    void Promise.allSettled([
+      fetchAndroidRelease(controller.signal).then(setRelease),
+      fetchWindowsRelease(controller.signal).then(setWindows),
+    ]).finally(() => clearTimeout(timeout));
     return () => { controller.abort(); clearTimeout(timeout); };
   }, []);
   const apkUrl = release?.url ?? ANDROID_APK_URL;
@@ -24,7 +31,7 @@ export default function DownloadPage() {
     <main className="download-page">
       <div className="download-nav">
         <HomeLink className="download-home"><ArrowLeft size={16} aria-hidden="true" />CubeRoot</HomeLink>
-        <HeaderToggles />
+        <HeaderToggles triggerClassName="theme-toggle-inline download-settings" />
       </div>
       <h1>{tr({ zh: '下载', en: 'Download' })}</h1>
       <div className="download-app">
@@ -61,8 +68,22 @@ export default function DownloadPage() {
           {tr({ zh: 'APK 下载准备中，可先通过 Google Play 安装。', en: 'APK download is being prepared. Install through Google Play for now.' })}
         </p>}
       </section>
+      <section className="download-windows" aria-labelledby="download-windows-title">
+        <h2 id="download-windows-title">Windows</h2>
+        <div className="download-actions">
+          {(['installer', 'portable'] as const).map(kind => {
+            const label = kind === 'installer' ? tr({ zh: '下载安装版', en: 'Download installer' }) : tr({ zh: '下载免安装版', en: 'Download standalone EXE' });
+            return windows ? <a key={kind} className="download-button" href={windows.files[kind].url} onClick={() => trackDownload(`windows-${kind}`, language)}><Download size={16} aria-hidden="true" />{label}</a>
+              : <button key={kind} type="button" className="download-button" disabled>{label}</button>;
+          })}
+        </div>
+        <p className="download-note">{windows ? `${windows.versionName} · ` : ''}{windows
+          ? tr({ zh: 'Windows x64。推荐安装版；免安装版需已安装 WebView2。', en: 'Windows x64. The installer is recommended; the standalone EXE requires WebView2.' })
+          : tr({ zh: 'Windows 下载准备中。', en: 'Windows downloads are being prepared.' })}</p>
+      </section>
+      {isAdmin && <AppLink className="download-button" href="/admin/releases" prefetch={false}>{tr({ zh: '版本管理', en: 'Release management' })}</AppLink>}
       <section className="download-upcoming" aria-label={tr({ zh: '其他平台', en: 'Other platforms' })}>
-        {['Windows', 'iOS', 'macOS', 'HarmonyOS NEXT'].map((platform) => (
+        {['iOS', 'macOS', 'HarmonyOS NEXT'].map((platform) => (
           <div className="download-platform" key={platform}>
             <span>{platform}</span><span>{tr({ zh: '即将发布', en: 'Coming soon' })}</span>
           </div>

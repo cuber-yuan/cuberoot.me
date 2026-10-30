@@ -51,17 +51,17 @@ describe('shared smart-cube device modal', () => {
     const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
     expect(dialog.textContent).toContain('GAN16ui');
     expect(dialog.textContent).not.toContain('Connected, unsolved');
-    expect(dialog.textContent).toContain('72%');
+    expect(dialog.querySelector('.timer-smart-cube-device__battery')?.getAttribute('aria-label')).toBe('Battery 72%');
     expect(dialog.textContent).not.toContain('Last move');
     expect(dialog.textContent).not.toContain("R'");
     expect(dialog.textContent).not.toContain('gan-v4');
 
     const button = (label: string) => [...dialog.querySelectorAll<HTMLButtonElement>('button')]
       .find((candidate) => candidate.textContent?.includes(label))!;
-    await act(async () => button('Reset cube').click());
+    await act(async () => button('Reset').click());
     expect(onResetState).toHaveBeenCalledOnce();
     expect(dialog.textContent).toContain('State reset');
-    expect(button('Reset cube').querySelector('svg')).toBeNull();
+    expect(button('Reset').querySelector('svg')).toBeNull();
     expect(dialog.textContent).not.toContain('Reset gyroscope');
     expect(onResetGyro).toHaveBeenCalledOnce();
 
@@ -90,7 +90,7 @@ describe('shared smart-cube device modal', () => {
         expect(panel.style.top).toBe('58px');
         expect(panel.hasAttribute('aria-modal')).toBe(false);
         expect(document.querySelector('.timer-smart-cube-device__overlay')).toBeNull();
-        expect(panel.textContent).not.toContain('(C2:AF)');
+        expect(panel.textContent).toContain('GAN16ui (C2:AF)');
         anchor.focus();
         expect(document.activeElement).toBe(anchor);
       }
@@ -99,6 +99,31 @@ describe('shared smart-cube device modal', () => {
     } finally {
       anchor.remove();
     }
+  });
+
+  it.each(['WCU_MY32_ (A1:B2)', 'WCU_MY32_A1B2'])('preserves the MoYu identity suffix in %s', async (deviceName) => {
+    await act(async () => root.render(createElement(TimerSmartCubeDeviceModal, {
+      language: 'en', onClose: vi.fn(),
+      snapshot: { ...connectedSnapshot, deviceName, protocol: 'moyu32' },
+    })));
+    expect(document.querySelector('.timer-smart-cube-device__name')?.textContent).toBe(deviceName);
+  });
+
+  it('transitions from a busy connection indicator to a visible connected status', async () => {
+    const props = { language: 'en' as const, onClose: vi.fn() };
+    await act(async () => root.render(createElement(TimerSmartCubeDeviceModal, {
+      ...props, snapshot: { ...connectedSnapshot, phase: 'connecting' },
+    })));
+    const pending = document.querySelector('.timer-smart-cube-device__state')!;
+    expect(pending.textContent).toBe('Connecting…');
+    expect(pending.classList.contains('is-connecting')).toBe(true);
+    expect(pending.querySelector('svg')).not.toBeNull();
+    await act(async () => root.render(createElement(TimerSmartCubeDeviceModal, { ...props, snapshot: connectedSnapshot })));
+    const connected = document.querySelector('.timer-smart-cube-device__state')!;
+    expect(connected).not.toBe(pending);
+    expect(connected.getAttribute('aria-label')).toBe('Connected');
+    expect(connected.classList.contains('is-ok')).toBe(true);
+    expect(connected.getAttribute('role')).toBe('status');
   });
 
   it('renders a selectable scan list without exposing device addresses', async () => {
@@ -149,7 +174,7 @@ describe('shared smart-cube device modal', () => {
 
     const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
     expect(dialog.textContent).toContain('Disconnect');
-    expect(dialog.textContent).not.toContain('Reset cube');
+    expect(dialog.textContent).not.toContain('Reset');
     expect(dialog.textContent).not.toContain('Reset gyroscope');
   });
 
@@ -172,7 +197,7 @@ describe('shared smart-cube device modal', () => {
     const button = (label: string) => [...dialog.querySelectorAll<HTMLButtonElement>('button')]
       .find((candidate) => candidate.textContent?.includes(label))!;
 
-    await act(async () => button('Reset cube').click());
+    await act(async () => button('Reset').click());
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(onClose).not.toHaveBeenCalled();
 

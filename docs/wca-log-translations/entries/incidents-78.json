@@ -13,10 +13,10 @@
   },
   "translation": {
     "language": "zh-Hans",
-    "version": 2,
+    "version": 3,
     "title": "三阶盲拧中裁判长时间忘记举遮挡板",
-    "content": "Please Be Solved Vancouver 2022（2022 年 7 月 24 日）和 Silver Spring Summer 2022（2022 年 8 月 13 日）均发生了裁判在三阶盲拧中长时间忘记举遮挡板的情况。\n\n两案中，WCA 规则委员会均决定采用额外尝试。但后一案被 WCA 理事会推翻，改为保留原尝试。\n\n理事会给出的理由是：\n> 1. 执行速度和头部位置没有变化，未显示选手起初在看魔方；\n> 2. 速度与选手此前没有发生事件的比赛能力一致；\n> 3. 这是裁判而非选手的过错。选手没有任何行为令人认为其作弊，或甚至试图利用这种情况取得优势。",
-    "translatedAt": "2026-10-22T05:54:37.260Z",
+    "content": "Please Be Solved Vancouver 2022（2022 年 7 月 24 日）和 Silver Spring Summer 2022（2022 年 8 月 13 日）均发生了裁判在三阶盲拧中长时间忘记举遮挡板的情况。\n\n两案中，WCA 规则委员会均决定采用额外尝试。但后一案被 WCA 董事会推翻，改为保留原尝试。\n\n董事会给出的理由是：\n> 1. 执行速度和头部位置没有变化，未显示选手起初在看魔方；\n> 2. 速度与选手此前没有发生事件的比赛能力一致；\n> 3. 这是裁判而非选手的过错。选手没有任何行为令人认为其作弊，或甚至试图利用这种情况取得优势。",
+    "translatedAt": "2026-10-25T09:29:00.613Z",
     "translator": "Codex / subscription",
     "sourceHash": "ba4da0924970b90a24d36f9c0a4b2900ba916ced9f8fc46c550770d78f3d73c7",
     "revisedAt": "2026-10-22T06:25:36.680Z",
@@ -40,12 +40,26 @@
     },
     "unresolvedNotes": [],
     "recheck": {
-      "reviewer": "review_6",
-      "reviewedAt": "2026-10-22T06:26:41.975Z",
-      "report": "reviews/round-1/recheck-6.json",
+      "reviewer": "/root/review_logs",
+      "reviewedAt": "2026-10-26T11:10:07.703Z",
+      "report": "../wca-translation-review-2026-10-26/final-report.json",
       "sourceHash": "ba4da0924970b90a24d36f9c0a4b2900ba916ced9f8fc46c550770d78f3d73c7",
-      "reviewedTranslationHash": "f3c3ffcf650dfde3f0716ff68ad9b78ad0fee6654850b79b902536ca0c0aa992",
-      "verdict": "pass"
+      "reviewedTranslationHash": "c66d5fde8633a2d06e72739c9c0c4d015738d6037e91a470e043552fb03a8182",
+      "verdict": "pass",
+      "scope": "复用已通过的旧版全文独立审校；人工阅读旧版与现版全部文字差异及对应英文段落，确认本轮之前的差异限于官方机构名称或 Guidelines 的“指南”译法；另复核本轮项目名命中语境。"
+    },
+    "complianceRevision": {
+      "at": "2026-10-25T09:29:00.613Z",
+      "previousTranslationHash": "f3c3ffcf650dfde3f0716ff68ad9b78ad0fee6654850b79b902536ca0c0aa992",
+      "report": "../wca-translation-compliance-2026-10-25.json",
+      "scope": "Targeted source comparison; independent prior evidence remains bound to the previous hash."
+    },
+    "currentReview": {
+      "round": "2026-10-26",
+      "proposal": "docs/wca-translation-review-2026-10-26/logs/incidents-78.json",
+      "sourceConcern": false,
+      "notes": [],
+      "inputTranslationHash": "c66d5fde8633a2d06e72739c9c0c4d015738d6037e91a470e043552fb03a8182"
     }
   },
   "publication": {

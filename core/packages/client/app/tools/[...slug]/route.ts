@@ -31,7 +31,7 @@ const CONTENT_TYPE: Record<string, string> = {
 };
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ slug: string[] }> },
 ) {
   const { slug } = await params;
@@ -81,7 +81,11 @@ export async function GET(
         },
       });
     }
-    const upstreamUrl = `https://static.cuberoot.me/tools/${rel}`;
+    // Catch-all params omit the trailing slash. Preserve it (and the query)
+    // when fetching directories, otherwise nginx's slash redirect loops here.
+    const requestUrl = new URL(req.url);
+    const upstreamPath = `/tools/${slug.map(encodeURIComponent).join('/')}${requestUrl.pathname.endsWith('/') ? '/' : ''}`;
+    const upstreamUrl = `https://static.cuberoot.me${upstreamPath}${requestUrl.search}`;
     try {
       // Vercel 函数 → 自有 static 源是一跳跨境 server-to-server 请求,会整段不通
       // (实测 undici 默认 10s connect timeout 全部打满)。正常命中在 1s 级,所以
@@ -90,7 +94,7 @@ export async function GET(
       // this exact upstream path, after the site-wide proxy verified the visitor.
       const needsProof = !path.extname(rel) || /\.html?$/i.test(rel);
       const serviceProof = needsProof
-        ? await createCompetitionProof(process.env.COMPETITION_ACCESS_SECRET ?? '', 'service', '/tools/' + rel)
+        ? await createCompetitionProof(process.env.COMPETITION_ACCESS_SECRET ?? '', 'service', upstreamPath + requestUrl.search)
         : '';
       const upstream = await fetch(upstreamUrl, {
         signal: AbortSignal.timeout(6000), redirect: 'manual',
@@ -100,6 +104,9 @@ export async function GET(
         const location = upstream.headers.get('location');
         const target = location ? new URL(location, upstreamUrl) : null;
         if (target?.origin === 'https://static.cuberoot.me' && target.pathname.startsWith('/tools/')) {
+          if (target.pathname + target.search === requestUrl.pathname + requestUrl.search) {
+            return new Response('upstream redirect loop', { status: 502, headers: { 'cache-control': 'no-store' } });
+          }
           return new Response(null, { status: 307, headers: { location: target.pathname + target.search, 'cache-control': 'no-store' } });
         }
         return new Response('upstream verification failed', { status: 403, headers: { 'cache-control': 'no-store' } });
@@ -118,7 +125,7 @@ export async function GET(
       // 挂的只有服务端这一跳。代价是该资源变跨域(必须同源的 worker 脚本仍会失败),
       // 但那种情况原本也是 502,不算回退。
       // no-store:这是瞬时故障兜底,绝不能让边缘把降级态缓存住。
-      console.error(`[tools] upstream fetch failed: ${upstreamUrl}`, err);
+      console.error('[tools] upstream fetch failed:', upstreamUrl, err);
       // 例外 cstimer:它把全部成绩存在 localStorage,换 origin = 用户看到"记录空了",
       // 且故障期间新记的成绩留在 static 那个 origin 上再也找不回来。宁可白屏也不能
       // 让数据分叉 —— 这条保持原来的 502。

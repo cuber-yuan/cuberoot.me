@@ -9,22 +9,22 @@
 //   1. 数据源是「主事件 + 重复规则」,格子里的块是客户端展开的(lib/calendar-store);
 //   2. 改重复事件一定先问作用域(此次 / 此后 / 全部),拖拽也一样 —— 不问就等于替用户
 //      做了不可逆的决定;
-//   3. 事件自带时区,顶栏可以切「显示时区」,两者不是一回事:出差时把显示时区切到当地,
+//   3. 事件自带时区,设置可以切「显示时区」,两者不是一回事:出差时把显示时区切到当地,
 //      北京时间的会自动落到当地钟点上,事件本身不动。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryState, parseAsString, parseAsStringEnum } from 'nuqs';
 import {
-  CalendarDays, ChevronLeft, ChevronRight, Download, Globe, Menu, Plus, Search, Settings,
-  Share2, Undo2, Upload, X,
+  CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Columns3, Download, List, Menu, Plus, Search, Settings,
+  Share2, Square, Undo2, Upload, X,
 } from '@app-foundation/icons/lucide';
-import HeaderToggles from '@/components/HeaderToggles';
 import AppLink from '@/components/AppLink';
 import { ListSelect } from '@/components/ListSelect';
 import { ClearButton } from '@/components/ClearButton';
 import { useAuthUser, nextQuery } from '@/lib/auth-store';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { usePopoverDismiss } from '@/hooks/usePopoverDismiss';
+import { useModalBackdrop } from '@/hooks/useModalDismiss';
+import { DateTime } from 'luxon';
 import { tr, useLang } from '@/i18n/tr';
 import { localZone, isValidZone, formatOffset, zoneOffsetMinutes } from '@cuberoot/shared/tz';
 import { eventsToIcs, type CalEvent, type CalendarImport, type EditScope } from '@cuberoot/shared/calendar';
@@ -39,13 +39,12 @@ import EventDialog, { type DialogDraft } from './_components/EventDialog';
 import ShareDialog from './_components/ShareDialog';
 import ScopePrompt from './_components/ScopePrompt';
 import Sidebar from './_components/Sidebar';
+import MobileMonthPicker from './_components/MobileMonthPicker';
 import CalendarSettings, { SETTINGS_SECTIONS } from './_components/CalendarSettings';
-import CompetitionCalendars from './_components/CompetitionCalendars';
-import CompetitionDialog from './_components/CompetitionDialog';
 import GoogleBackupPanel from './_components/GoogleBackupPanel';
 import { readGoogleBackup, reviewGoogleBackup, type GoogleImportReview } from '@/lib/google-calendar-backup';
+import { localizeCompName } from '@/lib/comp-localize';
 import { useWcaCalendar } from './_lib/useWcaCalendar';
-import { competitionCalendarEvent, type CalendarCompetition } from './_lib/competitions';
 import {
   dayKeyIn, dayStart, defaultEventEnd, formatClock, formatLongDate, rangeTitle, toFcEvents,
   VIEW_KEYS, VIEW_LABELS, isViewKey, type ViewKey,
@@ -72,8 +71,6 @@ export default function CalendarClient() {
   const theme = useEffectiveTheme();
   const eventColor = useCallback((key: string) => colorHex(key, theme), [theme]);
   const isMobile = useIsMobile(900);
-  // 900 是「侧栏改抽屉」的线;真正窄到一周排不开是 640(同 calendar.css 里那档)。
-  const isNarrow = useIsMobile(640);
   const gridRef = useRef<GridHandle>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -104,17 +101,15 @@ export default function CalendarClient() {
   const [dateParam, setDateParam] = useQueryState('d', parseAsString.withDefault(''));
   const view: ViewKey = isViewKey(viewParam) ? viewParam : 'timeGridWeek';
 
-  // 手机首屏落「日」:390px 上一周七列每列才 45 px,标题只能竖着排 —— Google 手机端
-  // 同样默认单日。只在 URL 自己没写 view 时改(用户切过就尊重他的选择),replace 不留
-  // 历史,免得返回键要按两下才离开日历。转屏后不再回头改。
+  // URL 未指定视图时使用保存的偏好，默认周视图；replace 不增加返回历史。
   const pickedStartView = useRef(false);
   useEffect(() => {
     if (!mounted || !store.ready || pickedStartView.current) return;
     pickedStartView.current = true;
     if (new URLSearchParams(window.location.search).has('view')) return;
-    const startView = isNarrow ? 'timeGridDay' : (isViewKey(prefs.view) ? prefs.view : 'timeGridWeek');
+    const startView = isViewKey(prefs.view) ? prefs.view : 'timeGridWeek';
     void setViewParam(startView, { history: 'replace' });
-  }, [mounted, store.ready, isNarrow, prefs.view, setViewParam]);
+  }, [mounted, store.ready, prefs.view, setViewParam]);
 
   // 首帧用 URL 里的日期,之后的跳转走 FullCalendar 自己的 API(不重建视图)。
   const initialDate = useMemo(() => {
@@ -126,14 +121,17 @@ export default function CalendarClient() {
   const [range, setRange] = useState<GridRange>({ start: Date.UTC(2000, 0, 1), end: Date.UTC(2000, 0, 2), anchor: Date.UTC(2000, 0, 1) });
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const sidebarBackdrop = useModalBackdrop(() => setSidebarOpen(false));
+  const [mobileSearch, setMobileSearch] = useState(false);
+  const mobileSearchRef = useRef<HTMLInputElement>(null);
+  const [pickerMonth, setPickerMonth] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState('');
+  const monthExpanded = isMobile && pickerMonth !== null;
+  const dataFrom = monthExpanded ? Math.min(range.start, dayStart(displayTz, pickerMonth)) : range.start;
+  const dataTo = monthExpanded ? Math.max(range.end, dayStart(displayTz, DateTime.fromISO(pickerMonth).plus({ months: 1 }).toISODate()!)) : range.end;
   const [settingsSection, setSettingsSection] = useQueryState('settings', parseAsStringEnum([...SETTINGS_SECTIONS]));
   const settingsOpen = settingsSection !== null;
   const closeSettings = useCallback(() => { void setSettingsSection(null); }, [setSettingsSection]);
-  const [tzOpen, setTzOpen] = useState(false);
-  // 顶栏两个浮层:点外面 / Esc 关。它们是 fixed 定位、挂在顶栏外面,所以触发钮要单独排除,
-  // 否则「点钮 → 先关再开」,看着就是按不动。
-  const tzBtnRef = useRef<HTMLButtonElement>(null);
-  const tzPopRef = useRef<HTMLDivElement>(null);
   const setBtnRef = useRef<HTMLButtonElement>(null);
   // 导入记录只在真去看设置时才拉 —— 首屏没人关心,不该多一个请求。
   useEffect(() => {
@@ -141,15 +139,14 @@ export default function CalendarClient() {
     void listImports().then(setImports).catch(() => { /* 没登录 / 离线时不打扰 */ });
   }, [settingsSection]);
 
-  usePopoverDismiss(tzOpen, () => setTzOpen(false), tzPopRef, tzBtnRef);
   const [query, setQuery] = useState('');
+  useEffect(() => {
+    if (mobileSearch && isMobile) mobileSearchRef.current?.focus();
+  }, [mobileSearch, isMobile]);
   const [dialog, setDialog] = useState<DialogDraft | null>(null);
-  const [competition, setCompetition] = useState<CalendarCompetition | null>(null);
   const todayKey = now ? dayKeyIn(displayTz, now) : '';
-  const wca = useWcaCalendar(mounted ? user?.wcaId ?? '' : '', todayKey);
-  const visibleCompetitions = useMemo(() => wca.competitions.filter((c) =>
-    c.source === 'attended' || c.source === 'registered' ? prefs.showWca : c.source === 'followed' ? prefs.showFollowed : prefs.showUpcoming,
-  ), [wca.competitions, prefs.showWca, prefs.showFollowed, prefs.showUpcoming]);
+  const owner = user?.wcaId || (user?.uid ? `u${user.uid}` : '');
+  const wca = useWcaCalendar(mounted && store.ready && store.loadedTo > 0 && me?.key === owner ? owner : '', todayKey, store.reload);
   const [shareOpen, setShareOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [scopeAsk, setScopeAsk] = useState<{ mode: 'edit' | 'delete'; run: (s: EditScope) => void } | null>(null);
@@ -170,9 +167,9 @@ export default function CalendarClient() {
 
   useEffect(() => {
     if (!store.ready) return;
-    void store.ensureRange(range.start, range.end);
+    void store.ensureRange(dataFrom, dataTo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.ready, range.start, range.end]);
+  }, [store.ready, dataFrom, dataTo]);
 
   useEffect(() => {
     if (!toast) return;
@@ -182,20 +179,28 @@ export default function CalendarClient() {
 
   // ── 展开成格子里的块 ────────────────────────────────────────────────────
   const occurrences = useMemo(() => expandRange({
-    events, hidden, from: range.start, to: range.end,
+    events, hidden, from: dataFrom, to: dataTo,
     meKey: me?.key, showDeclined: prefs.showDeclined,
-  }), [events, hidden, range.start, range.end, me?.key, prefs.showDeclined]);
+  }), [events, hidden, dataFrom, dataTo, me?.key, prefs.showDeclined]);
 
   const calColor = useCallback((id: number) => {
     const c = calendars.find((x) => x.id === id);
     return eventColor(c?.color ?? 'peacock');
   }, [calendars, eventColor]);
 
-  const fcEvents = useMemo(() => [
-    ...toFcEvents({ occurrences, calendarColor: calColor, colorHex: eventColor, readableInk, meKey: me?.key ?? '' }),
-    ...visibleCompetitions.filter((c) => c.start_date < dayKeyIn(displayTz, range.end) && c.end_date >= dayKeyIn(displayTz, range.start))
-      .map((c) => competitionCalendarEvent(c, isZh, theme)),
-  ], [occurrences, calColor, eventColor, me?.key, visibleCompetitions, displayTz, range.start, range.end, isZh, theme]);
+  const fcEvents = useMemo(() => {
+    const names = new Map(wca.competitions.map((c) => [
+      `https://www.worldcubeassociation.org/competitions/${c.id}`,
+      { raw: c.name, display: localizeCompName(c.id, c.name, isZh, { date: c.start_date }) },
+    ]));
+    return toFcEvents({
+      occurrences, calendarColor: calColor, colorHex: eventColor, readableInk, meKey: me?.key ?? '',
+      eventTitle: (e) => {
+        const match = e.description.split(/\r?\n/).map((line) => names.get(line)).find((name) => name?.raw === e.title);
+        return match?.display ?? e.title;
+      },
+    });
+  }, [occurrences, calColor, eventColor, me?.key, wca.competitions, isZh]);
 
   // 迷你月历上的「这天有事」小点:按显示时区归日。
   const busyDays = useMemo(() => {
@@ -236,11 +241,6 @@ export default function CalendarClient() {
   }, [defaultCalendarId, displayTz]);
 
   const openEventByKey = useCallback((key: string) => {
-    if (key.startsWith('wca:')) {
-      const found = wca.competitions.find((c) => c.id === key.slice(4));
-      if (found) setCompetition(found);
-      return;
-    }
     const parsed = parseOccurrenceKey(key);
     if (!parsed) return;
     const e = events.find((x) => x.id === parsed.id);
@@ -266,7 +266,7 @@ export default function CalendarClient() {
       readOnly: !!e.ownerKey && !!me?.key && e.ownerKey !== me.key,
       myRsvp: mine?.status,
     });
-  }, [events, me?.key, wca.competitions]);
+  }, [events, me?.key]);
 
   const openInvite = useCallback((e: CalEvent) => {
     openEventByKey(`${e.id}:${e.start}`);
@@ -459,6 +459,7 @@ export default function CalendarClient() {
 
   // ── 导航 ────────────────────────────────────────────────────────────────
   const gotoDate = useCallback((ms: number) => {
+    setSelectedDay(dayKeyIn(displayTz, ms));
     gridRef.current?.gotoDate(ms);
     void setDateParam(dayKeyIn(displayTz, ms));
   }, [displayTz, setDateParam]);
@@ -498,15 +499,18 @@ export default function CalendarClient() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const el = e.target as HTMLElement | null;
+      if (e.key === 'Escape' && mobileSearch) { setMobileSearch(false); setQuery(''); return; }
       if (e.defaultPrevented || e.isComposing || el?.isContentEditable || (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (dialog || competition || shareOpen || scopeAsk || settingsOpen || tzOpen) return;
+      if (dialog || shareOpen || scopeAsk || settingsOpen) return;
       if (el?.closest('[role=dialog], .list-select')) return;
       // 窄屏的侧栏是覆盖式抽屉,开着时汉堡钮被它盖住 —— Esc 得能退出来(遮罩也能点关)。
       if (e.key === 'Escape' && sidebarOpen) { setSidebarOpen(false); return; }
+      if (e.key === 'Escape' && monthExpanded) { setPickerMonth(null); return; }
+      if (sidebarOpen || mobileSearch) return;
       if (!prefs.keyboardShortcuts) return;
       if (e.key === '?') { e.preventDefault(); void setSettingsSection('shortcuts'); return; }
-      if (e.key === '/') { e.preventDefault(); searchRef.current?.focus(); return; }
+      if (e.key === '/') { e.preventDefault(); if (isMobile) setMobileSearch(true); else searchRef.current?.focus(); return; }
       const map: Record<string, ViewKey> = {
         d: 'timeGridDay', x: 'fourDay', w: 'timeGridWeek',
         m: 'dayGridMonth', y: 'multiMonthYear', a: 'listMonth',
@@ -523,7 +527,7 @@ export default function CalendarClient() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [dialog, competition, shareOpen, scopeAsk, sidebarOpen, settingsOpen, tzOpen, prefs.keyboardShortcuts, setSettingsSection, setViewParam, openCreateNow]);
+  }, [dialog, shareOpen, scopeAsk, sidebarOpen, settingsOpen, prefs.keyboardShortcuts, setSettingsSection, setViewParam, openCreateNow, mobileSearch, monthExpanded, isMobile]);
 
   const zoneItems = useMemo(() => zoneOptions().map((z) => ({
     value: z.tz,
@@ -533,13 +537,23 @@ export default function CalendarClient() {
 
   // ── 未登录 ──────────────────────────────────────────────────────────────
   const loginHref = `/account${nextQuery(`${lang === 'zh' ? '/zh' : ''}/calendar`)}`;
+  const rangeStartKey = dayKeyIn(displayTz, range.start);
+  const rangeEndKey = dayKeyIn(displayTz, range.end);
+  const focusKey = selectedDay >= rangeStartKey && selectedDay < rangeEndKey ? selectedDay
+    : todayKey >= rangeStartKey && todayKey < rangeEndKey ? todayKey : dayKeyIn(displayTz, range.anchor);
+  const mobileMonthDate = DateTime.fromISO(pickerMonth ?? focusKey);
+  const mobileMonthLabel = tr({ zh: `${mobileMonthDate.month}月`, en: mobileMonthDate.setLocale('en').toFormat('LLLL') });
+  const mobileViews = [
+    { key: 'listMonth', icon: List }, { key: 'timeGridDay', icon: Square },
+    { key: 'threeDay', icon: Columns3 }, { key: 'timeGridWeek', icon: Columns3 },
+    { key: 'dayGridMonth', icon: CalendarDays },
+  ] as const;
   if (mounted && !user) {
     return (
       <div className="cal-page">
         <div className="cal-topbar">
           <h1 className="cal-brand"><CalendarDays size={20} aria-hidden />{tr({ zh: '日历', en: 'Calendar' })}</h1>
           <span className="cal-foot-gap" />
-          <HeaderToggles />
         </div>
         <div className="cal-empty">
           <p>{tr({ zh: '登录后就能用自己的日历,并按需公开分享。', en: 'Log in to keep your own calendar and share it when you want to.' })}</p>
@@ -552,8 +566,31 @@ export default function CalendarClient() {
   }
 
   return (
-    <div className={`cal-page${sidebarOpen ? ' sidebar-open' : ''}${prefs.sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
-      <div className="cal-topbar">
+    <div className={`cal-page${settingsOpen ? ' cal-page--settings' : ''}${sidebarOpen ? ' sidebar-open' : ''}${prefs.sidebarCollapsed ? ' sidebar-collapsed' : ''}${mobileSearch && isMobile ? ' cal-page--search' : ''}${monthExpanded ? ' cal-page--month-expanded' : ''}`}>
+      <div className="cal-mobile-topbar" inert={isMobile && sidebarOpen}>
+        {mobileSearch ? <>
+          {/* allow-manual-search: 仅关闭搜索页面，结果已由输入实时更新。 */}
+          <button type="button" className="cal-mobile-action cal-mobile-glass cal-mobile-back" aria-label={tr({ zh: '关闭搜索', en: 'Close search' })} onClick={() => { setMobileSearch(false); setQuery(''); }}><ChevronLeft size={26} aria-hidden /></button>
+          <input ref={mobileSearchRef} className="cal-mobile-search-input" type="search" value={query} placeholder={tr({ zh: '搜索', en: 'Search' })} aria-label={tr({ zh: '搜索日程', en: 'Search events' })} onChange={(e) => setQuery(e.target.value)} />
+          {query && <ClearButton onClick={() => setQuery('')} />}
+        </> : <>
+          <button type="button" className="cal-mobile-action cal-mobile-glass cal-mobile-menu" aria-label={tr({ zh: '侧栏', en: 'Sidebar' })} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><Menu size={25} aria-hidden /></button>
+          <button type="button" className="cal-mobile-action cal-mobile-month-toggle" aria-expanded={monthExpanded} aria-controls="cal-mobile-month" onClick={() => setPickerMonth(monthExpanded ? null : `${focusKey.slice(0, 7)}-01`)}>
+            <span>{mounted ? mobileMonthLabel : ''}</span><ChevronDown size={17} aria-hidden />
+          </button>
+          <div className="cal-mobile-glass cal-mobile-tools">
+            {/* allow-manual-search: 仅打开搜索页面，输入 onChange 实时筛选日程。 */}
+            <button type="button" className="cal-mobile-action cal-mobile-tool" aria-label={tr({ zh: '搜索日程', en: 'Search events' })} onClick={() => { setMobileSearch(true); setPickerMonth(null); }}><Search size={25} aria-hidden /></button>
+            <button type="button" className="cal-mobile-action cal-mobile-tool cal-mobile-today" aria-label={tr({ zh: '今天', en: 'Today' })} onClick={() => { if (now) gotoDate(now); setPickerMonth(null); }}><span>{todayKey ? Number(todayKey.slice(-2)) : ''}</span></button>
+          </div>
+          <AppLink href="/account" className="cal-mobile-avatar" prefetch={false} aria-label={tr({ zh: '账号', en: 'Account' })}>
+            {user?.avatar ? <img src={user.avatar} alt="" /> : <span>{user?.name?.slice(0, 1) || 'C'}</span>}
+          </AppLink>
+        </>}
+      </div>
+      {monthExpanded && <MobileMonthPicker inert={sidebarOpen} monthKey={pickerMonth} selectedKey={focusKey} todayKey={todayKey} tz={displayTz} weekStart={prefs.weekStart} events={fcEvents} onMonth={setPickerMonth}
+        onPick={(key) => { gotoDate(dayStart(displayTz, key)); setPickerMonth(null); }} />}
+      <div className="cal-topbar cal-desktop-topbar">
         <button
           type="button"
           className="cal-icon-btn cal-menu-btn"
@@ -605,23 +642,12 @@ export default function CalendarClient() {
         />
 
         <button
-          ref={tzBtnRef}
-          type="button"
-          className="cal-icon-btn"
-          aria-label={tr({ zh: '显示时区', en: 'Display time zone' })}
-          aria-expanded={tzOpen}
-          title={zoneLabel(displayTz, isZh)}
-          onClick={() => { closeSettings(); setTzOpen((v) => !v); }}
-        >
-          <Globe size={17} aria-hidden />
-        </button>
-        <button
           ref={setBtnRef}
           type="button"
           className="cal-icon-btn"
           aria-label={tr({ zh: '设置', en: 'Settings' })}
           aria-expanded={settingsOpen}
-          onClick={() => { setTzOpen(false); void setSettingsSection(settingsOpen ? null : 'general'); }}
+          onClick={() => { void setSettingsSection(settingsOpen ? null : 'general'); }}
         >
           <Settings size={17} aria-hidden />
         </button>
@@ -633,43 +659,7 @@ export default function CalendarClient() {
         >
           <Share2 size={17} aria-hidden />
         </button>
-        <HeaderToggles />
       </div>
-
-      {tzOpen && (
-        <div className="cal-pop cal-pop-tz" data-site-surface="popover" ref={tzPopRef}>
-          <div className="cal-pop-head">
-            <span className="cal-field-label">{tr({ zh: '显示时区', en: 'Display time zone' })}</span>
-            <button
-              type="button"
-              className="cal-icon-btn"
-              onClick={() => setTzOpen(false)}
-              aria-label={tr({ zh: '关闭', en: 'Close' })}
-            >
-              <X size={16} aria-hidden />
-            </button>
-          </div>
-          <ListSelect
-            items={zoneItems}
-            value={displayTz}
-            allLabel={tr({ zh: '本机时区', en: 'Device zone' })}
-            clearable={false}
-            searchable
-            maxVisible={80}
-            searchPlaceholder={tr({ zh: '搜城市 / 时区', en: 'Search city or zone' })}
-            onChange={(tzNext) => { store.setPrefs({ tz: tzNext }); setTzOpen(false); }}
-          />
-          <p className="cal-hint">
-            {tr({
-              zh: '只改「怎么摆」,不改日程本身;出差时切到当地看最方便。',
-              en: 'Changes how events are laid out, not the events themselves — handy when travelling.',
-            })}
-          </p>
-          <AppLink className="cal-link-btn" href="/timezone" prefetch={false}>
-            {tr({ zh: '打开时区换算', en: 'Open the time zone converter' })}
-          </AppLink>
-        </div>
-      )}
 
       {settingsSection && (
         <CalendarSettings
@@ -779,6 +769,25 @@ export default function CalendarClient() {
 
       <div className="cal-body">
         <Sidebar
+          mobile={isMobile}
+          open={sidebarOpen}
+          mobileHeader={<div className="cal-mobile-sidebar-head">
+            <h2>CubeRoot {tr({ zh: '日历', en: 'Calendar' })}</h2>
+            <nav className="cal-mobile-views" aria-label={tr({ zh: '日历视图', en: 'Calendar view' })}>
+              {mobileViews.map(({ key, icon: Icon }) => <button key={key} type="button" className={`cal-mobile-view${view === key ? ' is-active' : ''}`} aria-pressed={view === key}
+                onClick={() => { void setViewParam(key); store.setPrefs({ view: key }); setSidebarOpen(false); }}>
+                <Icon size={21} aria-hidden />{tr(VIEW_LABELS[key])}
+              </button>)}
+            </nav>
+            <AppLink href="/account" className="cal-mobile-account" prefetch={false}>
+              <span className="cal-mobile-avatar">{user?.avatar ? <img src={user.avatar} alt="" /> : user?.name?.slice(0, 1)}</span>
+              <span>{user?.name}</span>
+            </AppLink>
+          </div>}
+          mobileFooter={<div className="cal-mobile-sidebar-foot">
+            <button type="button" className="cal-mobile-footer-action" onClick={() => { setSidebarOpen(false); setPickerMonth(null); void setSettingsSection('general'); }}><Settings size={22} aria-hidden />{tr({ zh: '设置', en: 'Settings' })}</button>
+            <button type="button" className="cal-mobile-footer-action" onClick={() => { setSidebarOpen(false); setShareOpen(true); }}><Share2 size={22} aria-hidden />{tr({ zh: '对外展示', en: 'Share' })}</button>
+          </div>}
           calendars={calendars}
           hidden={hidden}
           anchor={range.anchor}
@@ -797,23 +806,18 @@ export default function CalendarClient() {
           onRecolor={(id, color) => void store.patchCalendar(id, { color }).catch((e: Error) => setToast(e.message))}
           onRemove={(id) => void store.removeCalendar(id).catch((e: Error) => setToast(e.message))}
           onOpenInvite={openInvite}
-        >
-          <CompetitionCalendars wcaId={user?.wcaId ?? ''} competitions={wca.competitions} loading={wca.loading} incomplete={wca.incomplete} prefs={prefs} onPrefs={store.setPrefs} onRefresh={wca.refresh}
-            onPick={(c) => { gotoDate(dayStart(displayTz, c.start_date)); setCompetition(c); if (isMobile) setSidebarOpen(false); }} />
-        </Sidebar>
+        />
 
-        {/* 窄屏抽屉的遮罩:抽屉盖住了汉堡钮,没有它就只能靠选日期才关得掉。
-            用真 <button> 而不是 <div onClick>(iOS Safari 上 div 的 tap 不可靠)。 */}
+        {/* 统一遮罩手势：从侧栏内部拖到遮罩不会误关闭。 */}
         {sidebarOpen && (
-          <button
-            type="button"
+          <div
             className="cal-scrim"
-            aria-label={tr({ zh: '关闭侧栏', en: 'Close sidebar' })}
-            onClick={() => setSidebarOpen(false)}
+            aria-hidden
+            {...sidebarBackdrop}
           />
         )}
 
-        <main className="cal-main">
+        <main className="cal-main" inert={isMobile && sidebarOpen}>
           {mounted && (
             <CalendarGrid
               ref={gridRef}
@@ -829,7 +833,9 @@ export default function CalendarClient() {
               hour24={prefs.hour24}
               weekStart={prefs.weekStart}
               weekends={prefs.weekends}
-              weekNumbers={prefs.weekNumbers}
+              weekNumbers={isMobile || prefs.weekNumbers}
+              mobile={isMobile}
+              headerExpanded={monthExpanded}
               editable
               onSelect={openCreate}
               onDayLink={onDayLink}
@@ -854,7 +860,7 @@ export default function CalendarClient() {
                     <button
                       type="button"
                       className="cal-result-row"
-                      onClick={() => { gotoDate(o.start); openEventByKey(o.key); setQuery(''); }}
+                      onClick={() => { gotoDate(o.start); openEventByKey(o.key); setQuery(''); setMobileSearch(false); }}
                     >
                       <span
                         className="cal-dot"
@@ -881,13 +887,12 @@ export default function CalendarClient() {
       <button
         type="button"
         className="cal-fab"
+        inert={isMobile && sidebarOpen}
         aria-label={tr({ zh: '新建日程', en: 'New event' })}
         onClick={openCreateNow}
       >
         <Plus size={22} aria-hidden />
       </button>
-
-      {competition && <CompetitionDialog key={competition.id} competition={competition} onClose={() => setCompetition(null)} />}
 
       {dialog && (
         <EventDialog
@@ -929,6 +934,10 @@ export default function CalendarClient() {
       )}
 
       {toast && <div className="cal-toast" role="status">{toast}</div>}
+      {wca.incomplete && !wca.loading && !store.error && !toast && <div className="cal-toast is-error" role="status">
+        {tr({ zh: '部分比赛未能加入日程', en: 'Some competitions could not be added' })}
+        <button type="button" className="cal-link-btn" onClick={wca.refresh}>{tr({ zh: '重试', en: 'Retry' })}</button>
+      </div>}
       {store.error && !toast && <div className="cal-toast is-error" role="status">{store.error}</div>}
     </div>
   );

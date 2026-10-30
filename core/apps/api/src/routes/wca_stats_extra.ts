@@ -26,6 +26,8 @@
  */
 import { Hono } from 'hono';
 import { query } from '../db/connection.js';
+import { wcaRelationFilter } from '../utils/wca_relation_filters.js';
+import { hasPersonLiveResult } from '../utils/person_live_result.js';
 import { getOverlayEntries, overlayDeltaPure, type OverlayEntry } from '../utils/wca_live_overlay.js';
 import { inferredOverlayEntries } from './cubing_live.js';
 import {
@@ -409,6 +411,8 @@ wcaStatsExtraRoutes.get('/wca/all-results', async (c) => {
 
   const where: string[] = [`t.event_id = ?`, `t.is_avg = ?`];
   const params: unknown[] = [event, type === 'average'];
+  const relation = wcaRelationFilter(key => c.req.query(key), 't.wca_id', [event]);
+  if (relation.active) { where.push(relation.sql.slice(5)); params.push(...relation.params); }
 
   if (cn.continentId) {
     where.push(`t.person_country_id IN (SELECT id FROM wca_countries WHERE continent_id = ?)`);
@@ -444,7 +448,7 @@ wcaStatsExtraRoutes.get('/wca/all-results', async (c) => {
     const personIds = personRows.map(r => r.wca_id);
     const compIds = compRows.map(r => r.id);
     if (personIds.length === 0 && compIds.length === 0) {
-      c.header('Cache-Control', CACHE_HEADER);
+      c.header('Cache-Control', relation.active ? 'no-store' : CACHE_HEADER);
       return c.json({ event, type, country: cn.id, year, month, q, nameMode, page, size, total: 0, rows: [] });
     }
     const conds: string[] = [];
@@ -513,7 +517,7 @@ wcaStatsExtraRoutes.get('/wca/all-results', async (c) => {
       ),
     ]);
     const total = totalRow[0] ? parseInt(totalRow[0].n, 10) : 0;
-    c.header('Cache-Control', CACHE_HEADER);
+    c.header('Cache-Control', relation.active ? 'no-store' : CACHE_HEADER);
     return c.json({
       event, type, country: cn.id, year, month, q, nameMode, basis, group, gender, page, size, total,
       rows: rows.map(r => ({
@@ -567,7 +571,7 @@ wcaStatsExtraRoutes.get('/wca/all-results', async (c) => {
   ]);
   const total = totalRow[0] ? parseInt(totalRow[0].n, 10) : 0;
 
-  c.header('Cache-Control', CACHE_HEADER);
+  c.header('Cache-Control', relation.active ? 'no-store' : CACHE_HEADER);
   return c.json({
     event, type, country: cn.id, year, month, q, nameMode, gender, page, size, total,
     rows: rows.map((r, i) => ({
@@ -1457,6 +1461,8 @@ wcaStatsExtraRoutes.get('/wca/sum-of-ranks', async (c) => {
   // 构造 WHERE(主查询)
   const where: string[] = [`pr.is_avg = ?`];
   const params: unknown[] = [isAvg];
+  const relation = wcaRelationFilter(key => c.req.query(key), 'pr.wca_id', eventIdxs ? eventIdxs.map(i => RANK_EVENTS[i]) : ACTIVE_EVENTS);
+  if (relation.active) { where.push(relation.sql.slice(5)); params.push(...relation.params); }
   if (isContinentMode) { where.push(`pr.continent_id = ?`); params.push(cn.continentId); }
   else if (isCountryMode) { where.push(`pr.country_id = ?`); params.push(cn.id); }
   if (hidePodium) {
@@ -1508,7 +1514,7 @@ wcaStatsExtraRoutes.get('/wca/sum-of-ranks', async (c) => {
     );
     const total = totalRow[0] ? parseInt(totalRow[0].n, 10) : 0;
 
-    c.header('Cache-Control', CACHE_HEADER);
+    c.header('Cache-Control', relation.active ? 'no-store' : CACHE_HEADER);
     return c.json({
       type, country: cn.continentId ?? cn.id, hidePodium, page, size, total,
       events: RANK_EVENTS,
@@ -1581,7 +1587,7 @@ wcaStatsExtraRoutes.get('/wca/sum-of-ranks', async (c) => {
   );
   const total = totalRow[0] ? parseInt(totalRow[0].n, 10) : 0;
 
-  c.header('Cache-Control', CACHE_HEADER);
+  c.header('Cache-Control', relation.active ? 'no-store' : CACHE_HEADER);
   return c.json({
     type, country: cn.continentId ?? cn.id, hidePodium, page, size, total,
     events: RANK_EVENTS,
@@ -2189,7 +2195,8 @@ wcaStatsExtraRoutes.get('/wca/person-live-results', async (c) => {
     );
 
     const compsMap = new Map<string, { id: string; name: string; city: string; country_iso2: string; start_date: string; end_date: string }>();
-    const results = rows.map((r, i) => {
+    // Existing cached roster rows must disappear even before the next prewarm.
+    const results = rows.filter(r => hasPersonLiveResult(r.best, r.average, r.attempts)).map((r, i) => {
       if (!compsMap.has(r.comp_id)) {
         compsMap.set(r.comp_id, {
           id: r.comp_id, name: r.comp_name, city: '', country_iso2: '',

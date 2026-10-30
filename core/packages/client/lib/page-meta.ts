@@ -41,6 +41,10 @@ const SEP = ' — ';
 const SHARE_IMAGE = '/icons/CubeRoot.png';
 
 export const PAGE_META: Record<string, PageMetaEntry> = {
+  'admin/careers': { title: { zh: '招聘申请', en: 'Career applications' } },
+  'careers': { title: { zh: '加入我们', en: 'Careers' }, description: { zh: '查看 CubeRoot 发布的职位。', en: 'Explore open positions at CubeRoot.' } },
+  'chat': { title: { zh: '聊天', en: 'Chat' }, description: { zh: '与 CubeRoot 对话，查询成绩、寻找工具、学习魔方。', en: 'Chat with CubeRoot to explore results, find tools and learn cubing.' } },
+  'chat/share': { title: { zh: '分享的回答', en: 'Shared response' } },
   'dev/continuous-corners': {
     title: { zh: '连续圆角：几何与实现', en: 'Continuous Corners: Geometry and Implementation' },
     description: {
@@ -158,6 +162,10 @@ export const PAGE_META: Record<string, PageMetaEntry> = {
   'admin/disk': {
     title: { zh: '磁盘空间', en: 'Disk space' },
     description: { zh: '管理员查看服务器磁盘容量与目录占用。', en: 'Administrator view of server disk capacity and directory usage.' },
+  },
+  'admin/releases': {
+    title: { zh: '应用版本管理', en: 'App releases' },
+    description: { zh: '管理员发布应用版本并查看状态。', en: 'Publish app releases and check their status.' },
   },
   'vault': {
     title: { zh: '私密资料库', en: 'Private Vault' },
@@ -451,6 +459,10 @@ export const PAGE_META: Record<string, PageMetaEntry> = {
   'dev/ops': { title: { zh: '运维', en: 'Ops' } },
   'dev/schema': { title: { zh: '数据库 Schema', en: 'Database schema' } },
   'dev/solvers': { title: { zh: '求解器', en: 'Solvers' } },
+  'dev/solvers/xcross-ranking': {
+    title: { zh: 'XC / XXC 结构排序实验', en: 'XC / XXC Structural Ranking Experiment' },
+    description: { zh: '比较原排序与实验排序，逐步查看解法、结构代价和候选搜索方法。包含可输入打乱的现场对照及算法局限。', en: 'Compare baseline and experimental rankings with solution playback, structural costs and bounded candidate search. Includes live scramble comparison and explicit limitations.' },
+  },
   'dev/solvers/compare': {
     title: { zh: '三阶最优求解器 Benchmark', en: 'Optimal 3×3 Solver Benchmark' },
     description: { zh: '三阶 HTM 最优求解器本机实测：Opt8 使用 8 GB 档、100 条打乱；Opt9 使用 16 GB 档、1000 条打乱，按测试组与运行环境分别比较。', en: 'Local optimal 3×3 HTM solver benchmarks: Opt8 at 8 GB with 100 scrambles and Opt9 at 16 GB with 1000 scrambles, compared within each test group and runtime.' },
@@ -617,6 +629,13 @@ export const PAGE_META: Record<string, PageMetaEntry> = {
     },
   },
   'mosaic-about': { title: { zh: '魔方马赛克说明', en: 'Mosaic Guide' } },
+  'lettering': {
+    title: { zh: '魔方拼字', en: 'Cube Lettering' },
+    description: {
+      zh: '用五阶和七阶魔方生成简单汉字的像素效果图。',
+      en: 'Create pixel-style Chinese character previews on 5×5 and 7×7 cubes.',
+    },
+  },
   'nemesizer': { title: { zh: '宿敌', en: 'Nemesizer' } },
   'nemesizer-about': { title: { zh: 'Nemesizer 说明', en: 'Nemesizer Guide' } },
   'notifications': { title: { zh: '消息', en: 'Notifications' } },
@@ -698,6 +717,13 @@ export const PAGE_META: Record<string, PageMetaEntry> = {
     description: {
       zh: 'WCA 规则术语、规范句式、易混译法及条款双语对照，提供 Markdown 下载供翻译与学习使用。',
       en: 'WCA terminology, regulatory phrasing, translation pitfalls and aligned English–Chinese clauses, with Markdown downloads.',
+    },
+  },
+  'regulation/translation/search': {
+    title: { zh: 'WCA 官方译文查询', en: 'WCA Official Translation Search' },
+    description: {
+      zh: '按中文、英文或缩写查询 WCA 官方译文，查看中英对照、语境和官方出处。',
+      en: 'Search WCA translations by Chinese, English or abbreviation, with paired text, context and official sources.',
     },
   },
   'regulation/post': { title: { zh: '公告', en: 'Posts' } },
@@ -825,8 +851,8 @@ export const PAGE_META: Record<string, PageMetaEntry> = {
   'timer': {
     title: { zh: '计时器', en: 'Timer' },
     description: {
-      zh: '速拧计时器:WCA 标准打乱、智能魔方支持、分步分析与云端备份。',
-      en: 'Speedcubing timer with WCA-standard scrambles, smart-cube support, step-by-step analysis and cloud backup.',
+      zh: '速拧计时器：记录日常练习的还原成绩，查看平均成绩；支持 WCA 标准打乱、智能魔方、分步分析与云端备份。',
+      en: 'Record daily practice solve times and view averages. Includes WCA-standard scrambles, smart-cube support, step-by-step analysis and cloud backup.',
     },
   },
   'timer/marks': { title: { zh: '打乱足迹', en: 'Scramble Marks' } },
@@ -931,6 +957,7 @@ export const PAGE_META: Record<string, PageMetaEntry> = {
   'wca/records': { title: { zh: '纪录', en: 'Records' } },
   'wca/result-watch': { title: { zh: '成绩变更监控', en: 'Result Change Monitor' } },
   'wca/results': { title: { zh: '排名', en: 'Rankings' } },
+  'wca/teams': { title: { zh: '厂商与战队', en: 'Brands & Teams' }, description: { zh: '查看已登记厂商、旗下战队与选手名单。', en: 'Browse registered brands, teams and their members.' } },
   'wca/success-rate': { title: { zh: '完成率', en: 'Success Rate' } },
   'why-cube': {
     title: { zh: '玩魔方的好处', en: 'Why Learn the Cube' },

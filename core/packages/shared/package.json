@@ -33,6 +33,7 @@
       "./meeting": "runtime-neutral",
       "./chat": "runtime-neutral",
       "./friends": "runtime-neutral",
+      "./workspace-planning": "runtime-neutral",
       "./competition-access": "runtime-neutral",
       "./dev-preview": "runtime-neutral",
       "./remote-access": "runtime-neutral",
@@ -114,6 +115,7 @@
       "./mobile-embed": "runtime-neutral",
       "./result-penalty": "runtime-neutral",
       "./recon-ground-truth": "runtime-neutral",
+      "./recon-capture": "runtime-neutral",
       "./recon-completion": "runtime-neutral",
       "./fto-notation": "runtime-neutral",
       "./recon-slice": "runtime-neutral",
@@ -123,6 +125,7 @@
       "./comp-city-identity": "runtime-neutral",
       "./record-places": "runtime-neutral",
       "./persons-index": "mixed",
+      "./stats-base": "mixed",
       "./wca-search": "mixed",
       "./wca-round": "runtime-neutral",
       "./wca-comp-link": "runtime-neutral",
@@ -143,7 +146,9 @@
       "./wca-format-result": "runtime-neutral",
       "./record-news": "runtime-neutral",
       "./wca-records": "runtime-neutral",
+      "./wb": "runtime-neutral",
       "./page-share": "runtime-neutral",
+      "./careers": "runtime-neutral",
       "./contact": "runtime-neutral",
       "./cube-unfolded-svg": "runtime-neutral",
       "./nnn-sim": "runtime-neutral",
@@ -346,6 +351,10 @@
     "./friends": {
       "node": "./dist/friends.js",
       "default": "./src/friends.ts"
+    },
+    "./workspace-planning": {
+      "node": "./dist/workspace-planning.js",
+      "default": "./src/workspace-planning.ts"
     },
     "./competition-access": {
       "node": "./dist/competition-access.js",
@@ -618,6 +627,10 @@
       "node": "./dist/deskpet.js",
       "default": "./src/deskpet.ts"
     },
+    "./wb": {
+      "node": "./dist/wb.js",
+      "default": "./src/wb.ts"
+    },
     "./auth/web-session": {
       "node": "./dist/auth/web_session.js",
       "default": "./src/auth/web_session.ts"
@@ -637,6 +650,10 @@
     "./recon-ground-truth": {
       "node": "./dist/recon_ground_truth.js",
       "default": "./src/recon_ground_truth.ts"
+    },
+    "./recon-capture": {
+      "node": "./dist/recon_capture.js",
+      "default": "./src/recon_capture.ts"
     },
     "./recon-completion": {
       "node": "./dist/recon_completion.js",
@@ -666,6 +683,7 @@
     "./comp-city-identity": "./src/comp_city_identity.ts",
     "./record-places": "./src/record_places.ts",
     "./persons-index": "./src/api/persons_index.ts",
+    "./stats-base": "./src/api/stats-base.ts",
     "./wca-search": {
       "node": "./dist/api/wca_search.js",
       "default": "./src/api/wca_search.ts"
@@ -726,6 +744,10 @@
       "default": "./src/wca_records.ts"
     },
     "./page-share": "./src/page_share.ts",
+    "./careers": {
+      "node": "./dist/careers.js",
+      "default": "./src/careers.ts"
+    },
     "./contact": {
       "node": "./dist/contact.js",
       "default": "./src/contact.ts"
@@ -910,7 +932,7 @@
     "typescript": "~5.7.0"
   },
   "dependencies": {
-    "sanitize-html": "^2.18.0",
+    "sanitize-html": "^2.18.1",
     "sql.js": "^1.14.2",
     "@cuberoot/puzzle-solvers": "workspace:*",
     "axios": "^1.20.0",

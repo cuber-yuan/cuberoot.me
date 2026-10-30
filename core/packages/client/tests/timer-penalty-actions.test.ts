@@ -46,3 +46,27 @@ it.each(['en', 'zh'] as const)('shares controlled penalty selection and input-sa
   expect(onChange).toHaveBeenCalledOnce();
   expect(buttons.every((button) => button.disabled)).toBe(true);
 });
+
+it('allows local penalties to switch exclusively and clear back to OK', async () => {
+  const onChange = vi.fn();
+  const draw = (value: NetPenalty) => act(async () => root.render(
+    createElement(TimerPenaltyActions, { language: 'zh', value, toggleOnly: true, onChange }),
+  ));
+  await draw('ok');
+  const buttons = [...host.querySelectorAll('button')];
+  expect(buttons.map(button => button.textContent)).toEqual(['+2', 'DNF']);
+  for (const value of ['+2', 'dnf'] as const) {
+    await draw('ok');
+    expect(buttons.map(button => button.getAttribute('aria-pressed'))).toEqual(['false', 'false']);
+    const index = value === '+2' ? 0 : 1;
+    await act(async () => buttons[index].click());
+    expect(onChange).toHaveBeenLastCalledWith(value);
+    await draw(value);
+    expect(buttons.map(button => button.getAttribute('aria-pressed')))
+      .toEqual(buttons.map((_, i) => String(i === index)));
+    await act(async () => buttons[1 - index].click());
+    expect(onChange).toHaveBeenLastCalledWith(value === '+2' ? 'dnf' : '+2');
+    await act(async () => buttons[index].click());
+    expect(onChange).toHaveBeenLastCalledWith('ok');
+  }
+});

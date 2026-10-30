@@ -73,6 +73,14 @@ export const UCATS: { id: UtilCat; zh: string; en: string }[] = [
 
 export const CATALOG: UtilEntry[] = [
   {
+    name: 'useAssistantWorkspace',
+    sig: 'useAssistantWorkspace(owner: string)',
+    imp: "import { useAssistantWorkspace } from '@/hooks/useAssistantWorkspace';",
+    category: 'hook',
+    zh: '订阅当前账号的助手聊天工作区。',
+    en: 'Subscribe to the current account’s assistant conversation workspace.',
+  },
+  {
     name: 'useAssistantThinkingMode',
     sig: 'useAssistantThinkingMode(): readonly [AssistantThinkingMode, (value: AssistantThinkingMode) => void]',
     imp: "import { useAssistantThinkingMode } from '@/hooks/useAssistantThinkingMode';",
@@ -265,8 +273,8 @@ export const CATALOG: UtilEntry[] = [
     sig: 'useDeskPetVisible(): readonly [boolean, (visible: boolean) => void]',
     imp: "import { useDeskPetVisible } from '@/hooks/useDeskPetVisible';",
     category: 'hook',
-    zh: '桌宠显示偏好，默认开启，保存在当前浏览器并同步页面与标签页。',
-    en: 'Desk-pet visibility, enabled by default, persisted in the current browser and synced across pages and tabs.',
+    zh: '桌宠全局显示偏好；训练页默认隐藏并单独记录本页选择。关闭时先播放退场，普通页面偏好保存在当前浏览器并同步标签页。',
+    en: 'Global pet visibility with separate, initially hidden choices on training pages. Hiding waits for the exit animation; the normal-page preference persists in this browser and syncs across tabs.',
   },
   {
     name: 'useHomeBackgroundChoice',
@@ -320,6 +328,24 @@ export const CATALOG: UtilEntry[] = [
     category: 'hook',
     zh: '当前 URL 的 pathname+search+hash,给「指向当前页」的绝对链接用(跨 origin 的环境切换、分享链接等,这类 href 用不了 AppLink)。存在的理由:nuqs 默认 shallow 写(replaceState)只改地址栏、不过 Next 路由,usePathname 不会重渲染 —— 常驻 layout 的 chrome 在 render body 里读 window.location 会把 ?q=... 这类页内状态漏在挂载那一刻的快照外(通知条的本地/线上切换就踩过)。刷新时机是 document 级捕获 pointerdown / focusin:激活链接前必然先经过其一,且 pointerdown 是 discrete event(React 同步 flush),所以中键 / Ctrl 点新开标签拿到的也是最新 URL。',
     en: "Current pathname+search+hash, for absolute links pointing at the current page (cross-origin env switch, share links — where AppLink can't be used). Needed because nuqs shallow writes (replaceState) never re-render layout-level chrome, so a render-time window.location read freezes at mount and drops in-page state like ?q=. Refreshes on captured pointerdown / focusin, which always precede activating a link — so middle-click / Ctrl-click open the up-to-date URL too.",
+  },
+  {
+    name: 'useAlgViewTransition',
+    sig: 'useAlgViewTransition(root, layout): (change: () => void) => void',
+    imp: "import { useAlgViewTransition } from '@/hooks/useAlgViewTransition';",
+    usage: 'const transition = useAlgViewTransition(root, layout); transition(updateLayout);',
+    category: 'hook',
+    zh: '公式列表布局切换时协调共享元素过渡。',
+    en: 'Coordinates shared-element transitions when the algorithm list layout changes.',
+  },
+  {
+    name: 'useAlgCaseEntryTransition',
+    sig: 'useAlgCaseEntryTransition(root, id, enabled): void',
+    imp: "import { useAlgCaseEntryTransition } from '@/hooks/useAlgViewTransition';",
+    usage: 'useAlgCaseEntryTransition(root, caseId, enabled);',
+    category: 'hook',
+    zh: '从公式列表进入详情时恢复共享元素过渡。',
+    en: 'Completes the shared-element transition from an algorithm list to a case.',
   },
   {
     name: 'useModalDismiss',
@@ -772,6 +798,30 @@ export const CATALOG: UtilEntry[] = [
   },
 
   // ── util ──────────────────────────────────
+  {
+    name: 'installIntroEffects',
+    sig: 'installIntroEffects(root: HTMLElement, options: IntroEffectOptions): () => void',
+    imp: "import { installIntroEffects } from '@/app/[lang]/dev/_shared/intro-effects';",
+    category: 'util',
+    zh: '介绍页共用的渐入、视差、目录高亮与锚点滚动。在内容挂载后调用，effect 返回其清理函数；各页保留自己的选择器、渐入间隔与颜色。',
+    en: 'Shared intro-page reveal, parallax, navigation highlighting and anchor scrolling. Install after content mounts and return its cleanup from the effect; keep page-specific selectors, stagger and colors.',
+  },
+  {
+    name: 'createTutorialContentOptions',
+    sig: 'createTutorialContentOptions(replace?: (element: TutorialElement, options: HTMLReactParserOptions) => ReactElement | undefined): HTMLReactParserOptions',
+    imp: "import { createTutorialContentOptions } from '@/app/[lang]/tutorial-legacy/_components/tutorial-content-parser';",
+    category: 'util',
+    zh: '旧教程 HTML 的共享解析规则，保留公式指法、图片地址与内链转换。调用方先清洗 HTML；可传入 CFOP 标题等专用节点处理。',
+    en: 'Shared legacy-tutorial parsing for algorithm markup, media URLs and internal links. Sanitize HTML before parsing; optionally supply a specialized node renderer such as CFOP headings.',
+  },
+  {
+    name: 'downloadBlob / blobFromLines',
+    sig: 'downloadBlob(filename: string, blob: Blob): void\nblobFromLines(lines: Iterable<string>): Blob',
+    imp: "import { downloadBlob, blobFromLines } from '@/lib/scramble-dist/download';",
+    category: 'util',
+    zh: '打乱统计的 Blob 下载与每 65536 行分块组装；点击下载后在下一次定时器回调释放对象 URL。',
+    en: 'Blob downloads and 65536-line chunks for scramble statistics; release the object URL on the next timer callback after clicking the download link.',
+  },
   {
     name: 'countryName',
     sig: 'countryName(iso2: string, isZh: boolean): string',

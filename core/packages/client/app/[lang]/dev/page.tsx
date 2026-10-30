@@ -23,7 +23,7 @@ const CARDS: Card[] = [
     en: { title: 'Continuous Corners', sub: 'Design & Geometry', tagline: 'SwiftUI path reconstruction, Bézier mathematics, concentric corners and error measurements', meta: 'Interactive labs / Mathematics / TypeScript' },
   },
   {
-    href: '/workspace',
+    href: '/admin/team',
     glyph: '↗',
     accent: 'var(--accent)',
     zh: { title: 'Workspace', sub: '', tagline: '项目、工作记录与团队协作', meta: '入职 / 离职 / SOP' },
@@ -227,14 +227,14 @@ const CARDS: Card[] = [
     zh: {
       title: '字体',
       sub: 'Typography',
-      tagline: '全站用到的每一款字体的集中速查:正文 Inter、等宽 Roboto Mono、衬线 Fraunces、计时器七段、打乱表 PDF 还原三件套。每款带真渲染样张、字重、用途、文件与许可',
-      meta: '7 款自托管 · 全部样张 · 设计令牌',
+      tagline: '全站用到的每一款字体的集中速查:正文 SF Pro、等宽 Roboto Mono、衬线 Fraunces、计时器七段、打乱表 PDF 还原三件套。每款带真渲染样张、字重、用途、文件与许可',
+      meta: '自托管 Web 字体 · 全部样张 · 设计令牌',
     },
     en: {
       title: 'Fonts',
       sub: 'Typography',
-      tagline: 'A quick reference for every font on the site: Inter for body, Roboto Mono for mono, Fraunces serif, the seven-segment timer face, and the three-font scramble-PDF parity set. Each with a live specimen, weights, usage, files and license',
-      meta: '7 self-hosted · live specimens · design tokens',
+      tagline: 'A quick reference for every font on the site: SF Pro for body, Roboto Mono for mono, Fraunces serif, the seven-segment timer face, and the three-font scramble-PDF parity set. Each with a live specimen, weights, usage, files and license',
+      meta: 'Self-hosted Web fonts · live specimens · design tokens',
     },
   },
   {
@@ -397,7 +397,7 @@ const CARDS: Card[] = [
     zh: {
       title: 'WCA 官网',
       sub: 'worldcubeassociation.org',
-      tagline: '世界魔方协会官网源码:官方成绩 / 排名 / 纪录的唯一真相源。一个 2008 年起、GPL-3.0 开源的 Ruby on Rails 单体,由 WCA 软件团队领着 200 多人维护,正把前端迁往 Next.js',
+      tagline: '世界魔方协会官网源码:官方成绩 / 排名 / 纪录的唯一真相源。一个 2008 年起、GPL-3.0 开源的 Ruby on Rails 单体,由 WCA 软件组领着 200 多人维护,正把前端迁往 Next.js',
       meta: '2008 起 · Rails · GPL-3.0 · 迁往 Next.js',
     },
     en: {
