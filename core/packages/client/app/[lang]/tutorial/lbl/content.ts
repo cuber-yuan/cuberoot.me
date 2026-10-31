@@ -15,13 +15,27 @@ export const LESSON_STICKERING: Record<string, string> = {
 const example = (zh: string, en: string, alg: string, hintZh: string, hintEn: string, setup?: string): LblExample => ({ title: text(zh, en), hint: text(hintZh, hintEn), alg, setup });
 export const RIGHT = "R U R' U'";
 export const LEFT = "L' U' L U";
-const MIDDLE_RIGHT = `U ${RIGHT} y ${LEFT}`;
-const MIDDLE_LEFT = `U' ${LEFT} y' ${RIGHT}`;
+export const MIDDLE_RIGHT = `U ${RIGHT} y ${LEFT}`;
+export const MIDDLE_LEFT = `U' ${LEFT} y' ${RIGHT}`;
+export const MIDDLE_RIGHT_SETUP = `y (${MIDDLE_RIGHT})'`;
+export const MIDDLE_LEFT_SETUP = `y' (${MIDDLE_LEFT})'`;
+export const MIDDLE_FLIPPED_SETUP = `${MIDDLE_RIGHT} U y' ${MIDDLE_RIGHT} y'`;
+export const MIDDLE_MISPLACED_SETUP = `${MIDDLE_RIGHT} ${MIDDLE_RIGHT} y2`;
 export const RIGHT_SUNE = "R U R' U R U2' R'";
 export const LEFT_SUNE = "L' U' L U' L' U2 L";
 export const CORNER_POSITION = "R U R' F' R U R' U' R' F R2 U' R'";
 export const EDGE_POSITION_LEFT = `${RIGHT_SUNE} U ${LEFT_SUNE} U'`;
 export const EDGE_POSITION_RIGHT = `${LEFT_SUNE} U' ${RIGHT_SUNE} U`;
+export const LBL_LEARNING_FOCUS: Record<string, Text> = {
+  daisy: text('黄色花蕊白色花瓣，以理解为主，随机应变', 'A yellow center with white petals: understand the moves and adapt to what you see.'),
+  cross: text('棱对齐颜色后一步到位', 'Match the edge color, then turn it straight into place.'),
+  corners: text('掌握右公式与左公式，根据不同情况反复运用公式', 'Learn the right and left triggers and reuse them for each case.'),
+  middle: text('2条核心公式去右或去左，以记忆公式为主', 'Learn the two core algorithms: insert right or insert left.'),
+  'yellow-cross': text('认识横线、三点半、点这三种情况，记住对应公式。', 'Recognize the three cases—line, L-shape and dot—and learn their algorithms.'),
+  'yellow-face': text('数非黄角格，认鱼头和鱼鳍，再选择鱼公式。', 'Count non-yellow corners, identify the head and fins, then choose the Sune algorithm.'),
+  'corner-position': text('学会找“眼”：有眼放左，无眼先造眼。', 'Find headlights: hold them on the left, or create a pair first.'),
+  'edge-position': text('学会找“墙”：有墙放后，再看前棱该去左还是右。', 'Find a wall and hold it at the back, then check whether the front edge belongs on the left or right.'),
+};
 export const LBL_STAGE_GOALS: Record<string, { before: Text; after: Text; summary?: Text }> = {
   structure: { before: text('认识魔方的结构', 'Learn the cube’s structure'), after: text('整体目标：六面各自同色', 'Overall goal: one color on each face') },
   daisy: {
@@ -127,9 +141,10 @@ export const LBL_STEPS: Step[] = [
       text("顶层找非黄棱，放前，同时转下面两层将侧面颜色与中心对齐（形成倒 T），做公式。", "Find a top-layer edge without yellow and bring it to the front. Turn the lower two layers together to match its side color with the center (forming an upside-down T), then do the algorithm."),
     ],
     examples: [
-      { ...example('去右', 'Insert right', `U d ${MIDDLE_RIGHT}`, '转顶层放前 → 转下面两层对齐 → 右手拨 → 右公式 → 左转体 → 左公式', 'Bring the edge to the front → match colors with the lower two layers → U → right trigger → rotate left → left trigger'), sceneRot: DOCUMENT_RIGHT_VIEW, caption: text('棱心对齐', 'Match edge and center') },
-      { ...example('去左', 'Insert left', `U' d' ${MIDDLE_LEFT}`, '转顶层放前 → 转下面两层对齐 → 左手拨 → 左公式 → 右转体 → 右公式', 'Bring the edge to the front → match colors with the lower two layers → U′ → left trigger → rotate right → right trigger'), sceneRot: DOCUMENT_LEFT_VIEW, caption: text('棱心对齐', 'Match edge and center') },
-      { ...example('中层非黄棱', 'Non-yellow middle edge', `y' ${MIDDLE_RIGHT}`, '转体把它放右前方，再做本次公式取出，再根据棱块的去向选择“去右”或“去左”。', 'Rotate the cube to put it at front-right, then use this algorithm to eject it. Then choose “Insert right” or “Insert left” according to where the edge belongs.', `${MIDDLE_RIGHT} y' U ${MIDDLE_RIGHT} y' y`), sceneRot: DOCUMENT_RIGHT_VIEW, caption: text('放错或翻转', 'Misplaced or flipped') },
+      { ...example('去右', 'Insert right', MIDDLE_RIGHT, '右手拨 → 右公式 → 左转体 → 左公式', 'U → right trigger → rotate left → left trigger', MIDDLE_RIGHT_SETUP), sceneRot: DOCUMENT_RIGHT_VIEW, caption: text('棱心对齐', 'Match edge and center') },
+      { ...example('去左', 'Insert left', MIDDLE_LEFT, '左手拨 → 左公式 → 右转体 → 右公式', 'U′ → left trigger → rotate right → right trigger', MIDDLE_LEFT_SETUP), sceneRot: DOCUMENT_LEFT_VIEW, caption: text('棱心对齐', 'Match edge and center') },
+      { ...example('原地翻转', 'Flipped in place', MIDDLE_RIGHT, '假想把顶层一条棱当作目标棱，做“去右”把它放入，原来的棱就会被取到顶层。再对齐，选择“去右”或“去左”归位。', 'Imagine inserting a top edge into this slot. Do the right insertion to eject the flipped edge. Then align it and choose the right or left insertion.', MIDDLE_FLIPPED_SETUP), sceneRot: DOCUMENT_RIGHT_VIEW, caption: text('位置对，朝向错', 'Right slot, wrong orientation') },
+      { ...example('放错', 'Wrong slot', `y ${MIDDLE_RIGHT}`, '绿橙棱在橙蓝槽里。先转体把它放右前方，假想放入一条顶层棱，做“去右”把原来的棱取出。再对齐，选择“去右”或“去左”归位。', 'The green-orange edge is in the orange-blue slot. Rotate it to front-right and imagine inserting a top edge. Use the right insertion to eject it, then align it and choose the right or left insertion.', MIDDLE_MISPLACED_SETUP), sceneRot: DOCUMENT_RIGHT_VIEW, caption: text('先取出，再归位', 'Eject, then insert') },
     ],
   },
   {
@@ -175,7 +190,7 @@ export const LBL_STEPS: Step[] = [
     examples: [
       { ...example('对齐左侧', 'Matching color on the left', `y' ${EDGE_POSITION_LEFT}`, '转体把墙放后 → 右鱼 → 顶层 U → 左鱼 → 转顶层对齐', 'Rotate the cube to put the wall at the back → Right Sune → U → Left Sune → Align the top'), caption: text('右鱼 → U → 左鱼', 'Right Sune → U → left Sune') },
       { ...example('对齐右侧', 'Matching color on the right', `y' ${EDGE_POSITION_RIGHT}`, '转体把墙放后 → 左鱼 → 顶层 U′ → 右鱼 → 转顶层对齐', 'Rotate the cube to put the wall at the back → Left Sune → U′ → Right Sune → Align the top'), caption: text('左鱼 → U′ → 右鱼', 'Left Sune → U′ → right Sune') },
-      example('无墙 · 先造墙', 'No wall · Create a wall', EDGE_POSITION_LEFT, '右鱼 → 顶层 U → 左鱼 → 转顶层对齐\n出现墙后，选择对应情况继续。', 'Right Sune → U → Left Sune → Align the top\nOnce a wall appears, choose the matching case to continue.', `(${EDGE_POSITION_LEFT} y' ${EDGE_POSITION_LEFT} y)'`),
+      example('无墙 · 先造墙', 'No wall · Create a wall', `y' ${EDGE_POSITION_LEFT}`, '沿当前朝向起手 → 右鱼 → 顶层 U → 左鱼 → 转顶层对齐\n出现墙后，选择对应情况继续。', 'Keep this orientation → Right Sune → U → Left Sune → Align the top\nOnce a wall appears, choose the matching case to continue.', `(${EDGE_POSITION_LEFT} y' ${EDGE_POSITION_LEFT} y)'`),
     ],
   },
 ];

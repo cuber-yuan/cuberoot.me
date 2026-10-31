@@ -30,7 +30,8 @@ export const INSTRUCTION_PHASES: Record<string, InstructionPhase[][]> = {
   middle: [
     [], // Arrow-separated insert flows use the existing alg groups directly.
     [],
-    [phase('转体把它放右前方', 'Rotate the cube to put it at front-right', 1), phase('做本次公式取出', 'use this algorithm to eject it', 2, 11)],
+    [phase('做“去右”把它放入，原来的棱就会被取到顶层', 'Do the right insertion to eject the flipped edge', 1, 10)],
+    [phase('先转体把它放右前方', 'Rotate it to front-right', 1), phase('做“去右”把原来的棱取出', 'Use the right insertion to eject it', 2, 11)],
   ],
   'yellow-cross': [
     [phase('转顶层，把两条黄色棱左右横放', 'Turn the top to hold the two yellow edges left to right', 1), phase('压', 'F', 2), phase('右公式', 'the right trigger', 3, 6), phase('提', 'F′', 7)],
@@ -50,7 +51,7 @@ export const INSTRUCTION_PHASES: Record<string, InstructionPhase[][]> = {
   'edge-position': [
     [phase('转体把墙放后', 'Rotate the cube to put the wall at the back', 1), phase('右鱼', 'Right Sune', 2, 8), phase('顶层 U', 'U', 9), phase('左鱼', 'Left Sune', 10, 16), phase('转顶层对齐', 'Align the top', 17)],
     [phase('转体把墙放后', 'Rotate the cube to put the wall at the back', 1), phase('左鱼', 'Left Sune', 2, 8), phase('顶层 U′', 'U′', 9), phase('右鱼', 'Right Sune', 10, 16), phase('转顶层对齐', 'Align the top', 17)],
-    [phase('右鱼', 'Right Sune', 1, 7), phase('顶层 U', 'U', 8), phase('左鱼', 'Left Sune', 9, 15), phase('转顶层对齐', 'Align the top', 16)],
+    [phase('沿当前朝向起手', 'Keep this orientation', 1), phase('右鱼', 'Right Sune', 2, 8), phase('顶层 U', 'U', 9), phase('左鱼', 'Left Sune', 10, 16), phase('转顶层对齐', 'Align the top', 17)],
   ],
 };
 
