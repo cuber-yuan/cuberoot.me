@@ -18,7 +18,9 @@ import RegionCountrySelect from '@/components/wca-stats/RegionCountrySelect';
 import { useCountries } from '@/components/wca-stats/useCountries';
 import { tr, useLang } from '@/i18n/tr';
 import '../_wca_stats_extra.css';
+import { WcaStatsTable, WcaStatsTableSection } from '@/components/wca-stats/WcaStatsTable';
 import './kinch.css';
+import '@/components/wca-stats/wca-stats-controls.css';
 import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 const PAGE_SIZE_OPTIONS = [50, 100, 200];
@@ -128,17 +130,10 @@ function KinchPageInner() {
     <main className="wse-page kinch-page">
       <header className="wse-header">
         <PageHeading backHref="/wca">Kinch</PageHeading>
-        <p className="wse-subtitle">
-          {tr({
-            zh: '用 17 个现役项目衡量综合速拧水平,分数越高越好。',
-            en: 'An all-round measure across all 17 current WCA events. Higher is better.',
-          })}
-        </p>
       </header>
 
-      <div className="wse-filters kinch-filters">
+      <div className="wse-filters wca-stats-controls">
         <div className="wse-filter kinch-person-filter">
-          <label>{tr({ zh: '选手', en: 'Person' })}</label>
           <WcaPersonPicker
             value={pickerValue}
             onChange={person => {
@@ -149,12 +144,14 @@ function KinchPageInner() {
             isZh={isZh}
           />
         </div>
-        <RegionCountrySelect
-          countries={countries}
-          value={country}
-          isZh={isZh}
-          onChange={value => update({ country: value || null })}
-        />
+        <div role="group" aria-label={tr({ zh: '国家', en: 'Country' })}>
+          <RegionCountrySelect
+            countries={countries}
+            value={country}
+            isZh={isZh}
+            onChange={value => update({ country: value || null })}
+          />
+        </div>
       </div>
 
       {loading && <div className="wse-state"><LoadingIndicator>{tr({ zh: '加载中...', en: 'Loading...' })}</LoadingIndicator></div>}
@@ -172,8 +169,8 @@ function KinchPageInner() {
               <strong>{personData.rank == null ? '—' : `#${personData.rank}`}</strong>
             </div>
           </div>
-          <div className="wse-table-wrapper sticky-scroll">
-            <table className="wse-table sticky-thead kinch-event-table">
+          <WcaStatsTableSection>
+            <WcaStatsTable>
               <thead>
                 <tr>
                   <th>{tr({ zh: '项目', en: 'Event' })}</th>
@@ -204,17 +201,17 @@ function KinchPageInner() {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+            </WcaStatsTable>
+          </WcaStatsTableSection>
         </>
       )}
 
       {leaderboard && !loading && (
-        <div className="wse-table-wrapper sticky-scroll">
+        <WcaStatsTableSection>
           <div className="wse-result-meta">
             {tr({ zh: `共 ${leaderboard.total.toLocaleString()} 人`, en: `${leaderboard.total.toLocaleString()} cubers` })}
           </div>
-          <table className="wse-table sticky-thead">
+          <WcaStatsTable>
             <thead>
               <tr>
                 <th className="wse-rank-col">#</th>
@@ -244,7 +241,7 @@ function KinchPageInner() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </WcaStatsTable>
           {leaderboard.total > size && (
             <Paginator
               page={leaderboard.page}
@@ -256,7 +253,7 @@ function KinchPageInner() {
               onSizeChange={next => update({ size: String(next) })}
             />
           )}
-        </div>
+        </WcaStatsTableSection>
       )}
 
       <section className="kinch-about">

@@ -119,6 +119,13 @@
 /* Country / region filter wrapper (RegionCountrySelect → RegionPicker draws its own popup). */
 .wse-country { position: relative; }
 
+/* 届别排名：筛选项按内容宽度紧邻排列，人数跟在末尾。 */
+.cohort-ranks-page .wse-filter label { display: none; }
+.cohort-ranks-page .wse-result-meta { align-self: center; padding: 0 4px; white-space: nowrap; }
+
+/* 届别排名页宽；表格间距由 WcaStatsTable 统一维护。 */
+.cohort-ranks-page { max-width: 1040px; background: transparent; }
+
 /* Table */
 .wse-table-wrapper {
   background: color-mix(in srgb, var(--foreground) 2%, transparent);

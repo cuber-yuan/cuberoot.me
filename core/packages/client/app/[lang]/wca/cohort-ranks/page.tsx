@@ -14,6 +14,8 @@ import { apiUrl } from '@/lib/api-base';
 import RegionCountrySelect from '@/components/wca-stats/RegionCountrySelect';
 import { useCountries } from '@/components/wca-stats/useCountries';
 import '../_wca_stats_extra.css';
+import { WcaStatsTable, WcaStatsTableSection } from '@/components/wca-stats/WcaStatsTable';
+import '@/components/wca-stats/wca-stats-controls.css';
 import { tr } from '@/i18n/tr';
 import { LoadingIndicator } from '@/components/LoadingIndicator';
 
@@ -91,14 +93,14 @@ function CohortRanksPageInner() {
   const totalPages = data ? Math.max(1, Math.ceil(data.total / size)) : 1;
 
   return (
-    <div className="wse-page">
+    <div className="wse-page cohort-ranks-page">
       <WcaStatsPageHeader
         slug="cohort-ranks"
         title={{ zh: '参赛届别排名', en: 'Cohort Ranks' }}
         subtitle={{ zh: '按选手首次参赛年份分组,组内 PB 排名', en: 'PB ranking among cubers whose first WCA competition was in the chosen year' }}
       />
 
-      <div className="wse-filters">
+      <div className="wse-filters wca-stats-controls">
         <WcaEventSelector
           availableEvents={EVENTS_SET}
           selectedEvent={event}
@@ -106,32 +108,34 @@ function CohortRanksPageInner() {
           isZh={isZh}
         />
         <div className="wse-filter">
-          <label>{tr({ zh: '届别(首参赛年)', en: 'Cohort year'
-        })}</label>
-          <select className="wse-filter-select" value={cohort} onChange={e => update('cohort', e.target.value)}>
+          <select aria-label={tr({ zh: '届别(首参赛年)', en: 'Cohort year' })} className="wse-filter-select" value={cohort} onChange={e => update('cohort', e.target.value)}>
             {years.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
-        <RegionCountrySelect countries={countries} value={country} isZh={isZh} onChange={v => update('country', v)} />
+        <div role="group" aria-label={tr({ zh: '国家', en: 'Country' })}>
+          <RegionCountrySelect countries={countries} value={country} isZh={isZh} onChange={v => update('country', v)} />
+        </div>
         <div className="wse-filter">
-          <label>{tr({ zh: '类型', en: 'Type'
-        })}</label>
-          <select className="wse-filter-select" value={type} onChange={e => update('type', e.target.value)}>
+          <select aria-label={tr({ zh: '类型', en: 'Type' })} className="wse-filter-select" value={type} onChange={e => update('type', e.target.value)}>
             <option value="single">{tr({ zh: '单次', en: 'Single'
             })}</option>
             {allowAvg && <option value="average">{tr({ zh: '平均', en: 'Average' })}</option>}
           </select>
         </div>
+        {data && !loading && (
+          <span className="wse-result-meta" role="status">
+            {tr({ zh: `共 ${data.total.toLocaleString()} 人`, en: `${data.total.toLocaleString()} cubers` })}
+          </span>
+        )}
       </div>
 
-      <div className="wse-table-wrapper sticky-scroll">
+      <WcaStatsTableSection>
         {loading && <div className="wse-state"><LoadingIndicator>{tr({ zh: '加载中...', en: 'Loading...'
         })}</LoadingIndicator></div>}
         {error && <div className="wse-state wse-state-error">Error: {error}</div>}
         {data && !loading && (
           <>
-            <div className="wse-result-meta">{isZh ? `共 ${data.total.toLocaleString()} 人` : `${data.total.toLocaleString()} cubers`}</div>
-            <table className="wse-table sticky-thead">
+            <WcaStatsTable>
               <thead>
                 <tr>
                   <th className="wse-rank-col">#</th>
@@ -159,7 +163,7 @@ function CohortRanksPageInner() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </WcaStatsTable>
             {data.total > size && (
               <Paginator
                 page={page}
@@ -173,7 +177,7 @@ function CohortRanksPageInner() {
             )}
           </>
         )}
-      </div>
+      </WcaStatsTableSection>
     </div>
   );
 }

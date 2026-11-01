@@ -25,6 +25,9 @@ import { SearchInput } from '@/components/SearchInput';
 import { useModalBackdrop } from '@/hooks/useModalDismiss';
 import { useCopy } from '@/hooks/useCopy';
 import { Tooltip } from '@/components/Tooltip';
+import { usePanelClamp } from '@/hooks/usePanelClamp';
+import { usePopoverDismiss } from '@/hooks/usePopoverDismiss';
+import '@cuberoot/timer-ui/compact-select.css';
 import { stripRecordNewsPrefix } from '@/lib/record-news';
 import { countryFlag } from '@cuberoot/shared/record-news';
 import { eventDisplayName, isWcaEvent } from '@/lib/wca-events';
@@ -38,7 +41,8 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { apiUrl } from '@/lib/api-base';
 import { statsUrl } from '@/lib/stats-base';
 import { isAo5Bracketed, trimEmptyAttempts } from '@/lib/wca-ao5-brackets';
-import { hasAdminAccess, useAuthStore } from '@/lib/auth-store';
+import { hasAdminAccess, useAuthStore, useAuthUser } from '@/lib/auth-store';
+import { fetchAccountBasicProfile } from '@/lib/account-api';
 import { fetchPb, prefetchPbs, type PbByEvent } from '@/lib/wca-pb';
 import { fetchCompInfo, fetchCubingZh, type CompInfo, type CubingZhMeta } from '@/lib/comp-wcif';
 import { fetchCompSchedule } from '@/lib/comp-schedule';
@@ -86,6 +90,9 @@ import { LoadingIndicator } from '@/components/LoadingIndicator';
 
 // 「打乱」tab:把 /scramble/gen 的比赛模式整套内嵌进来。重(WASM 求解器 + 打乱引擎),
 // 懒加载 —— 只有用户点开「打乱」才拉这部分 JS,不拖累比赛页首屏。
+import CompetitionGroupAwards from '@/components/CompetitionGroupAwards';
+import { useGroupAwards } from '@/lib/competition-group-awards';
+
 const CompScramblesTab = dynamic(() => import('./CompScramblesTab'), { ssr: false });
 const CommonCompetitors = dynamic(() => import('./CommonCompetitors'), { ssr: false });
 // 同理:赛程 tab (ScheduleView + 它的工具条)、海报布局、以及管理员改成绩的编辑器,
@@ -849,6 +856,7 @@ export default function CompDetailPage() {
   // cubingZh 实时给当天公示的 CN 比赛提供中文名(绕开 comp_names_zh.json 日更延迟);
   // 提前声明以便标题 / 复制都能取 nameZh。fetch 在下方 effect(依赖 compInfo)。
   const [cubingZh, setCubingZh] = useState<CubingZhMeta | null>(null);
+  const groupAwards = useGroupAwards('competitions', slug, data?.cubingSlug);
   const compNameTitle = data ? localizeCompName(slug, decodeEntities(data.name), isZh, { explicitNameZh: cubingZh?.nameZh }) : slug;
   useDocumentTitle(compNameTitle, compNameTitle);
   const [nameCopied, setNameCopied] = useState(false);
@@ -1022,7 +1030,7 @@ export default function CompDetailPage() {
     data && fullLoaded ? data.newcomerRecords ?? [] : [], data?.users ?? {}, data?.events ?? [],
     compRecords.flatMap(group => group.rows)), [slug, data, fullLoaded, compRecords]);
   const newsCopy = useCopy();
-  const hasPodiumTab = podiumGroups.length > 0 || compRecords.length > 0 || recordNews.length > 0;
+  const hasPodiumTab = !!groupAwards.data?.rows.length || podiumGroups.length > 0 || compRecords.length > 0 || recordNews.length > 0;
   // 全场结束 = 每个项目的决赛(末轮)都 s===1。比「末轮有成绩」严格:决赛进行中(s===2)不算结束。
   const compFinished = useMemo(() => {
     if (!data || data.events.length === 0) return false;
@@ -1707,6 +1715,13 @@ export default function CompDetailPage() {
   const meCompetitor = meWcaId
     ? Object.values(data.users).find(person => person.wcaid === meWcaId)
     : undefined;
+  // WCA announcements can also use a cubing.com roster before live results exist;
+  // the API sets cubingSlug only after replacing their empty roster with that data.
+  const hasCubingRoster = isCubing || (data.source === 'wca' && !!data.cubingSlug);
+  const myRegistrationNumber = data.slug === slug && hasCubingRoster && meCompetitor
+    && Number.isSafeInteger(meCompetitor.number) && meCompetitor.number > 0
+    ? meCompetitor.number
+    : null;
   const hasMyResults = !!meCompetitor && data.events.some(event =>
     event.rs.some(round =>
       (data.resultsByRound[roundKey(event.i, round.i)] ?? []).some(result => result.n === meCompetitor.number)
@@ -1900,6 +1915,16 @@ export default function CompDetailPage() {
         )}
 
         {compInfo && <CompInfoPanel info={compInfo} isZh={isZh} cubingZh={cubingZh} />}
+        {myRegistrationNumber !== null && (
+          <CompInfoRows
+            activeRows={[{
+              label: tr({ zh: '我的粗饼报名编号', en: 'My Cubing China registration number' }),
+              value: <strong>{myRegistrationNumber}</strong>,
+            }]}
+            pastRows={[]}
+            isZh={isZh}
+          />
+        )}
 
         <div className="comp-view-tabs">
           {hasPodiumTab && (
@@ -2087,7 +2112,7 @@ export default function CompDetailPage() {
             {(recordNews.length > 0 || compRecords.length > 0) && podiumGroups.length > 0 && (
               <h2 className="comp-pod-section-h">{tr({ zh: '领奖台', en: 'Podiums' })}</h2>
             )}
-            <PodiumView
+            {podiumGroups.length > 0 && <PodiumView
               groups={podiumGroups}
               users={data.users}
               isZh={isZh}
@@ -2103,7 +2128,40 @@ export default function CompDetailPage() {
               onEdit={setEditTarget}
               onRefresh={refreshChanges}
               onClickCuber={(n, eventId, roundId) => setModal({ kind: 'round', number: n, eventId, roundId })}
-            />
+            />}
+            <CompetitionGroupAwards key={slug} rows={groupAwards.data?.rows ?? []} isZh={isZh} stale={groupAwards.data?.stale} error={groupAwards.error}
+              renderTable={awards => {
+                const first = awards[0];
+                const roundId = roundNumToTypeId(data, first.eventId, first.roundNumber) || String(first.roundNumber);
+                const round = data.events.find(ev => ev.i === first.eventId)?.rs.find(rd => rd.i === roundId)
+                  ?? { i: roundId, e: first.eventId, f: first.roundFormat, co: 0, tl: 0, n: 0, s: first.provisional ? 2 : 1, rn: first.roundNumber, tt: 0, name: '' };
+                const users: Record<string, User> = {};
+                const awardedPlaces = new Map<number, number>();
+                const awardByNumber = new Map<number, typeof first>();
+                const results: LiveResult[] = awards.map(award => {
+                  const user = Object.values(data.users).find(u => award.wcaId ? u.wcaid === award.wcaId : u.number === award.competitorNumber && data.source === 'cubing')
+                    ?? { number: -award.sourcePersonId, name: award.name, wcaid: award.wcaId || '', region: '' };
+                  users[String(user.number)] = user;
+                  awardedPlaces.set(user.number, award.place);
+                  awardByNumber.set(user.number, award);
+                  const original = data.resultsByRound[roundKey(first.eventId, roundId)]?.find(r => r.n === user.number);
+                  const matching = original && original.a === award.average && original.b === award.best
+                    && original.v.length === award.attempts.length && original.v.every((v, i) => v === award.attempts[i]);
+                  return { ...(matching ? original : {}), i: award.sourcePersonId, c: data.compId, n: user.number,
+                    e: first.eventId, r: roundId, f: first.roundFormat, b: award.best, a: award.average, v: award.attempts,
+                    sr: matching ? original.sr : '', ar: matching ? original.ar : '' };
+                });
+                return <ResultsTable results={results} users={users} round={round} awardedPlaces={awardedPlaces}
+                  isZh={isZh} pbMap={pbMap} compIso2={compFlagIso2(slug)} compId={slug} compName={compNameTitle}
+                  loggedIn={loggedIn} meWcaId={meWcaId} reconMap={reconMap}
+                  onClickCuber={number => {
+                    if (number > 0) setModal({ kind: 'round', number, eventId: first.eventId, roundId });
+                    else {
+                      const award = awardByNumber.get(number);
+                      if (award?.wcaId) window.location.assign((isZh ? '/zh' : '') + '/wca/persons/' + award.wcaId + '?tab=group-awards');
+                    }
+                  }} />;
+              }} />
           </>
         ) : !isPsych ? (
           <>
@@ -2271,27 +2329,60 @@ function renderWcaText(text: string): React.ReactNode {
 }
 
 function CompAddress({ address, isZh, countryIso2 }: { address: string; isZh: boolean; countryIso2: string }) {
+  const user = useAuthUser();
+  const [accountCountry, setAccountCountry] = useState<{ user: typeof user; country: string } | null>(null);
+  const [open, setOpen] = useState(false);
   const { copied, copy } = useCopy();
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const firstOptionRef = useRef<HTMLAnchorElement>(null);
+  usePanelClamp(open, panelRef);
+  usePopoverDismiss(open, () => setOpen(false), panelRef, triggerRef);
+  useEffect(() => {
+    if (open) firstOptionRef.current?.focus({ preventScroll: true });
+  }, [open]);
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    // The basic profile resolves both WCA nationality and self-reported nationality.
+    void fetchAccountBasicProfile().then(profile => {
+      if (!cancelled) setAccountCountry({ user, country: profile.countryIso2?.trim().toUpperCase() ?? '' });
+    }).catch(() => { /* Missing/unavailable nationality falls back to the page language. */ });
+    return () => { cancelled = true; };
+  }, [user]);
+  const nationality = user && accountCountry?.user === user ? accountCountry.country : '';
+  const preferChineseMaps = /^[A-Z]{2}$/.test(nationality) ? nationality === 'CN' : isZh;
   // WCA 地址可能包含 Markdown 链接；复制保留完整地址，地图检索去掉室内指引。
   const text = address.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '$1');
   const encoded = encodeURIComponent(compMapAddress(text, isZh, countryIso2));
-  const providers = isZh ? ['amap', 'baidu'] as const : ['google'] as const;
+  const providers = preferChineseMaps ? ['amap', 'baidu', 'google'] as const : ['google', 'amap', 'baidu'] as const;
   const maps = {
     amap: { label: tr({ zh: '高德地图', en: 'Amap' }), url: 'https://uri.amap.com/search?keyword=' + encoded + '&src=cuberoot&callnative=1' },
     baidu: { label: tr({ zh: '百度地图', en: 'Baidu Maps' }), url: 'https://api.map.baidu.com/geocoder?address=' + encoded + '&output=html&src=webapp.cuberoot.web' },
-    google: { label: 'Google Maps', url: 'https://www.google.com/maps/search/?api=1&query=' + encoded },
+    google: { label: tr({ zh: '谷歌地图', en: 'Google Maps' }), url: 'https://www.google.com/maps/search/?api=1&query=' + encoded },
   };
   return (
-    <span className="comp-address">
+    <div className="comp-address-row">
+      {/* An inline role-button lets the separate copy button follow the final line of a wrapped address. */}
+      <div ref={triggerRef} className="comp-address-trigger" role="button" tabIndex={0}
+        aria-label={tr({ zh: '地址选项', en: 'Address options' }) + ': ' + text}
+        aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(value => !value)}
+        onKeyDown={event => {
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setOpen(value => !value); }
+        }}>{text}</div>
+      <div className="comp-address-actions">
       <Tooltip content={copied ? tr({ zh: '已复制', en: 'Copied' }) : tr({ zh: '复制地址', en: 'Copy address' })}>
-        {(tip) => <button {...tip} type="button" className="comp-address-copy" onClick={() => copy(text)} aria-label={tr({ zh: '复制地址', en: 'Copy address' }) + ': ' + text}>
-          {text}{copied && <Check size={14} aria-hidden />}
+        {tip => <button {...tip} type="button" className="comp-address-copy" onClick={() => copy(text)} aria-label={tr({ zh: '复制地址', en: 'Copy address' })}>
+          {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
         </button>}
       </Tooltip>
-      <span className="comp-address-maps">
-        {providers.map(provider => <Tooltip key={provider} content={maps[provider].label}>
-          {(tip) => <a {...tip} className="comp-address-map" href={maps[provider].url} target="_blank" rel="noopener noreferrer" aria-label={maps[provider].label}
+      {open && <div ref={panelRef} className="compact-select-popup comp-address-menu" data-site-surface="popover"
+        role="dialog" aria-label={tr({ zh: '地址选项', en: 'Address options' })}>
+          {providers.map((provider, index) => <a key={provider} ref={index === 0 ? firstOptionRef : undefined}
+            className="compact-select-option comp-address-option" href={maps[provider].url} target="_blank" rel="noopener noreferrer"
             onClick={event => {
+              setOpen(false);
+              triggerRef.current?.focus({ preventScroll: true });
               if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
               const isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent)
                 || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -2306,12 +2397,13 @@ function CompAddress({ address, isZh, countryIso2 }: { address: string; isZh: bo
                 window.location.href = (isIos ? 'iosamap' : 'androidamap') + '://poi?sourceApplication=cuberoot&' + (isIos ? 'name' : 'keywords') + '=' + encoded + '&dev=0';
               }
             }}>
-            <img src={'/icons/maps/' + provider + '.ico'} width={24} height={24} alt="" />
-          </a>}
-        </Tooltip>)}
-      </span>
+            <img src={'/icons/maps/' + provider + '.ico'} width={20} height={20} alt="" />
+            {maps[provider].label}
+          </a>)}
+      </div>}
+      </div>
       <span className="sr-only" role="status">{copied ? tr({ zh: '已复制', en: 'Copied' }) : ''}</span>
-    </span>
+    </div>
   );
 }
 
@@ -2498,11 +2590,13 @@ interface ResultsTableProps {
   onRefresh?: () => void;
   // 列头可点排序(平均 / 单次 / 第 N 把)。默认关:领奖台等复用场景保持名次序。
   sortable?: boolean;
+  /** Upstream organizer-category places must not be recalculated as overall places. */
+  awardedPlaces?: ReadonlyMap<number, number>;
 }
 
 const RESULT_WINDOW_SIZE = 8;
 
-function ResultsTable({ results, search = '', users, round, isZh, pbMap, advancers, onClickCuber, compIso2, changeMap, compId, compName, admin, loggedIn, meWcaId, reconMap, onEdit, onRefresh, sortable }: ResultsTableProps) {
+function ResultsTable({ results, search = '', users, round, isZh, pbMap, advancers, onClickCuber, compIso2, changeMap, compId, compName, admin, loggedIn, meWcaId, reconMap, onEdit, onRefresh, sortable, awardedPlaces }: ResultsTableProps) {
   // 排序:点列头(平均/单次/第 N 把)升→降→取消;无效成绩(DNF/DNS/空)恒垫底,默认 null=按名次序。
   const [sort, setSort] = useState<{ key: string | null; dir: 'asc' | 'desc' }>({ key: null, dir: 'asc' });
   const toggleSort = useCallback((key: string) => {
@@ -2559,7 +2653,7 @@ function ResultsTable({ results, search = '', users, round, isZh, pbMap, advance
   const places = computePlaces(results, isAverageFormat, eff);
   // 名次按选手号索引:排序打散行序后,名次列仍显示竞赛名次(而非当前行号)。
   const placeByN = new Map<number, number | null>();
-  results.forEach((r, i) => placeByN.set(r.n, places[i] ?? null));
+  results.forEach((r, i) => placeByN.set(r.n, awardedPlaces?.get(r.n) ?? places[i] ?? null));
   // 列头排序按钮(仅 sortable 时)。
   const sortBtn = (key: string, label: ReactNode): ReactNode => !sortable ? label : (
     <CompSortBtn active={sort.key === key} dir={sort.dir} onClick={() => toggleSort(key)}>{label}</CompSortBtn>

@@ -2,6 +2,7 @@
 
 // Ported from packages/client-vite/src/pages/wca_stats/AllEventsDonePage.tsx.
 import { Suspense, useEffect, useState } from 'react';
+import { ArrowDown, ArrowUp } from '@app-foundation/icons/lucide';
 import PersonLink from '@/components/PersonLink';
 import { useQueryStates, parseAsString } from 'nuqs';
 import { useTranslation } from 'react-i18next';
@@ -14,6 +15,7 @@ import { apiUrl } from '@/lib/api-base';
 import RegionCountrySelect from '@/components/wca-stats/RegionCountrySelect';
 import { useCountries } from '@/components/wca-stats/useCountries';
 import '../_wca_stats_extra.css';
+import { WcaStatsTable, WcaStatsTableSection } from '@/components/wca-stats/WcaStatsTable';
 import { tr } from '@/i18n/tr';
 import { LoadingIndicator } from '@/components/LoadingIndicator';
 
@@ -36,6 +38,7 @@ function AllEventsDonePageInner() {
     {
       country: parseAsString,
       onlyDone: parseAsString,
+      order: parseAsString,
       page: parseAsString,
       size: parseAsString,
     },
@@ -43,6 +46,7 @@ function AllEventsDonePageInner() {
   );
   const country = q.country ?? '';
   const onlyDone = q.onlyDone !== '0';
+  const order = q.order === 'desc' ? 'desc' : 'asc';
   const page = parseInt(q.page ?? '1', 10);
   const size = parseInt(q.size ?? '100', 10);
 
@@ -59,16 +63,22 @@ function AllEventsDonePageInner() {
   useEffect(() => { loadFlagData().then(v => setFlagBust(v)); }, []);
 
   useEffect(() => {
+    let active = true;
     setLoading(true); setError(null);
     const qs = new URLSearchParams();
+    qs.set('v', '2');
     qs.set('onlyDone', onlyDone ? '1' : '0');
+    qs.set('order', order);
     qs.set('page', String(page));
     qs.set('size', String(size));
     if (country) qs.set('country', country);
     fetch(apiUrl(`/v1/wca/all-events-done?${qs.toString()}`))
       .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then(setData).catch(e => setError(e.message)).finally(() => setLoading(false));
-  }, [country, onlyDone, page, size]);
+      .then(result => { if (active) setData(result); })
+      .catch(e => { if (active) setError(e.message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [country, onlyDone, order, page, size]);
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / size)) : 1;
 
@@ -77,7 +87,7 @@ function AllEventsDonePageInner() {
       <WcaStatsPageHeader
         slug="all-events-done"
         title={{ zh: '全项目达成排名', en: 'All Events Achievement' }}
-        subtitle={{ zh: '完成全 17 项 WCA 官方项目所用天数(从首次参赛到最后一项达成),即「全项目大满贯」', en: 'Days from first WCA comp to completing all 17 events — the all-events grand slam' }}
+        subtitle={{ zh: '从首次参赛到集齐 17 项有效成绩的间隔，按比赛开始日期计算', en: 'Days from first competition to valid results in all 17 events, measured by competition start dates' }}
       />
 
       <div className="wse-filters">
@@ -86,28 +96,39 @@ function AllEventsDonePageInner() {
           <label>{tr({ zh: '视图', en: 'View'
         })}</label>
           <select className="wse-filter-select" value={onlyDone ? '1' : '0'} onChange={e => update('onlyDone', e.target.value)}>
-            <option value="1">{tr({ zh: '全达成', en: 'Completed'
+            <option value="1">{tr({ zh: '已完成 17 项', en: 'Completed all 17'
             })}</option>
-            <option value="0">{tr({ zh: '全部', en: 'All' })}</option>
+            <option value="0">{tr({ zh: '全部选手', en: 'All competitors' })}</option>
           </select>
         </div>
       </div>
 
-      <div className="wse-table-wrapper sticky-scroll">
+      <WcaStatsTableSection>
         {loading && <div className="wse-state"><LoadingIndicator>{tr({ zh: '加载中...', en: 'Loading...'
         })}</LoadingIndicator></div>}
         {error && <div className="wse-state wse-state-error">Error: {error}</div>}
         {data && !loading && (
           <>
             <div className="wse-result-meta">{isZh ? `共 ${data.total.toLocaleString()} 人` : `${data.total.toLocaleString()} cubers`}</div>
-            <table className="wse-table sticky-thead">
+            <WcaStatsTable>
               <thead>
                 <tr>
                   <th className="wse-rank-col">#</th>
                   <th>{tr({ zh: '选手', en: 'Person'
                 })}</th>
-                  <th className="wse-value-col">{tr({ zh: '达成天数', en: 'Days'
-                })}</th>
+                  <th className="wse-value-col" aria-sort={order === 'asc' ? 'ascending' : 'descending'}>
+                    <button
+                      type="button"
+                      className="wse-th-sort"
+                      aria-label={order === 'asc'
+                        ? tr({ zh: '按达成天数从多到少排序', en: 'Sort completion days from most to fewest' })
+                        : tr({ zh: '按达成天数从少到多排序', en: 'Sort completion days from fewest to most' })}
+                      onClick={() => update('order', order === 'asc' ? 'desc' : 'asc')}
+                    >
+                      {tr({ zh: '达成天数', en: 'Days' })}
+                      {order === 'asc' ? <ArrowUp size={14} aria-hidden="true" /> : <ArrowDown size={14} aria-hidden="true" />}
+                    </button>
+                  </th>
                   <th>{tr({ zh: '达成比赛', en: 'At competition'
                 })}</th>
                   <th className="wse-value-col">{tr({ zh: '比赛场次', en: 'Comps'
@@ -125,7 +146,13 @@ function AllEventsDonePageInner() {
                     <td>
                       <PersonLink wcaId={r.wcaId} name={r.name} isZh={isZh} />
                     </td>
-                    <td className="wse-value-col">{r.daysToComplete != null ? `${r.daysToComplete.toLocaleString()} ${tr({ zh: '天', en: 'd' })}` : '—'}</td>
+                    <td className="wse-value-col">{
+                      r.daysToComplete === 0 && r.firstCompId && r.firstCompId === r.achievementCompId
+                        ? tr({ zh: '首赛达成', en: 'At debut' })
+                        : r.daysToComplete != null
+                          ? `${r.daysToComplete.toLocaleString()} ${tr({ zh: '天', en: 'd' })}`
+                          : '—'
+                    }</td>
                     {/* 无日期列,年号是这格唯一的时间信息 —— 保留(date={null}) */}
                     <td>{r.achievementCompId ? <CompCell compId={r.achievementCompId} compName={r.achievementCompName} isZh={isZh} date={null} /> : ''}</td>
                     <td className="wse-value-col">{r.totalCompCount}</td>
@@ -137,7 +164,7 @@ function AllEventsDonePageInner() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </WcaStatsTable>
             {data.total > size && (
               <Paginator
                 page={page}
@@ -151,7 +178,7 @@ function AllEventsDonePageInner() {
             )}
           </>
         )}
-      </div>
+      </WcaStatsTableSection>
     </div>
   );
 }

@@ -23,6 +23,7 @@ import {
 } from '@/components/wca-records/WcaRecordRowsTable';
 import '../_wca_stats_extra.css';
 import '../_records.css';
+import '@/components/wca-stats/wca-stats-controls.css';
 import { tr } from '@/i18n/tr';
 import { useWcaTeachers } from '@/components/WcaTeacherCell';
 import { LoadingIndicator } from '@/components/LoadingIndicator';
@@ -180,19 +181,10 @@ function RecordsPageInner() {
       <header className="wse-header">
         <PageHeading backHref="/wca">{tr({ zh: '纪录', en: 'Records'
         })}</PageHeading>
-        <p className="wse-subtitle">
-          {gender !== 'all'
-            ? (show === 'current'
-              ? tr({ zh: `${gender === 'f' ? '女子' : '男子'}各项目当前的世界 / 大洲 / 国家纪录`, en: `Current ${gender === 'f' ? "women's" : "men's"} world / continental / national record per event` })
-              : tr({ zh: `历史上所有${gender === 'f' ? '女子' : '男子'}世界 / 大洲 / 国家纪录`, en: `Every ${gender === 'f' ? "women's" : "men's"} world / continental / national record ever set` }))
-            : (show === 'current'
-              ? tr({ zh: '各项目当前的世界 / 大洲 / 国家纪录', en: 'Current world / continental / national record for each event' })
-              : tr({ zh: '历史上所有曾被打破的世界 / 大洲 / 国家纪录', en: 'Every world / continental / national record ever set' }))}
-        </p>
       </header>
 
       <div className="records-toolbar">
-        <div className="records-toolbar-row">
+        <div className="records-toolbar-row wca-stats-controls">
           <ListSelect
             className="records-toolbar-select"
             items={[
