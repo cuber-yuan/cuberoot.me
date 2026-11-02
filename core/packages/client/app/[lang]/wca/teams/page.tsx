@@ -16,8 +16,9 @@ import Paginator from '@/components/wca-stats/Paginator';
 import { LoadingIndicator } from '@/components/LoadingIndicator';
 import AppLink from '@/components/AppLink';
 import { apiUrl } from '@/lib/api-base';
-import { wcaTeamBrand } from '@/lib/wca-team-brands';
+import { WCA_TEAM_BRANDS, wcaTeamBrand } from '@/lib/wca-team-brands';
 import { formatWcaResult } from '@/lib/wca-format-result';
+import { displayCuberName } from '@/lib/cuber-name-display';
 import { tr } from '@/i18n/tr';
 import '../_wca_stats_extra.css';
 import './teams.css';
@@ -26,7 +27,7 @@ interface Team { id: number; name: string; count: number }
 interface Directory {
   teams: Team[];
   members: Array<{
-    wcaId: string; name: string; iso2: string | null; teamId: number; teamName: string;
+    memberId: number; wcaId: string | null; name: string; iso2: string | null; teamId: number; teamName: string;
     bestAverage: number | null; bestSingle?: number | null; competitionCount?: number; championshipCount?: number;
     singleWorldRank?: number | null; averageWorldRank?: number | null;
   }>;
@@ -57,7 +58,7 @@ function TeamsDirectory() {
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true); setFailed(false);
-    const qs = new URLSearchParams({ directory: '1', team, q: search, page: String(page), size: '50', v: '4' });
+    const qs = new URLSearchParams({ directory: '1', team, q: search, page: String(page), size: '50', v: '5' });
     fetch(apiUrl('/v1/wca/teams?' + qs), { signal: controller.signal }).then(async response => {
       if (!response.ok) throw new Error(String(response.status));
       const result = await response.json();
@@ -68,9 +69,9 @@ function TeamsDirectory() {
     return () => controller.abort();
   }, [team, search, page, revision]);
   const chooseTeam = (value: string) => { void setQuery({ team: value || null, page: null }); };
-  const groups = new Map<string, Team[]>();
+  const groups = new Map<string, Team[]>(WCA_TEAM_BRANDS.map(brand => [brand.name, []]));
   for (const item of data?.teams ?? []) {
-    if (item.name === '魔域') continue;
+    if (item.count === 0 && WCA_TEAM_BRANDS.some(brand => brand.name === item.name)) continue;
     const brand = wcaTeamBrand(item.name);
     groups.set(brand, [...(groups.get(brand) ?? []), item]);
   }
@@ -87,10 +88,15 @@ function TeamsDirectory() {
       <AppLink href="/wca/results" prefetch={false}>{tr({ zh: '排名', en: 'Rankings' })}</AppLink>
     </header>
     <div className="wca-team-groups">
-      {[...groups].map(([brand, teams]) => <section key={brand} className="wca-team-group">
-        {teams.length > 1 ? <>
-          <div className="wca-team-brand-heading"><CubingBrandLabel name={brand} logoOnly fallbackToName /></div>
-          <div className="wca-team-children">{teams.map(renderTeamChoice)}</div>
+      {[...groups].filter(([, teams]) => teams.length > 0).map(([brand, teams]) => <section key={brand} className="wca-team-group" aria-label={brand}>
+        {WCA_TEAM_BRANDS.some(item => item.name === brand) ? <>
+          <div className="wca-team-brand-heading"><CubingBrandLabel name={brand} logoOnly fallbackToName />
+            <span className="wca-team-count">{teams.reduce((sum, item) => sum + item.count, 0)}</span>
+          </div>
+          <div className="wca-team-children">{[...teams].sort((a, b) => {
+            const order: readonly string[] = WCA_TEAM_BRANDS.find(item => item.name === brand)?.teams ?? [];
+            return order.indexOf(a.name) - order.indexOf(b.name);
+          }).map(renderTeamChoice)}</div>
         </> : renderTeamChoice(teams[0])}
       </section>)}
     </div>
@@ -107,11 +113,13 @@ function TeamsDirectory() {
         <th><Tooltip content={tr({ zh: '全部项目累计决赛冠军次数（含加入战队前）', en: 'Career event wins in finals, including before joining the team' })}>
           {tip => <span {...tip} tabIndex={0}>{tr({ zh: '夺冠次数', en: 'Titles' })}</span>}
         </Tooltip></th></tr></thead>
-      <tbody>{!loading && !failed && data?.members.map(member => <tr key={member.wcaId}>
+      <tbody>{!loading && !failed && data?.members.map(member => <tr key={member.memberId ?? member.wcaId}>
         <td><div className="wca-team-person">
           {member.iso2 && <Flag iso2={member.iso2} />}
-          <div><PersonLink wcaId={member.wcaId} name={member.name} isZh={isZh} showTeam={false} />
-            <span className="wca-team-person-id">{member.wcaId}</span></div>
+          <div>{member.wcaId
+            ? <PersonLink wcaId={member.wcaId} name={member.name} isZh={isZh} showTeam={false} />
+            : <span>{displayCuberName(member.name, isZh)}</span>}
+            {member.wcaId && <span className="wca-team-person-id">{member.wcaId}</span>}</div>
         </div></td>
         <td><WcaTeamLink team={{ id: member.teamId, name: member.teamName }} /></td>
         <td>{member.bestSingle == null ? '—' : formatWcaResult(member.bestSingle, '333', 'single')}

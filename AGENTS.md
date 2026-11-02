@@ -107,6 +107,9 @@ WXML 表达式直接写 `&&` / `||`，禁 HTML 实体；改 WXML 后必须通过
 
 ## 开发命令
 
+- **战队名单同名匹配（维护者要求，2026-11-02）**：导入战队名单时，姓名匹配到多个 WCA 选手，默认选择三阶 `333` 历史最佳有效平均成绩最快的一人，不再逐项询问。比较原始厘秒值，排除无成绩、DNF 和 DNS；保留候选 WCA ID、成绩及选中依据的导入记录。若候选均无有效三阶平均或最佳成绩并列，则单独列为待确认；没有姓名匹配结果时不得臆造 WCA ID。
+- **战队包含未参赛成员（维护者要求，2026-11-02）**：WCA ID 不是加入战队名单的前提。维护者确认尚未参赛的成员也必须收录，在 `wca_person_teams` 保存真实姓名、战队与独立 `member_id`，`wca_id` 留空；目录人数、搜索和分页包含他们，展示姓名但不伪造 WCA 链接、国籍、成绩或排名。新增可用管理员 `POST /v1/wca/teams/members`（`name`、`teamId`），保存返回的 `memberId`，不要重复 POST 或把同名当成同一人；以后获得 WCA ID 时关联原成员记录，避免重复成员。只有未匹配且身份情况不明时才待确认，不能把已确认未参赛的人继续列为“导入失败”。维护者给定的 ID 优先于姓名搜索：高羽萱=`2019GAOY01`（官方姓名 Yuki Gao），刘南希=`2018LIUN01`（官方姓名 Nancy Liu）。
+
 - **代码量统计（维护者要求，2026-10-22）**：用户说“统计代码量”“看看代码统计”等时，AI 直接运行 `cloc` 并汇总结果，不只提供命令让用户自行执行。默认在仓库根目录用 `cloc --vcs=git` 统计 Git 跟踪文件的当前本地内容，按需补充语言和主要模块统计；明确区分代码、注释、空行，以及数据、资源、第三方和生成内容，不把总行数称为自研代码量。维护者 Mac 已通过 Homebrew 安装 cloc；换环境先检查可用性。
 
 流量异常排查先读 [`docs/traffic-monitor.md`](docs/traffic-monitor.md) 与 [`docs/traffic-defense.md`](docs/traffic-defense.md)（当前防护、费用保护、暂停及恢复步骤），2026-09-22 `/zh/calc` 峰值的证据见 [`docs/traffic-incident-2026-09-22.md`](docs/traffic-incident-2026-09-22.md)。先核对报表的 `coverage`：自动来源分析目前只覆盖自有服务器 nginx；Vercel 请求在现有 Firewall 和 Logs 中按时间与路径核查。Analytics 是浏览器事件，自有线路也可能上报，不能等同于 Vercel 页面线路；停用时不得为了监控自行重新开启。User-Agent 和浏览器名称不能证明是真人；不要把 nginx 请求数当作全站访客数，也不要为监控启用额外收费项。
@@ -275,6 +278,7 @@ H11 在本机仅允许源码实现、静态检查和不接触 H11 表文件的�
 - 禁内联 `isZh`/`i18n.language` 文案三元(`isZh ? '中' : 'EN'`);`isZh` 仅可作 util 参数。守卫:hook + CI ratchet。细则调 skill `i18n`。
 - 一般社区魔方术语 zh 查 `client/app/[lang]/wiki/glossary.json`，WCA 专名与规则语境按下条官方来源核对，禁凭语感直译；陷阱表+黑名单守卫见 skill `i18n`。
 - 翻译 WCA 规则、公告或意外事件记录前，先读 [WCA 英中翻译参考](core/packages/client/public/regulation/wca-translation-reference.md)，再按条款号查同目录 `wca-regulations-bilingual.md`；机构、菜单和页面用语直接查 WCA Weblate 简体中文项目（如 WIC = 廉政委员会）。网页入口 `/regulation/translation`。保留版本、主体、义务强弱和处罚范围，历史 WDC/WAC 不替换成当前机构或缩写，原译疑点单列，不把对齐语料视为已逐句审核。一般社区术语仍查词典。
+- **`/regulation` 正文链接优先站内**：新增或同步规则、公告、日志和引用资料前，读取[引用阅读页与站内链接维护说明](docs/wca-reference-translations/README.md)，复用 `regulation-links.ts` 与 `RegulationLink` / `RegulationHtml`；保留源记录的原始 URL，由统一解析器映射，禁止逐篇硬改生成 JSON 或另建映射副本。官方来源、邮箱及无对应内容的引用保留原用途，历史版本不得误映射到现行规则；未取得正文不创建空阅读页，摘要不得冒充全文译文。
 - WCA 官网翻译以 [Weblate 简体中文项目](https://translate.worldcubeassociation.org/projects/wca/-/zh_Hans/)为主要来源，规则含义仍以适用版本英文为准。AI 优先查 `https://api.cuberoot.me/v1/wca/translations?q=<URL编码查询>&limit=5&v=1`，核对 ready/stale 和来源；未命中或服务不可用再查 Weblate，最后使用同提交的官方 GitHub locale 文件后备。不手改服务器镜像，不自造官方译名。具体检索步骤和权限边界在上述 MD 与 `i18n` skill 中维护。
 - 教程项目选择器的 ivy 中文短名固定为「枫叶」,禁加通用品类后缀。
 - 站内违禁词表 `.codex/banned-words.json`(hook `block-banned-words` 写入即拦,`.codex/` 自身豁免);用户说「添加违禁词:x」= 往该表加 `{word,use,why}` 一条。行内豁免注释 `allow-banned-word`。
