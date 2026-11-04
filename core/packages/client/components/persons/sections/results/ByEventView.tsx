@@ -5,6 +5,7 @@
 //   3. 分布 动态分布可视化 (DistributionViz)
 
 import { memo, useState, useEffect, useMemo, useCallback } from 'react';
+import { useResultMetricTransition } from './useResultMetricTransition';
 import Link from '@/components/AppLink';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
@@ -16,8 +17,7 @@ import { InfoTooltip } from '@/components/InfoTooltip/InfoTooltip';
 import { formatWcaResult } from '@/lib/wca-format-result';
 import { localizeCompName } from '@/lib/comp-localize';
 import { formatDateRangeIso } from '@/lib/wca-date';
-import { CompCell } from '@/components/CompCell/CompCell';
-import { Flag } from '@/components/Flag';
+import { CompCell, CompetitionFlag } from '@/components/CompCell/CompCell';
 import { compLinkProps } from '@/lib/comp-link';
 import { RecordBadge } from '@/components/RecordBadge/RecordBadge';
 import { personResultRecord } from '@/lib/person-achievements';
@@ -225,6 +225,7 @@ const EventRoundsList = memo(function EventRoundsList({
   // 多盲非官方平均的区域纪录(WR/大洲/NR)查表;仅本项目是多盲时拉取。
   const mbldAvgRecords = useMbldAvgRecords(isMbldEvent(eventId));
   const [editTarget, setEditTarget] = useState<ResultChangeTarget | null>(null);
+  const { bodyRef, changeMetric } = useResultMetricTransition();
   const [singleMetricMode, setSingleMetricMode] = useState<WcaResultMetricMode>('singles');
   const [averageMetricMode, setAverageMetricMode] = useState<WcaResultMetricMode>('avg');
   // 排序:点列头(单次/平均/第 N 把)切 升序→降序→取消;无效成绩(DNF/DNS/空位)永远垫底。
@@ -491,7 +492,7 @@ const EventRoundsList = memo(function EventRoundsList({
                 className="wp-bycomp-name"
               ><CompCell compId={cmp.id} compName={cmp.name} isZh={isZh} date={cmp.start_date} noFlag /></Link>
               <div className="wp-cell-comp-date wp-cell-comp-date-with-flag">
-                {cmp.country_iso2 && <Flag iso2={cmp.country_iso2} spanClassName="country-flag" imgClassName="country-flag-ct" />}
+                <CompetitionFlag compId={cmp.id} country={cmp.country_iso2} />
                 <span>{formatDateRangeIso(cmp.start_date, cmp.end_date)}</span>
               </div>
             </>
@@ -753,7 +754,10 @@ const EventRoundsList = memo(function EventRoundsList({
                     label={selectedSingleMetric.label}
                     items={singleMetricItems}
                     value={singleMetricMode}
-                    onChange={setSingleMetricMode}
+                    onChange={(mode) => {
+                      if (mode === singleMetricMode) return;
+                      changeMetric(() => setSingleMetricMode(mode));
+                    }}
                     ariaLabel={t('选择单次统计', 'Select single metric')}
                     variant="plain"
                   />
@@ -781,7 +785,10 @@ const EventRoundsList = memo(function EventRoundsList({
                     label={selectedAverageMetric.label}
                     items={averageMetricItems}
                     value={averageMetricMode}
-                    onChange={setAverageMetricMode}
+                    onChange={(mode) => {
+                      if (mode === averageMetricMode) return;
+                      changeMetric(() => setAverageMetricMode(mode));
+                    }}
                     ariaLabel={t('选择平均统计', 'Select average metric')}
                     variant="plain"
                   />
@@ -824,7 +831,7 @@ const EventRoundsList = memo(function EventRoundsList({
             </th>
           </tr>
         </thead>
-        <tbody>
+        <tbody ref={bodyRef}>
           {displayRows.slice(0, count).map((row, index) => (
             <EventResultRow
               key={wcaResultRowKey(row)}

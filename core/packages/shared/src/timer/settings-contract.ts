@@ -178,10 +178,20 @@ function normalizedBoolean(value: unknown, fallback: boolean): boolean {
 
 export const TIMER_SMART_CUBE_AUTO_READY_MODES = ['scrambled', 'still', 'double-flick'] as const;
 export const TIMER_SMART_CUBE_LIVE_VIEWS = ['3d', 'twizzle', 'q2look', 'net', '2d'] as const;
+export const DEFAULT_SMART_CUBE_CORRECTION_LIMIT = 6;
+export const MAX_SMART_CUBE_CORRECTION_LIMIT = 100;
+
+export function normalizeSmartCubeCorrectionLimit(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(0, Math.min(MAX_SMART_CUBE_CORRECTION_LIMIT, Math.round(value)))
+    : DEFAULT_SMART_CUBE_CORRECTION_LIMIT;
+}
 
 export interface TimerSmartCubeSettings {
   /** Arming never starts the clock; the first turn after ready does. */
   bluetoothAutoReady: (typeof TIMER_SMART_CUBE_AUTO_READY_MODES)[number];
+  /** Maximum remaining undo turns after adjacent face turns are merged. */
+  smartCubeCorrectionLimit: number;
   /** 3D is available without a gyro; an unanchored state falls back to the net. */
   liveCubeView: (typeof TIMER_SMART_CUBE_LIVE_VIEWS)[number];
   /** Whether the live virtual cube consumes the device gyroscope pose. */
@@ -189,22 +199,27 @@ export interface TimerSmartCubeSettings {
   autoCalibrateGyro: boolean;
   /** Compatibility field: pose recording is always enabled, independent of the live view. */
   recordGyro: boolean;
+  /** Analyze the in-progress solve in the side panel and beneath the cube. */
+  liveSolutionAnalysis: boolean;
   autoRecap: boolean;
   autoOpenSolution: boolean;
 }
 
 export const DEFAULT_TIMER_SMART_CUBE_SETTINGS: TimerSmartCubeSettings = {
   bluetoothAutoReady: 'scrambled',
+  smartCubeCorrectionLimit: DEFAULT_SMART_CUBE_CORRECTION_LIMIT,
   liveCubeView: '3d',
   gyroEnabled: true,
   autoCalibrateGyro: true,
   recordGyro: true,
+  liveSolutionAnalysis: true,
   autoRecap: true,
   autoOpenSolution: true,
 };
 
 export function normalizeTimerSmartCubeSettings(value: Partial<Record<keyof TimerSmartCubeSettings, unknown>>): TimerSmartCubeSettings {
   return {
+    smartCubeCorrectionLimit: normalizeSmartCubeCorrectionLimit(value.smartCubeCorrectionLimit),
     bluetoothAutoReady: TIMER_SMART_CUBE_AUTO_READY_MODES.includes(value.bluetoothAutoReady as TimerSmartCubeSettings['bluetoothAutoReady'])
       ? value.bluetoothAutoReady as TimerSmartCubeSettings['bluetoothAutoReady'] : DEFAULT_TIMER_SMART_CUBE_SETTINGS.bluetoothAutoReady,
     liveCubeView: TIMER_SMART_CUBE_LIVE_VIEWS.includes(value.liveCubeView as TimerSmartCubeSettings['liveCubeView'])
@@ -212,6 +227,7 @@ export function normalizeTimerSmartCubeSettings(value: Partial<Record<keyof Time
     gyroEnabled: normalizedBoolean(value.gyroEnabled, DEFAULT_TIMER_SMART_CUBE_SETTINGS.gyroEnabled),
     autoCalibrateGyro: normalizedBoolean(value.autoCalibrateGyro, DEFAULT_TIMER_SMART_CUBE_SETTINGS.autoCalibrateGyro),
     recordGyro: true,
+    liveSolutionAnalysis: normalizedBoolean(value.liveSolutionAnalysis, DEFAULT_TIMER_SMART_CUBE_SETTINGS.liveSolutionAnalysis),
     autoRecap: normalizedBoolean(value.autoRecap, DEFAULT_TIMER_SMART_CUBE_SETTINGS.autoRecap),
     autoOpenSolution: normalizedBoolean(value.autoOpenSolution, DEFAULT_TIMER_SMART_CUBE_SETTINGS.autoOpenSolution),
   };
@@ -281,9 +297,11 @@ export const TIMER_SETTING_FIELD_CONTRACTS = [
   // Smart cube
   { id: 'settings.smart-cube.fake-cube', category: 'smart-cube', copy: { en: 'Virtual cube', zh: '虚拟魔方' }, storagePath: 'showAdminFakeCube', value: bool, visibility: 'admin-only', disabledWhen: 'never', effect: 'persist-admin-fake-cube-controls' },
   { id: 'settings.smart-cube.auto-ready', category: 'smart-cube', copy: { en: 'Enter ready state', zh: '准备状态进入' }, storagePath: 'bluetoothAutoReady', value: { kind: 'enum', values: TIMER_SMART_CUBE_AUTO_READY_MODES }, visibility: 'always', disabledWhen: 'never', effect: 'persist-smart-cube-auto-ready' },
+  { id: 'settings.smart-cube.correction-limit', category: 'smart-cube', copy: { en: 'Scramble correction limit (moves)', zh: '打乱纠错阈值（步）' }, storagePath: 'smartCubeCorrectionLimit', value: { kind: 'integer', min: 0, max: MAX_SMART_CUBE_CORRECTION_LIMIT, step: 1 }, visibility: 'always', disabledWhen: 'never', effect: 'persist-smart-cube-correction-limit' },
   { id: 'settings.smart-cube.gyro', category: 'smart-cube', copy: { en: 'Gyroscope', zh: '陀螺仪' }, storagePath: 'gyroEnabled', value: bool, visibility: 'always', disabledWhen: 'never', effect: 'persist-live-cube-gyro' },
   { id: 'settings.smart-cube.auto-calibrate', category: 'smart-cube', copy: { en: 'Auto-reset orientation', zh: '朝向自动重置' }, storagePath: 'autoCalibrateGyro', value: bool, visibility: 'always', disabledWhen: 'never', effect: 'persist-auto-calibrate-gyro' },
   { id: 'settings.smart-cube.live-view', category: 'smart-cube', copy: { en: 'Live cube', zh: '实况魔方' }, storagePath: 'liveCubeView', value: { kind: 'enum', values: TIMER_SMART_CUBE_LIVE_VIEWS }, visibility: 'always', disabledWhen: 'never', effect: 'persist-live-cube-view' },
+  { id: 'settings.smart-cube.live-analysis', category: 'smart-cube', copy: { en: 'Live solution analysis', zh: '解法实时分析' }, storagePath: 'liveSolutionAnalysis', value: bool, visibility: 'always', disabledWhen: 'never', effect: 'persist-live-solution-analysis' },
   { id: 'settings.smart-cube.auto-recap', category: 'smart-cube', copy: { en: 'Open reconstruction', zh: '自动打开复盘' }, storagePath: 'autoRecap', value: bool, visibility: 'always', disabledWhen: 'never', effect: 'persist-auto-recap' },
   { id: 'settings.smart-cube.auto-solution', category: 'smart-cube', copy: { en: 'Open solution', zh: '自动打开解法' }, storagePath: 'autoOpenSolution', value: bool, visibility: 'always', disabledWhen: 'never', effect: 'persist-auto-solution' },
 

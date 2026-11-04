@@ -2378,6 +2378,15 @@ CREATE TABLE platform_analytics_events (
 );
 CREATE INDEX idx_platform_analytics_events_retention ON platform_analytics_events(expires_at, id);
 CREATE INDEX idx_platform_analytics_events_rollup ON platform_analytics_events(event_name, occurred_at);
+CREATE INDEX idx_platform_analytics_web_report
+  ON platform_analytics_events (occurred_at, (dimensions->>'audience'))
+  WHERE surface = 'web' AND dimensions->>'schemaVersion' = '1';
+CREATE INDEX idx_platform_privacy_consents_analytics_latest
+  ON platform_privacy_consents (user_id, decided_at DESC, id DESC)
+  WHERE purpose = 'analytics' AND user_id IS NOT NULL;
+CREATE INDEX idx_platform_privacy_consents_analytics_anonymous_latest
+  ON platform_privacy_consents (anonymous_subject_hash, decided_at DESC, id DESC)
+  WHERE purpose = 'analytics' AND anonymous_subject_hash IS NOT NULL;
 
 CREATE TABLE platform_analytics_daily_aggregates (
   local_date DATE NOT NULL,
@@ -9751,3 +9760,17 @@ CREATE TABLE competition_group_awards (
   fetched_at TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX competition_group_awards_person_ids_idx ON competition_group_awards USING GIN (person_ids);
+
+-- Private chat attachments. Never grant access to assistant_public or public media routes.
+CREATE TABLE site_assistant_attachments (
+  id UUID PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  conversation_id UUID NOT NULL,
+  media_type TEXT NOT NULL CHECK (media_type IN ('image/png','image/jpeg','image/webp')),
+  sha256 TEXT NOT NULL CHECK (length(sha256)=64),
+  data BYTEA NOT NULL CHECK (octet_length(data) BETWEEN 1 AND 786432),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX site_assistant_attachments_content ON site_assistant_attachments(user_id,conversation_id,sha256) WHERE deleted_at IS NULL;
+CREATE INDEX site_assistant_attachments_owner ON site_assistant_attachments(user_id,created_at DESC);

@@ -47,6 +47,15 @@ export async function assistantPdfDocument(question: string, answer: string, lan
         type:'tableRow', content:row.map(value => ({type:index === 0 ? 'tableHeader' : 'tableCell', content:[paragraph([text(value)])]})),
       }))});
       if (artifact.kind === 'table') return [heading, table(artifact.columns, artifact.rows)];
+      if (artifact.kind === 'cube-photo') return [heading,
+        paragraph([text(artifact.status === 'partial'
+          ? { zh: '完整状态尚不唯一，仅展示所有可能状态均适用的公式。', en: 'The complete state is ambiguous; displayed algorithms work for every compatible state.' }[lang]
+          : artifact.status === 'corners-only'
+          ? { zh: '仅确定顶层角块，棱块与中层状态未推导。', en: 'Only the last-layer corners are known; edge and middle-layer states are unknown.' }[lang]
+          : { zh: '按标准配色、前两层已复原推导。每条公式独立执行，已包含 AUF。', en: 'Assumes standard colors and solved F2L. Each algorithm is independent and includes AUF.' }[lang])]),
+        ...(artifact.recognition?.status === 'ok' || artifact.recognition?.status === 'corners-only' ? [paragraph([text((['U','F','R'] as const).map(face => `${face}: ${(artifact.recognition!.candidates[0] ?? artifact.recognition!.cornerCandidates![0]).frame[face]}`).join(' · '))])] : [paragraph([text(artifact.status)])]),
+        ...artifact.results.flatMap(r => r.match ? [paragraph([text(`${r.set.toUpperCase()} · ${r.match.name}`)]), {type:'codeBlock', content:[text(r.match.alg)]}, paragraph([text(`https://www.cuberoot.me${r.match.href}`)])] : [paragraph([text(`${r.set.toUpperCase()}: ${r.status}`)])]),
+      ];
       const chartNodes: RichTextNode[] = [];
       if (!['333mbf', '333mbo'].includes(artifact.event)) {
         const people = [...new Set(artifact.points.map(point => point.person))];

@@ -77,6 +77,7 @@ const DOMAINS: { key: string; zh: string; en: string }[] = [
 //   mcp mcp_oauth onboarding timer_replay_shares site_assistant site_assistant_shares cube_agents
 //   membership_gallery
 // competition_group_awards
+//   product_analytics
 // ─ covers-routes-end ─
 const ENDPOINTS: Ep[] = [
   { d: 'comp', m: 'GET', p: '/v1/group-awards/competitions/:id', g: 'public', c: 'short', zh: '比赛分组领奖台；独立缓存粗饼来源', en: 'Competition category podiums persisted from Cubing China' },
@@ -157,6 +158,9 @@ const ENDPOINTS: Ep[] = [
   { d: 'system', m: 'GET', p: '/v1/admin/assistant/insights', g: 'admin', c: 'no-store', zh: '评价、检索、费用、告警、匿名汇总与访问审计', en: 'Feedback, retrieval, cost, alerts, anonymous totals and access audit' },
   { d: 'system', m: 'GET', p: '/v1/admin/assistant/health', g: 'admin', c: 'no-store', zh: '监控后台心跳及活动告警', en: 'Monitoring heartbeat and active alerts' },
   { d: 'system', m: 'POST', p: '/v1/admin/assistant/requests/:id/review', g: 'admin', c: 'no-store', zh: '管理员复核与处理记录', en: 'Admin review and resolution' },
+  { d: 'system', m: 'POST', p: '/v1/site-assistant/attachments', g: 'login', c: 'no-store', zh: '保存私有会话图片，按账号与会话去重', en: 'Save owner-scoped conversation images with deduplication' },
+  { d: 'system', m: 'GET', p: '/v1/site-assistant/attachments/:id', g: 'login', c: 'no-store', zh: '仅附件所有者读取图片', en: 'Read an image owned by the signed-in account' },
+  { d: 'system', m: 'DELETE', p: '/v1/site-assistant/attachments/:id', g: 'login', c: 'no-store', zh: '软删除自己的图片附件', en: 'Soft-delete an owned image attachment' },
   { d: 'system', m: 'POST', p: '/v1/site-assistant/requests/:id/events', g: 'login', c: 'no-store', zh: '仅本人问答的评价和页面点击；30天内', en: 'Owner-only feedback and destination clicks within 30 days' },
   { d: 'system', m: 'GET', p: '/v1/admin/assistant/summary', g: 'admin', c: 'no-store', zh: '聊天每日指标、模型与工具用量、记录健康状态；北京时间，days=7/30/90', en: 'Daily chat metrics, model/tool usage and recording health; Beijing time, days=7/30/90' },
   { d: 'system', m: 'GET', p: '/v1/admin/assistant/requests', g: 'admin', c: 'no-store', zh: '按状态与问答正文搜索，每页 25 条；仅记录通过身份校验的请求', en: 'Search authenticated requests by status and content, 25 per page' },
@@ -614,6 +618,10 @@ const ENDPOINTS: Ep[] = [
   { d: 'platform', m: 'GET', p: '/v1/platform/me/privacy/consents', g: 'login', c: 'no-store', zh: '读取自己的隐私授权状态', en: 'Read owned privacy consent state' },
   { d: 'platform', m: 'POST', p: '/v1/platform/me/privacy/consents', g: 'login', c: 'no-store', zh: '明确授予或撤回分析授权，需要幂等键', en: 'Explicitly grant or withdraw analytics consent with an idempotency key' },
   { d: 'platform', m: 'POST', p: '/v1/platform/analytics', g: 'login', c: 'no-store', zh: '仅在已授权时记录最小化分析事件', en: 'Record a minimized analytics event only after consent' },
+  { d: 'platform', m: 'POST', p: '/v1/platform/analytics/status', g: 'public', c: 'no-store', zh: '查询当前账号或匿名会话的全站分析授权', en: 'Read website analytics consent for an account or anonymous session' },
+  { d: 'platform', m: 'POST', p: '/v1/platform/analytics/consent', g: 'public', c: 'no-store', zh: '明确授予或撤回全站分析授权', en: 'Explicitly grant or withdraw website analytics consent' },
+  { d: 'platform', m: 'POST', p: '/v1/platform/analytics/events', g: 'public', c: 'no-store', zh: '授权后批量记录白名单事件，按事件 ID 去重', en: 'Ingest consented, allowlisted events with event-ID deduplication' },
+  { d: 'platform', m: 'GET', p: '/v1/platform/admin/product-analytics', g: 'admin', c: 'no-store', zh: '按人群聚合页面、入口漏斗与登录用户使用频率', en: 'Aggregate pages, entry funnels and account usage frequency by audience' },
   { d: 'platform', m: 'POST', p: '/v1/platform/courses/:courseId/enrollment', g: 'login', c: 'no-store', zh: '领取免费课程权益', en: 'Claim a free-course entitlement' },
   { d: 'platform', m: 'POST', p: '/v1/platform/invites/redeem', g: 'login', c: 'no-store', zh: '核销邀请并授予权益', en: 'Redeem an invite and grant entitlement' },
   { d: 'platform', m: 'POST', p: '/v1/platform/learning/lessons/:lessonId/quiz', g: 'login', c: 'no-store', zh: '提交测验并评分', en: 'Submit and grade a lesson quiz' },

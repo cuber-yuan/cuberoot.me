@@ -45,6 +45,7 @@ import {
   DEFAULT_TIMER_SMART_CUBE_SETTINGS,
   TIMER_SMART_CUBE_AUTO_READY_MODES,
   TIMER_SMART_CUBE_LIVE_VIEWS,
+  MAX_SMART_CUBE_CORRECTION_LIMIT,
   normalizeTimerScrambleClickAction,
   normalizeTimerScramblePreviewSettings,
   normalizeTimerTimingSettings,
@@ -379,6 +380,7 @@ function decodeSettings(value: unknown): TimerStoreSettings | null {
     'autoCalibrateGyro',
     'recordGyro',
     'autoRecap',
+    'liveSolutionAnalysis',
     'autoOpenSolution',
     'autoMarkWcaScramble',
   ] as const) {
@@ -469,6 +471,9 @@ function decodeSettings(value: unknown): TimerStoreSettings | null {
     && !TIMER_SMART_CUBE_AUTO_READY_MODES.includes(value.bluetoothAutoReady as TimerSmartCubeSettings['bluetoothAutoReady'])) return null;
   if (value.liveCubeView !== undefined
     && !TIMER_SMART_CUBE_LIVE_VIEWS.includes(value.liveCubeView as TimerSmartCubeSettings['liveCubeView'])) return null;
+  if (value.smartCubeCorrectionLimit !== undefined
+    && (typeof value.smartCubeCorrectionLimit !== 'number' || !Number.isInteger(value.smartCubeCorrectionLimit)
+      || value.smartCubeCorrectionLimit < 0 || value.smartCubeCorrectionLimit > MAX_SMART_CUBE_CORRECTION_LIMIT)) return null;
   const wcaSource = normalizeTimerWcaSourceSettings({
     wcaScrambleMode: value.wcaScrambleMode as TimerWcaSourceSettings['wcaScrambleMode'] | undefined,
     wcaComp: value.wcaComp as string | undefined,

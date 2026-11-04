@@ -309,6 +309,10 @@
   transform: none;
   padding-top: 0;
   gap: 8px;
+  /* Resolve percentage-sized cube footers against the available column,
+     not the max-content width of an unfinished move sequence. */
+  width: 100%;
+  min-width: 0;
 }
 .timer-stage-source {
   max-height: none;
@@ -339,7 +343,7 @@
     min-height: 0;
     flex: 1 1 0;
     grid-template-rows: auto minmax(0, 1fr);
-    row-gap: min(var(--solo-timer-gap, 20px), 2dvh);
+    /* Inherit the user's timer gap; viewport limits are enforced by the editor. */
     --timer-scramble-fs: min(36px, 6cqw);
   }
   .timing-surface--solo .timing-surface-core {

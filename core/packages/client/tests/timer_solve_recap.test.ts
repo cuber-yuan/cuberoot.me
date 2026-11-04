@@ -127,7 +127,7 @@ describe('复原后自动复盘', () => {
   it('弹窗显示后只有同面正反扭组合会关闭自动整屏复盘', () => {
     expect(dismissStart).toBeGreaterThan(0);
     expect(dismissOnMove).toMatch(/if \(!autoRecapDismissGestureRef\.current\.observe\(move\)\) return/);
-    expect(dismissOnMove).toMatch(/current\?\.autoRecap && current\.s\.id === recapId[\s\S]{0,80}\? \{ \.\.\.current, closeRequested: true \}/);
+    expect(dismissOnMove).toMatch(/current\?\.autoRecap && current\.s\.id === fullscreenRecapId[\s\S]{0,80}\? \{ \.\.\.current, closeRequested: true \}/);
     expect(dismissOnMove).not.toMatch(/autoRecapInputBlockedRef\.current = false/);
     expect(dismissOnMove).not.toMatch(/setRecapId\(null\)/);
     expect(src).toMatch(/closeRequested=\{modalSolve\.closeRequested\}/);
@@ -136,12 +136,29 @@ describe('复原后自动复盘', () => {
   it('弹窗首帧显示前不解锁手势，也不允许智能魔方起下一把', () => {
     const detail = read(SOLVE_MODAL);
     const sharedDetail = read(DETAIL_MODAL);
-    const canStartAttempt = src.match(/canStartAttempt: \(\) =>([\s\S]*?),\n    getPhase:/)?.[1];
-    expect(canStartAttempt).toContain('&& !autoRecapInputBlockedRef.current');
+    expect(src).toContain('isInputBlocked: () => autoRecapInputBlockedRef.current');
     expect(src).toMatch(/onDisplayed=\{modalSolve\.autoRecap \? markAutoRecapDisplayed : undefined\}/);
     expect(detail).toMatch(/onEntered=\{onDisplayed\}/);
     expect(detail).not.toContain('requestAnimationFrame');
     expect(sharedDetail.match(/window\.requestAnimationFrame\(/g)).toHaveLength(2);
+  });
+
+  it('桌面右栏展开的全屏复盘也接入手势，订阅生命周期跟随弹窗', () => {
+    const onFull = src.slice(src.indexOf('onFull={() => {'), src.indexOf('onDismiss={() => setRecapId(null)}'));
+    expect(onFull).toContain('autoRecapDismissGestureRef.current.reset()');
+    expect(onFull).toContain('autoRecapInputBlockedRef.current = true');
+    expect(onFull).toContain('autoRecap: true');
+    expect(src).toContain('const fullscreenRecapId = modalSolve?.autoRecap ? modalSolve.s.id : null');
+    expect(src).toContain('}, [fullscreenRecapId, smartCubeSoloController])');
+    expect(src).not.toContain('if (isDesktop || !recapId)');
+  });
+
+  it('整屏详情完全关闭后按魔方最终状态恢复引导，不回放面板内的转动', () => {
+    const resume = src.slice(src.indexOf('if (!fullscreenRecapId)'), dismissStart);
+    expect(resume.indexOf('autoRecapInputBlockedRef.current = false')).toBeLessThan(
+      resume.indexOf('smartCubeSoloController.syncFacelets(toFaceletString(faces))'),
+    );
+    expect(resume).toContain('bluetoothCubeRef.current?.getFaces()');
   });
 
   it('历史记录手动打开的详情没有 autoRecap 标记,不会被转动订阅误关', () => {
@@ -217,12 +234,13 @@ describe('复盘异步加载时先稳定容器', () => {
     expect(recap).not.toMatch(/<Suspense fallback=\{null\}>/);
   });
 
-  it('占位没有额外动画，内容到达时只做原位替换', () => {
+  it('占位只淡入淡出，不动画改变布局，并遵循减少动态效果偏好', () => {
     const css = read(RECAP_CSS);
-    const placeholderRules = css.match(/\/\* Recap loading placeholder[\s\S]*$/)?.[0] ?? '';
-    expect(placeholderRules).toContain('.shell-recap-placeholder');
-    expect(placeholderRules).not.toMatch(/placeholder-(?:line|metrics)/);
-    expect(placeholderRules).not.toMatch(/animation\s*:/);
+    expect(css).toMatch(/\.shell-recap-placeholder\s*\{\s*pointer-events:\s*none;/);
+    expect(css).toMatch(/\.shell-recap-skeleton-block\s*\{[^}]*animation:\s*recap-skeleton-pulse/);
+    const pulse = css.match(/@keyframes recap-skeleton-pulse\s*\{\s*to\s*\{([^}]*)\}/)?.[1].trim();
+    expect(pulse).toBe('opacity: 0.45;');
+    expect(css).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\.shell-recap-skeleton-block\s*\{\s*animation:\s*none;/);
   });
 });
 

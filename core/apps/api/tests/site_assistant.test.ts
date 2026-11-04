@@ -477,6 +477,9 @@ describe('site assistant grounding', () => {
   it.each(['我参加过多少场比赛了','我一共参加过几场比赛？','How many competitions have I competed in?'])('answers lifetime participation without a PB table or stale conversation identity: %s',async question=>{
     const fetcher=vi.fn<typeof fetch>().mockImplementation(async input=>{
       const url=String(input);
+      if(url.endsWith('/chat/completions')) return modelResponse(fetcher.mock.calls.filter(([url])=>String(url).endsWith('/chat/completions')).length===1
+        ? {calls:[{tool:'person',wcaId:'2017YANR02',event:'all',view:'profile'}]}
+        : {answer:'颜瑞民共参加过 42 场比赛。',sourceIds:['person:2017YANR02']});
       if(url.includes('/meta')) return Response.json({lastImportedAt:'2026-10-01'});
       expect(url).toBe('https://api.cuberoot.me/v1/wca/person-page?wcaId=2017YANR02');
       return Response.json({profile:{person:{name:'Ruimin Yan (颜瑞民)'},competition_count:42}});
@@ -484,13 +487,15 @@ describe('site assistant grounding', () => {
     const result=await answerSiteQuestion(question,'zh',config,AbortSignal.timeout(5000),fetcher,[{role:'user',content:'Max Park 的全部 PB'}],'2017YANR02');
     expect(result.answer).toBe('颜瑞民共参加过 42 场比赛。 [[person:2017YANR02]]');
     expect(result.artifacts).toEqual([]);
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenCalledTimes(4);
+    const request=JSON.parse(String(fetcher.mock.calls[0][1]?.body));
+    expect(request.messages.some((m:any)=>m.role==='user' && m.content.includes('"viewerWcaId":"2017YANR02"'))).toBe(true);
   });
   it('asks for identity instead of inferring personal participation from history',async()=>{
-    const fetcher=vi.fn<typeof fetch>();
+    const fetcher=vi.fn<typeof fetch>().mockResolvedValue(modelResponse({answerKind:'general',answer:'请提供你的 WCA ID 或姓名。',sourceIds:[]}));
     const result=await answerSiteQuestion('我参加过多少场比赛了','zh',config,AbortSignal.timeout(5000),fetcher,[{role:'user',content:'2012PARK03 的成绩'}]);
     expect(result.answer).toContain('请提供你的 WCA ID');
-    expect(fetcher).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
   it.each([0,undefined])('distinguishes zero competitions from a missing total: %s',async competition_count=>{
     const fetcher=vi.fn<typeof fetch>().mockImplementation(async input=>Response.json(String(input).includes('/meta')?{}:{profile:{person:{name:'Ruimin Yan (颜瑞民)'},competition_count}}));
@@ -511,14 +516,26 @@ describe('site assistant grounding', () => {
   it.each(['我去过哪些国家比赛','我参加过哪些国家的比赛','Which countries have I competed in?'])('answers personal countries from the verified viewer instead of the planner or history: %s',async question=>{
     const fetcher=vi.fn<typeof fetch>().mockImplementation(async input=>{
       const url=String(input);
+      if(url.endsWith('/chat/completions')) return modelResponse(fetcher.mock.calls.filter(([url])=>String(url).endsWith('/chat/completions')).length===1
+        ? {calls:[{tool:'person_countries',wcaId:'2017YANR02'}]}
+        : {answer:'颜瑞民在 2 个国家或地区参赛。',sourceIds:['person:2017YANR02']});
       if(url.includes('/meta')) return Response.json({lastImportedAt:'2026-10-01'});
       expect(url).toBe('https://api.cuberoot.me/v1/wca/person-page?wcaId=2017YANR02');
       return Response.json({profile:{person:{name:'Ruimin Yan (颜瑞民)'}},results:[{competition_id:'A'},{competition_id:'A'},{competition_id:'B'}],comps:[{id:'A',country_iso2:'CN'},{id:'B',country_iso2:'JP'}]});
     });
     const result=await answerSiteQuestion(question,'zh',config,AbortSignal.timeout(5000),fetcher,[{role:'user',content:'Max Park 的全部 PB'}],'2017YANR02');
     expect(result.answer).toContain('颜瑞民在 2 个国家或地区参赛');
-    expect(result.artifacts).toEqual([{kind:'table',title:'参赛国家和地区',columns:['国家或地区','比赛数'],rows:[['CN','1'],['JP','1']],links:undefined,columnKinds:['country','text']}]);
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(result.artifacts).toEqual([{kind:'table',title:'参赛国家和地区',columns:['国家或地区','比赛数'],rows:[['中国','1'],['日本','1']],links:undefined}]);
+    expect(fetcher).toHaveBeenCalledTimes(4);
+  });
+  it.each(['我去过哪些国家比赛','我参加过多少场比赛了'])('keeps prior year and event constraints available for a short follow-up: %s',async question=>{
+    const fetcher=vi.fn<typeof fetch>().mockResolvedValue(modelResponse({answerKind:'general',answer:'继续查询 2025 年三阶参赛记录。',sourceIds:[]}));
+    await answerSiteQuestion(question,'zh',config,AbortSignal.timeout(5000),fetcher,[{role:'user',content:'接下来只看我 2025 年三阶的参赛情况。'}],'2017YANR02');
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(String(fetcher.mock.calls[0][0])).toBe(config.baseUrl+'/chat/completions');
+    const messages=JSON.parse(String(fetcher.mock.calls[0][1]?.body)).messages;
+    expect(messages.some((m:any)=>m.role==='user' && m.content.includes('只看我 2025 年三阶'))).toBe(true);
+    expect(messages.some((m:any)=>m.role==='user' && m.content.includes('"viewerWcaId":"2017YANR02"'))).toBe(true);
   });
   it.each(['我去年去了哪些国家参加比赛？每个国家多少场？','Which countries did I compete in during 2025?'])('preserves temporal constraints for the analytical planner: %s',async question=>{
     const fetcher=vi.fn<typeof fetch>().mockResolvedValue(modelResponse({answer:'A date-filtered analysis is required.'}));
@@ -709,6 +726,27 @@ describe('site assistant grounding', () => {
     expect(evidence.at(-1).tool).toMatchObject({event:'all'});
     expect(evidence.at(-1).data.personalRecords.map((r:{event:string})=>r.event)).toEqual(['333','222']);
   });
+  it('does not retain a broad PB table after a narrower metric answer supersedes it', async () => {
+    let calls=0;
+    const fetcher=vi.fn<typeof fetch>(async(input,init)=>{
+      if(String(input).startsWith(config.baseUrl)) {
+        calls++;
+        if(calls===1)return modelResponse({calls:[{tool:'person',wcaId:'2010WANG68',event:'333'}]});
+        if(calls===2)return modelResponse({calls:[{tool:'person',wcaId:'2010WANG68',event:'333',metric:'average',rankings:false}]});
+        const narrow=wireEvidence(JSON.parse(String(init?.body))).at(-1);
+        expect(narrow.id).not.toBe('person:2010WANG68');
+        expect(narrow.data.personalRecords).toEqual([{event:'333',average:'5.88'}]);
+        return modelResponse({answerKind:'grounded',answer:'平均 999 秒，单次 4.50 秒，世界排名第一。',sourceIds:[narrow.id]});
+      }
+      return Response.json(String(input).includes('/meta')?{lastImportedAt:'2026-11-03'}:{profile:{person:{name:'Bill Wang'},personal_records:{333:{single:{best:450,world_rank:141},average:{best:588,world_rank:101}}}}});
+    });
+    const result=await answerSiteQuestion('2010WANG68 的三阶平均 PB，只要这个成绩。','zh',config,AbortSignal.timeout(5000),fetcher);
+    expect(calls).toBe(3);
+    expect(result.artifacts).toEqual([]);
+    expect(result.sources).toHaveLength(1);
+    expect(result.answer).toBe(`5.88 秒 [[${result.sources[0].id}]]`);
+    expect(result.answer).not.toContain('4.50');
+  });
   it('deduplicates successful normalized person reads and classifies a stalled planner as a model failure', async () => {
     const model=vi.fn()
       .mockResolvedValueOnce(modelResponse({calls:[{tool:'person',wcaId:'2012PARK03'}]}))
@@ -763,7 +801,7 @@ describe('site assistant grounding', () => {
     const result=await answerSiteQuestion('我今年参加了多少场 wca','zh',config,AbortSignal.timeout(5000),withCatalog(fetcher),[], '2017YANR02',undefined,'America/Los_Angeles');
     expect(result.answer).toContain('参加过 1 场比赛');
     expect(result.answer).not.toContain('数据导入时间');
-    expect(result.artifacts?.[0]).toMatchObject({rows:[['2026','1']]});
+    expect(result.artifacts).toEqual([]);
   });
 
   it('reads the canonical English page when the content index is unavailable', async () => {

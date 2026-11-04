@@ -3,10 +3,12 @@ import {
   TIMER_SMART_CUBE_AUTO_READY_MODES,
   TIMER_SMART_CUBE_LIVE_VIEWS,
   normalizeTimerSmartCubeSettings,
+  normalizeSmartCubeCorrectionLimit,
   type TimerSettingCopy,
+  type TimerSettingFieldContract,
   type TimerSmartCubeSettings,
 } from '@cuberoot/shared/timer';
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { TimerBooleanSettingRow, TimerSettingRow, TimerSettingsSection, type TimerBooleanControlProps } from './TimerTimingSettingsSections';
 
 export interface TimerSmartCubeSettingsFieldsProps {
@@ -14,13 +16,14 @@ export interface TimerSmartCubeSettingsFieldsProps {
   localize: (copy: TimerSettingCopy) => string;
   onChange: (patch: Partial<TimerSmartCubeSettings>) => void;
   renderBooleanControl: (props: TimerBooleanControlProps) => ReactNode;
+  orientationControl?: ReactNode;
 }
 
 const FIELDS = TIMER_SETTING_FIELD_CONTRACTS.filter((field) => (
   field.category === 'smart-cube' && field.id !== 'settings.smart-cube.fake-cube' && field.storagePath !== 'preScrT'
 ));
 export const TIMER_SMART_CUBE_SETTING_FIELD_IDS = FIELDS.map(field => field.id);
-const field = (path: keyof TimerSmartCubeSettings) => FIELDS.find((candidate) => candidate.storagePath === path)!;
+const field = (path: keyof TimerSmartCubeSettings): TimerSettingFieldContract => FIELDS.find((candidate) => candidate.storagePath === path)!;
 
 const AUTO_READY_COPY = {
   scrambled: { zh: '打乱正确', en: 'When scrambled' },
@@ -36,12 +39,21 @@ const LIVE_VIEW_COPY = {
 } satisfies Record<TimerSmartCubeSettings['liveCubeView'], TimerSettingCopy>;
 
 /** The shared smart-cube rows; hosts only persist patches. */
-export function TimerSmartCubeSettingsFields({ value, localize, onChange, renderBooleanControl }: TimerSmartCubeSettingsFieldsProps) {
+export function TimerSmartCubeSettingsFields({ value, localize, onChange, renderBooleanControl, orientationControl }: TimerSmartCubeSettingsFieldsProps) {
   const settings = normalizeTimerSmartCubeSettings(value);
   const gyro = field('gyroEnabled');
   const calibration = field('autoCalibrateGyro');
   const autoReady = field('bluetoothAutoReady');
+  const correctionLimit = field('smartCubeCorrectionLimit');
+  const [limitInput, setLimitInput] = useState(String(settings.smartCubeCorrectionLimit));
+  useEffect(() => setLimitInput(String(settings.smartCubeCorrectionLimit)), [settings.smartCubeCorrectionLimit]);
+  const commitLimit = () => {
+    const limit = normalizeSmartCubeCorrectionLimit(limitInput.trim() ? Number(limitInput) : undefined);
+    setLimitInput(String(limit));
+    if (limit !== settings.smartCubeCorrectionLimit) onChange({ smartCubeCorrectionLimit: limit });
+  };
   const liveView = field('liveCubeView');
+  const liveAnalysis = field('liveSolutionAnalysis');
   const recap = field('autoRecap');
   const solution = field('autoOpenSolution');
   return (
@@ -53,6 +65,12 @@ export function TimerSmartCubeSettingsFields({ value, localize, onChange, render
           {TIMER_SMART_CUBE_AUTO_READY_MODES.map((mode) => <option key={mode} value={mode}>{localize(AUTO_READY_COPY[mode])}</option>)}
         </select>
       </TimerSettingRow>
+      <TimerSettingRow field={correctionLimit} label={localize(correctionLimit.copy)}>
+        <input className="settings-row-control-input" type="number" min={correctionLimit.value.min} max={correctionLimit.value.max} step={1}
+          aria-label={localize(correctionLimit.copy)} value={limitInput} onChange={(event) => setLimitInput(event.target.value)}
+          onBlur={commitLimit} onKeyDown={(event) => { if (event.key === 'Enter') commitLimit(); }} />
+      </TimerSettingRow>
+      <p className="hint">{localize({ zh: '合并后的逆序纠错超过此步数时重新规划；0 为立即重新规划。', en: 'Replan when the merged undo sequence exceeds this limit; 0 replans immediately.' })}</p>
       </TimerSettingsSection>
       <TimerSettingsSection title={localize({ zh: '实况与姿态', en: 'Live view and orientation' })}>
       <TimerBooleanSettingRow field={gyro} label={localize(gyro.copy)} value={settings.gyroEnabled}
@@ -66,6 +84,9 @@ export function TimerSmartCubeSettingsFields({ value, localize, onChange, render
           {TIMER_SMART_CUBE_LIVE_VIEWS.map((view) => <option key={view} value={view}>{localize(LIVE_VIEW_COPY[view])}</option>)}
         </select>
       </TimerSettingRow>
+      {orientationControl}
+      <TimerBooleanSettingRow field={liveAnalysis} label={localize(liveAnalysis.copy)} value={settings.liveSolutionAnalysis}
+        onChange={(liveSolutionAnalysis) => onChange({ liveSolutionAnalysis })} renderBooleanControl={renderBooleanControl} />
       </TimerSettingsSection>
       <TimerSettingsSection title={localize({ zh: '结束后', en: 'After solving' })}>
       <TimerBooleanSettingRow field={recap} label={localize(recap.copy)} value={settings.autoRecap}

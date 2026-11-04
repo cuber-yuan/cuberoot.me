@@ -19,7 +19,8 @@ export async function executeAnalysis(query:CompiledAnalysis,signal:AbortSignal)
   if(active>=2)throw new AnalysisInputError('Analysis is busy. Do not retry in this answer; ask the visitor to try later.');
   active++;
   const db=postgres({...databaseSettings(),max:1,connect_timeout:2,idle_timeout:1,prepare:false,
-    connection:{application_name:'cuberoot-assistant-analysis',default_transaction_read_only:true,statement_timeout:4000,lock_timeout:500,work_mem:'4MB',max_parallel_workers_per_gather:0,search_path:'pg_catalog'},
+    // postgres.js omits falsy startup values; the string preserves the zero limit.
+    connection:{application_name:'cuberoot-assistant-analysis',default_transaction_read_only:true,statement_timeout:4000,lock_timeout:500,work_mem:'4MB',max_parallel_workers_per_gather:'0',search_path:'pg_catalog'},
   });
   let pending:{cancel:()=>void}|undefined;
   const close=()=>{pending?.cancel();void db.end({timeout:0}).catch(()=>{});};
@@ -78,7 +79,7 @@ export async function runAnalysisQuery(call:{title:string;description:string;que
       factualSummary:{zh:'现场计算结果见下表。',en:'The computed results are shown below.'}[lang],
       artifacts:[{kind:'table',title:call.title,columns:columns.map(c=>c.countUnit && !c.label.includes(c.countUnit)?`${c.label} · ${c.countUnit}`:c.label),rows}],
       evidence:{description:call.description,datasets:compiled.datasets,importedAt:result.importedAt,columns,rows,truncated,returnedRows:rows.length,
-        basis:label,instruction:'Review the actual query predicates and these rows against the question before finalizing. Description and column headings were authored by you; they do not prove the query implements that method. If a displayed total/denominator contradicts its components, correct the query and use only the corrected source ID; NEVER silently fix the number in prose while leaving a wrong table. Include derived rates/differences in the database query. These rows were computed before output limiting. State actual filters, units and denominator; imported WCA data is not live. Returned database aggregate/window values were computed BEFORE the output limit and remain valid for their actual query scope even if detail rows are truncated. Truncation alone does not invalidate those totals; do not replace a correct aggregate with a sum/count of visible rows. Never aggregate truncated rows or treat NULL as zero. Empty rows alone are not a zero count. Cite this analysis source; do not claim broader coverage than these projections.'},
+        basis:label,instruction:'Review the actual query predicates and these rows against the question before finalizing. Description and column headings were authored by you; they do not prove the query implements that method. If a displayed total/denominator contradicts its components, correct the query and use only the corrected source ID; NEVER silently fix the number in prose while leaving a wrong table. Include derived rates/differences in the database query. These rows were computed before output limiting. State only the scope, units or denominator necessary to interpret the answer, once; keep the complete method in evidence. Imported WCA data is not live. Returned database aggregate/window values were computed BEFORE the output limit and remain valid for their actual query scope even if detail rows are truncated. Truncation alone does not invalidate those totals; do not replace a correct aggregate with a sum/count of visible rows. Never aggregate truncated rows or treat NULL as zero. Empty rows alone are not a zero count. Cite this analysis source; do not claim broader coverage than these projections.'},
     };
   } catch(error) {
     signal.throwIfAborted();

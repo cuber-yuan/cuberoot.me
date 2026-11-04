@@ -32,7 +32,7 @@
 
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { Solve, EventId } from '@cuberoot/shared/timer';
 import type { ReconSnapshot } from '@cuberoot/shared/recon-ground-truth';
@@ -92,6 +92,8 @@ export interface ReconstructReportProps {
   hideDate?: boolean;
   /** The inline recap renders these actions beside its full-screen control. */
   hideActions?: boolean;
+  /** Keep the recap stable until final notation is ready; references may finish later. */
+  pendingFallback?: ReactNode;
   /** In-progress move score, using the same segmentation and notation as the report. */
   live?: boolean;
   /** In-progress samples retain their coordinate frame and avoid Base64 encoding. */
@@ -109,7 +111,7 @@ const BLD_MEMO_EVENTS = new Set<EventId>(['333bld', '333ni']);
 
 
 function ReconstructReportBody({
-  solve, isZh, history, onMemoApply, onUseScramble, onReconFeedback, hideDate, hideActions, live = false, liveStageTarget, liveGyroSamples, onReviewSnapshot,
+  solve, isZh, history, onMemoApply, onUseScramble, onReconFeedback, hideDate, hideActions, pendingFallback, live = false, liveStageTarget, liveGyroSamples, onReviewSnapshot,
 }: ReconstructReportProps) {
   const host = useReconstructHost();
   const { localize: tr } = host;
@@ -117,8 +119,8 @@ function ReconstructReportBody({
   const methodMoves = moves.map(move => move.m).join(' ');
   // Classification uses move order, never elapsed time. Timer ticks must not
   // repeat the orientation search or invalidate the report's method.
-  const method = useMemo(() => detectSolveMethod(solve.scramble,
-    methodMoves ? methodMoves.split(' ').map((m,ts)=>({m,ts})) : [], 0), [solve.scramble,methodMoves]);
+  const method = useMemo(() => live ? 'cfop' : detectSolveMethod(solve.scramble,
+    methodMoves ? methodMoves.split(' ').map((m,ts)=>({m,ts})) : [], 0), [solve.scramble,methodMoves,live]);
   const slices = useMemo(
     () => sliceReconstruction(moves, solve.timeMs, solve.bld?.memoMs),
     [moves, solve.timeMs, solve.bld?.memoMs],
@@ -145,7 +147,8 @@ function ReconstructReportBody({
   // Reader preference only; changing methods never rewrites the stored solve.
   const analysisInput = useMemo<AnalysisInput | null>(() => prepared.text ? {
     scoreable: scoreable && method === 'cfop', text: prepared.text,
-  } : null, [prepared.text, scoreable, method]);
+    ...(live ? { detectLiveMethod: true } : {}),
+  } : null, [prepared.text, scoreable, method, live]);
   const [analysisState, setAnalysisState] = useState<{
     solveId: string; input: AnalysisInput; snapshot: AnalysisSnapshot;
   } | null>(null);
@@ -178,9 +181,10 @@ function ReconstructReportBody({
     || (live && analysisState.input.text.method === method
       && analysisState.input.text.language === (isZh ? 'zh' : 'en')))
     ? analysisState.snapshot : analysisInput && !live ? reconstructionAnalyzer.peek(analysisInput, solve.id) : null;
+  const displayedMethod = live ? analysis?.method ?? method : method;
   const reconText = useMemo(() => analysis?.text
-    ? method === 'cfop' ? applyReconTextOverride(analysis.text, solve.reconstruction) : analysis.text
-    : null, [analysis?.text, solve.reconstruction, method]);
+    ? displayedMethod === 'cfop' ? applyReconTextOverride(analysis.text, solve.reconstruction) : analysis.text
+    : null, [analysis?.text, solve.reconstruction, displayedMethod]);
   useEffect(() => {
     if (!live && !analysis?.provisional && reconText?.methodStages) rememberMethodStages(solve, method, reconText.methodStages);
   }, [live, analysis?.provisional, reconText?.methodStages, solve, method]);
@@ -266,7 +270,7 @@ function ReconstructReportBody({
     // newer move cannot relabel an older stage while analysis is catching up.
     const currentSegs = analysisState?.solveId === solve.id
       ? analysisState.input.text.segs : stageSegs;
-    const stageName = method !== 'cfop' ? reconText?.currentStage ? tr(reconText.currentStage) : '…' : currentSegs?.ollEndIdx != null ? 'PLL'
+    const stageName = displayedMethod !== 'cfop' ? reconText?.currentStage ? tr(reconText.currentStage) : '…' : currentSegs?.ollEndIdx != null ? 'PLL'
       : currentSegs?.f2lEndIdx != null ? 'OLL'
         : currentSegs?.crossEndIdx != null
           ? `F2L-${Math.min(4, (reconText?.lines.filter(line => line.kind === 'f2l').length ?? 0) + 1)}`
@@ -280,7 +284,7 @@ function ReconstructReportBody({
         <div className="sml-moves">{currentMoves.join(' ') || '…'}</div>
       </>, liveStageTarget)}
       {reconText ? (
-      <StepMoveList method={method} recon={reconText} reference={null} slotReference={null} />
+      <StepMoveList method={displayedMethod} recon={reconText} reference={null} slotReference={null} />
     ) : (
       <div className="sml-moves" aria-busy={analysis?.status !== 'error'}>
         {moves.map(move => move.m).join(' ')}
@@ -297,6 +301,11 @@ function ReconstructReportBody({
    * 什么。真实顺序是反的 —— 先认出这把是怎么拧的(回放 + 还原步骤),那些数字才有东西
    * 可归因;先给一张 5×7 的表,读者第一件事仍然是往下翻去找还原步骤。
    */
+  if (pendingFallback !== undefined && analysisInput && analysis?.status !== 'error'
+    && analysis?.status !== 'complete' && (!reconText || analysis?.provisional)) {
+    return pendingFallback;
+  }
+
   const analysisBlock = (
     <>
       {/* 这里以前还有一根 SolveTimeline(带阶段名的那条)。删了:回放那根进度条

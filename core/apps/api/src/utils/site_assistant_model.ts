@@ -62,6 +62,7 @@ export function createAssistantModel(config: AssistantConfig, fetcher: typeof fe
       system: string; context: unknown; finalOnly: boolean; thinking: boolean;
       effort: 'low' | 'high'; maxTokens: number; onText?: (text: string) => Promise<void>;
       followUp?: string;
+      requiredTool?: 'lookup_cube_photo';
     }) {
       const thinking = options.thinking && (deepseek || qwenThinking);
       if (pending.length) {
@@ -73,7 +74,8 @@ export function createAssistantModel(config: AssistantConfig, fetcher: typeof fe
       }
       if(options.followUp) transcript.push({role:'user',content:options.followUp});
       const request = {
-        model, tools, toolChoice: options.finalOnly ? 'none' as const : 'auto' as const,
+        model, tools, toolChoice: options.finalOnly ? 'none' as const
+          : options.requiredTool ? { type: 'tool' as const, toolName: options.requiredTool } : 'auto' as const,
         system: options.system + '\nAll prose and presentation instructions apply inside the answer string. The final response must be one JSON object with answer and sourceIds, without Markdown fences or text outside that object.',
         messages: [...conversation, { role: 'user' as const, content: images.length ? [{ type: 'text' as const, text: JSON.stringify(options.context) }, ...imageParts(images)] : JSON.stringify(options.context) }, ...transcript],
         ...(deepseek ? { output: Output.object({schema:answerSchema}) } : {}),
@@ -105,7 +107,15 @@ export function createAssistantModel(config: AssistantConfig, fetcher: typeof fe
       if (result.finishReason === 'length') throw new Error('Incomplete model output');
       if (result.toolCalls.length) {
         const calls = result.toolCalls.map(call => ({ ...call.input as object, tool: call.toolName }));
-        transcript.push(...result.response.messages);
+        // The SDK already supplies error results for invalid tool inputs. Our
+        // executor reports these calls too, so retain the native assistant and
+        // reasoning but let pending own each tool result exactly once.
+        const callIds = new Set(result.toolCalls.map(call => call.toolCallId));
+        for (const message of result.response.messages) {
+          if (message.role !== 'tool') { transcript.push(message); continue; }
+          const content = message.content.filter(part => part.type !== 'tool-result' || !callIds.has(part.toolCallId));
+          if (content.length) transcript.push({ ...message, content });
+        }
         pending = result.toolCalls.map((call, index) => ({ raw: calls[index], id: call.toolCallId, name: call.toolName }));
         return { calls, answer: '', sourceIds: [] as string[] };
       }

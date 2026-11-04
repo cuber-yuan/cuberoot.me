@@ -1,4 +1,5 @@
 'use client';
+import { trackFeatureUse } from '@/lib/analytics-signal';
 import { TimerResultsTabs } from '@cuberoot/timer-ui';
 import { useLiveSmartCubeAttempt, TimerLiveSolutionPanel, TimerTrainingTimingStatus } from '@cuberoot/timer-ui';
 
@@ -1418,7 +1419,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   const { solve: liveSolve, publish: publishLiveSolve, clear: clearLiveSolve } = useLiveSmartCubeAttempt(
     smartCubeAttemptProducerRef.current, () => phaseSnapshotRef.current === 'running'
       ? { startedAt: attemptStartedAtRef.current, event: eventAtStartRef.current, scramble: scrambleAtStartRef.current }
-      : null);
+      : null, settings.liveSolutionAnalysis);
   const [liveStageTarget, setLiveStageTarget] = useState<HTMLDivElement | null>(null);
   const autoRecapDismissGestureRef = useRef(new AutoRecapDismissGesture());
   const autoRecapInputBlockedRef = useRef(false);
@@ -1489,6 +1490,7 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
 
     const solveIndex = (byEventRef.current[ev] ?? []).length;
     setByEvent(prev => ({ ...prev, [ev]: [...(prev[ev] ?? []), solve] }));
+    trackFeatureUse('timer_solve');
     submitTimerTrainingEvidence(trainingDestinationRef.current, solve);
     // 桌面在右栏展开复盘；窄屏直接进入整屏详情。两者共用 shouldAutoRecap，
     // 没有动作流或关闭开关时都不主动打断下一把流程。
@@ -1694,9 +1696,10 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
     canStartAttempt: () => !layoutEditingRef.current && (multiEnabledRef.current
       ? !multiResetPendingRef.current && scrambleSourceCurrentRef.current
         && Boolean(multiTrainingRef.current?.active()?.context?.scramble) : attemptCanStartRef.current)
-      && !autoRecapInputBlockedRef.current
       && (!competitionRef.current.enabled || competitionRef.current.canStart()),
+    isInputBlocked: () => autoRecapInputBlockedRef.current,
     getPhase: () => phaseSnapshotRef.current,
+    correctionLimit: () => getSettings().smartCubeCorrectionLimit,
     isTimingEnabled: () => competitionRef.current.enabled || getSettings().timingEnabled,
     onGuidanceChange: setScrambleGuidance,
     onMove: ({ metadata, move, timestamp }) => {
@@ -2479,8 +2482,8 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   const [reconstructSolve, setReconstructSolve] = useState<Solve | null>(null);
 
   // ── 停表后自动复盘 ──────────────────────────────────────────────
-  // 存 id 不存 solve:桌面右栏始终读最新成绩；窄屏整屏详情另带 autoRecap 标记，
-  // 这样蓝牙转动只会关闭自动打开的窗口，不会误关用户从历史记录手动打开的详情。
+  // 存 id 不存 solve:桌面右栏始终读最新成绩；本次复盘的整屏详情另带 autoRecap 标记，
+  // 这样蓝牙转动只会关闭本次复盘，不会误关用户从历史记录手动打开的详情。
   const [recapId, setRecapId] = useState<string | null>(null);
   const recapSolve = useMemo(
     () => (recapId ? solves.find(s => s.id === recapId) ?? null : null),
@@ -2490,24 +2493,32 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
   useEffect(() => {
     if (timer.phase !== 'stopped') setRecapId(null);
   }, [timer.phase]);
+  const fullscreenRecapId = modalSolve?.autoRecap ? modalSolve.s.id : null;
   useEffect(() => {
-    if (isDesktop || !recapId) {
+    if (!fullscreenRecapId) {
+      const wasBlocked = autoRecapInputBlockedRef.current;
       autoRecapDismissGestureRef.current.reset();
       autoRecapInputBlockedRef.current = false;
+      // Reconcile only the final physical state after the close animation.
+      // Turns used inside the recap must not become next-scramble history.
+      if (wasBlocked && !multiEnabledRef.current) {
+        const faces = bluetoothCubeRef.current?.getFaces();
+        if (faces) smartCubeSoloController.syncFacelets(toFaceletString(faces));
+      }
       return;
     }
     const subscribers = bluetoothSubscribersRef.current;
     const dismissAutoRecapOnMove = (move: string) => {
       if (!autoRecapDismissGestureRef.current.observe(move)) return;
       setModalSolve(current => (
-        current?.autoRecap && current.s.id === recapId
+        current?.autoRecap && current.s.id === fullscreenRecapId
           ? { ...current, closeRequested: true }
           : current
       ));
     };
     subscribers.add(dismissAutoRecapOnMove);
     return () => { subscribers.delete(dismissAutoRecapOnMove); };
-  }, [isDesktop, recapId]);
+  }, [fullscreenRecapId, smartCubeSoloController]);
   const markAutoRecapDisplayed = useCallback(() => {
     if (!autoRecapInputBlockedRef.current) return;
     autoRecapDismissGestureRef.current.markDisplayed();
@@ -3124,7 +3135,9 @@ export default function SoloView({ playersControl, presenceControl, onPresenceCh
       history={byEvent[recapSolve.event] ?? []}
       onFull={() => {
         const idx = solves.findIndex(s => s.id === recapSolve.id);
-        setModalSolve({ s: recapSolve, idx: idx >= 0 ? idx : solves.length - 1 });
+        autoRecapDismissGestureRef.current.reset();
+        autoRecapInputBlockedRef.current = true;
+        setModalSolve({ s: recapSolve, idx: idx >= 0 ? idx : solves.length - 1, autoRecap: true });
       }}
       onDismiss={() => setRecapId(null)}
       onUseScramble={useScramble}

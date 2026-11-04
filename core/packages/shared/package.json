@@ -140,6 +140,8 @@
       "./drive": "runtime-neutral",
       "./platform": "runtime-neutral",
       "./site-directory": "runtime-neutral",
+      "./page-catalog": "runtime-neutral",
+      "./product-analytics": "runtime-neutral",
       "./site-assistant": "runtime-neutral",
       "./site-announcements": "runtime-neutral",
       "./cube-agents": "runtime-neutral",
@@ -251,7 +253,17 @@
       "./timer/scramble-history": "runtime-neutral",
       "./timer/http": "runtime-neutral",
       "./timer/rank-presentation": "runtime-neutral",
-      "./timer/wca-competition-catalog": "runtime-neutral"
+      "./timer/wca-competition-catalog": "runtime-neutral",
+      "./cube-photo/scan": "runtime-neutral",
+      "./cube-photo/geometry": "runtime-neutral",
+      "./cube-photo/detect": "runtime-neutral",
+      "./cube-photo/recognize": "runtime-neutral",
+      "./cube-photo/lookup": "runtime-neutral",
+      "./cube-photo/analyze": "runtime-neutral",
+      "./cube-photo/pixels": "runtime-neutral",
+      "./cube-photo/result": "runtime-neutral",
+      "./testing/cube-photo": "runtime-neutral",
+      "./testing/cube-photo-algs": "asset"
     }
   },
   "main": "./src/index.ts",
@@ -911,7 +923,51 @@
     "./timer/scramble-history": "./src/timer/scramble-history.ts",
     "./timer/http": "./src/timer/http.ts",
     "./timer/rank-presentation": "./src/timer/rank-presentation.ts",
-    "./timer/wca-competition-catalog": "./src/timer/wca-competition-catalog.ts"
+    "./timer/wca-competition-catalog": "./src/timer/wca-competition-catalog.ts",
+    "./cube-photo/scan": {
+      "node": "./dist/cube-photo/scan.js",
+      "default": "./src/cube-photo/scan.ts"
+    },
+    "./cube-photo/geometry": {
+      "node": "./dist/cube-photo/geometry.js",
+      "default": "./src/cube-photo/geometry.ts"
+    },
+    "./cube-photo/detect": {
+      "node": "./dist/cube-photo/detect.js",
+      "default": "./src/cube-photo/detect.ts"
+    },
+    "./cube-photo/recognize": {
+      "node": "./dist/cube-photo/recognize.js",
+      "default": "./src/cube-photo/recognize.ts"
+    },
+    "./cube-photo/lookup": {
+      "node": "./dist/cube-photo/lookup.js",
+      "default": "./src/cube-photo/lookup.ts"
+    },
+    "./cube-photo/analyze": {
+      "node": "./dist/cube-photo/analyze.js",
+      "default": "./src/cube-photo/analyze.ts"
+    },
+    "./cube-photo/pixels": {
+      "node": "./dist/cube-photo/pixels.js",
+      "default": "./src/cube-photo/pixels.ts"
+    },
+    "./testing/cube-photo": "./test-fixtures/cube-photo.ts",
+    "./testing/cube-photo-algs": "./test-fixtures/cube-photo-algs.json",
+    "./cube-photo/result": {
+      "node": "./dist/cube-photo/result.js",
+      "default": "./src/cube-photo/result.ts"
+    },
+    "./product-analytics": {
+      "types": "./src/product_analytics.ts",
+      "node": "./dist/product_analytics.js",
+      "default": "./src/product_analytics.ts"
+    },
+    "./page-catalog": {
+      "types": "./src/page_catalog.ts",
+      "node": "./dist/page_catalog.js",
+      "default": "./src/page_catalog.ts"
+    }
   },
   "scripts": {
     "dev:build": "pnpm run build",

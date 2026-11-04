@@ -45,7 +45,10 @@ export interface SmartCubeSoloTimerControllerOptions<
 > {
   armFromCube(timestamp?: number): boolean | void;
   autoReadyOnScramble(): boolean;
+  correctionLimit?(): number | undefined;
   canStartAttempt(): boolean;
+  /** Pause preparation while a recap owns cube input; keep delivering its gestures. */
+  isInputBlocked?(): boolean;
   getPhase(): TimerPhase;
   isTimingEnabled(): boolean;
   onGuidanceChange?(state: SmartCubeGuidanceState): void;
@@ -93,6 +96,7 @@ export class SmartCubeSoloTimerController<
     this.guidance = createSmartCubeGuidanceController({
       onChange: options.onGuidanceChange,
       solve: options.solve,
+      correctionLimit: options.correctionLimit,
     });
   }
 
@@ -143,6 +147,7 @@ export class SmartCubeSoloTimerController<
   syncFacelets(facelets: string): SmartCubeGuidanceState {
     this.lastFacelets = facelets;
     if (this.running) this.trainingComplete = this.isTrainingComplete(facelets);
+    if (this.options.isInputBlocked?.()) return this.guidance.snapshot();
     return this.guidance.syncFacelets(facelets);
   }
 
@@ -162,6 +167,9 @@ export class SmartCubeSoloTimerController<
         return outcome;
       }
       if (outcome.futureHistory) return outcome;
+      // The recap's exit gesture is delivered in finally, but must never
+      // advance the next scramble or leave completed correction tokens in it.
+      if (this.options.isInputBlocked?.()) return outcome;
 
       const phase = this.options.getPhase();
       if (context
@@ -182,10 +190,11 @@ export class SmartCubeSoloTimerController<
         || !context?.targetFacelets
         || !timerSupportsSmartCubeAutoTiming(context.event)
         || contextRevision !== this.contextRevision) return outcome;
-      const observation = this.guidance.observe(event.facelets);
+      const observation = this.guidance.observe(event.facelets, event.move);
       outcome.guidanceCompleted = observation.completedNow;
       const hint = observation.state.hint;
       if (!this.penultimateObserved && hint && !hint.complete
+        && !hint.corrections?.length
         && hint.done.length > 0 && hint.current !== null && hint.pending.length === 0) {
         this.penultimateObserved = true;
         outcome.guidancePenultimate = true;

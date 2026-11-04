@@ -1,4 +1,5 @@
 'use client';
+import { saveAssistantImages } from '@/lib/site-assistant-images';
 
 /**
  * Landing-page site search — full port of packages/client-vite/src/components/LandingSearch.tsx.
@@ -54,6 +55,7 @@ import { assistantTimeoutMs, SITE_ASSISTANT_QUESTION_MAX_LENGTH, isAssistantSour
 import { ASSISTANT_ERROR_TEXT, assistantResponseError } from '@/lib/site-assistant-errors';
 import { useAssistantThinkingMode } from '@/hooks/useAssistantThinkingMode';
 import { requestSiteAssistant, assistantImageHistory } from '@/lib/site-assistant-request';
+import { assistantAnswerHistory } from '@/lib/assistant-answer-export';
 import type { AssistantConversationSnapshot } from '@/lib/assistant-conversations';
 import { ALG_PUZZLES, type AlgCase } from '@cuberoot/shared/alg';
 
@@ -342,8 +344,8 @@ export default function LandingSearch({
     }
     if ((!question && !images.length) || question.length > SITE_ASSISTANT_QUESTION_MAX_LENGTH || assistantRequest.current) return;
     const completed = (replaceLast ? assistantTurns.slice(0, -1) : assistantTurns).filter(turn => turn.result);
-    // Release older attachment bytes without erasing the visible conversation.
-    const previous = completed.map((turn, index) => index < completed.length - 9 && turn.images?.length ? { ...turn, images: undefined, imagesExpired: true } : turn);
+    // Saved references remain available; release only old, unsaved inline bytes.
+    const previous = completed.map((turn, index) => index < completed.length - 9 && turn.images?.some(image => !image.attachmentId) ? { ...turn, images: turn.images.filter(image => image.attachmentId), imagesExpired: true } : turn);
     const createdAt = Date.now();
     const nextTurns = [...previous, { question, images, createdAt }];
     setAssistantTurns(nextTurns);
@@ -365,10 +367,13 @@ export default function LandingSearch({
     const timeout = setTimeout(() => controller.abort(), assistantTimeoutMs(assistantThinking));
     try {
       assistantConversation.current ??= crypto.randomUUID();
+      images = await saveAssistantImages(images, assistantConversation.current, controller.signal);
+      if (assistantRequest.current !== controller) return;
+      setAssistantTurns([...previous, { question, images, createdAt }]);
       const response = await requestSiteAssistant(apiUrl('/v1/site-assistant'), {
         conversationId: assistantConversation.current, parentId: previous.at(-1)?.requestId, retryOf: replaceLast ? assistantTurns.at(-1)?.requestId : undefined,
         question, lang, thinking: assistantThinking, ...(images.length ? {images} : {}), timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone,
-        history: assistantImageHistory(previous.filter(turn => !turn.partial).slice(-5).flatMap(turn => [{ role: 'user', content: turn.question, ...(turn.images?.length ? {images:turn.images} : {}) }, { role: 'assistant', content: turn.result!.answer }]), images),
+        history: assistantImageHistory(previous.filter(turn => !turn.partial).slice(-5).flatMap(turn => [{ role: 'user', content: turn.question, ...(turn.images?.length ? {images:turn.images} : {}) }, { role: 'assistant', content: assistantAnswerHistory(turn.result!, window.location.origin) }]), images),
       }, {headers: { ...authHeaders(), Accept: 'text/event-stream' },signal: controller.signal});
       const requestId = response.headers.get('X-Assistant-Request-Id') ?? undefined;
       if (assistantRequest.current === controller) setAssistantTurns([...previous, { question, images, requestId, createdAt }]);
@@ -769,6 +774,8 @@ export default function LandingSearch({
                 {cardMatches.map(c => (
                   <Link
                     key={c.id}
+                    data-analytics-entry={c.id}
+                    data-analytics-placement="search"
                     href={c.href}
                     prefetch={false}
                     className="landing-search-item"
